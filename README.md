@@ -103,7 +103,16 @@ zależności, przeprowadzi przez konfigurację poświadczeń i wybór środowisk
 | `ksef-mcp onboarding` | konfiguracja przed pierwszym uruchomieniem | nie |
 | `ksef-mcp doctor` | same warunki wstępne | nie |
 | `ksef-mcp token set\|delete\|status` | token w keyringu | nie |
+| `ksef-mcp skill install --scope user\|project` | uczy agenta, jak używać serwera | nie |
 | `ksef-mcp verify` | potwierdza połączenie i pokazuje ostatnie faktury | **tak** |
+
+`skill install` zapisuje skill dla Claude Code: przy zakresie `user` do
+`~/.claude/skills/ksef-mcp/`, przy `project` do `./.claude/skills/ksef-mcp/`
+w katalogu wywołania. Zakresu nie przyjmuję domyślnie — `uvx` bywa uruchamiany
+z przypadkowego miejsca, więc cicho wybrany katalog byłby ostatnim, w którym
+ktokolwiek szukałby pliku. Komenda instaluje i aktualizuje: gdy skill już jest
+i różni się od nowego, pokazuje różnicę i pyta, zanim cokolwiek nadpisze —
+cudze zmiany nie znikają bez pokazania ich.
 
 Na maszynie bez magazynu keyringu (headless, WSL, kontener) tokenu nie da się
 zapisać. Ścieżką awaryjną jest zmienna `KSEF_TOKEN` — gdy jest ustawiona,
