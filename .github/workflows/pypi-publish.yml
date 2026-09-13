@@ -23,9 +23,9 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Set up Python
-        run: uv python install 3.12
-
+      # The interpreter comes from .python-version, which the project
+      # pins exactly. Naming a version here would be a second source of
+      # truth that drifts from the pin.
       - name: Build distributions
         run: uv build
 

@@ -18,7 +18,9 @@ licensed AGPL-3.0.
 
 ## Stack
 
-- Python, `requires-python >= 3.12`; CI matrix runs 3.12 and 3.13.
+- Python, pinned to an exact version in `.python-version` and
+  `requires-python`. CI names no version of its own — `uv` reads the
+  pin, so there is one source of truth.
 - Dependency management via `uv`; dev dependencies are a PEP 735
   `[dependency-groups] dev` group, not an extra.
 - src-layout package: `src/ksef_mcp/`.

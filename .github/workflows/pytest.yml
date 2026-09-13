@@ -23,10 +23,6 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
 
@@ -35,9 +31,10 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Set up Python ${{ matrix.python-version }}
-        run: uv python install ${{ matrix.python-version }}
-
+      # No python-version here and no `uv python install`: the project
+      # pins an exact interpreter in .python-version, and uv reads it.
+      # Naming a version in this workflow too would create a second
+      # source of truth that silently drifts from the pin.
       - name: Install dependencies
         run: uv sync --group dev
 
