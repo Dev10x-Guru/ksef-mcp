@@ -3,28 +3,27 @@
 > **Append-only.** Decyzji się nie usuwa.
 > Aby zmienić decyzję, dodaj nowy wpis z `supersedes: D-NNN`.
 
-> ## ⚠️ OSTRZEŻENIE — CZĘŚĆ DECYZJI JEST W REWIZJI
+> ## ℹ️ REWIZJA SYNCHRONIZACJI ZAKOŃCZONA — czytaj [D-031]
 >
-> Pod koniec warsztatu 001 potwierdzono u źródła
-> (`CIRFMF/ksef-api/limity/limity-api.md` oraz
-> `pobieranie-faktur/przyrostowe-pobieranie-faktur.md`), że Ministerstwo
-> Finansów publikuje **kanoniczny wzorzec synchronizacji przyrostowej**,
-> dla którego zaprojektowaliśmy własne, gorsze odpowiedniki.
+> Pod koniec warsztatu 001 ustalono u źródła, że Ministerstwo Finansów
+> publikuje **kanoniczny wzorzec synchronizacji przyrostowej**, dla
+> którego zaprojektowaliśmy własne odpowiedniki. Rewizja jest zamknięta
+> i mieszka w **[D-031]**.
 >
-> **Nie implementuj na podstawie poniższych decyzji, dopóki nie zostaną
-> zrewidowane:** `D-005`, `D-008`, `D-022`, `D-024`, oraz scenariusz
-> `ST-1`. Każda z nich jest oznaczona `⚠️ W REWIZJI` w swoim wpisie.
+> Co się zmieniło: eksport paczek jest ścieżką **podstawową**, nie
+> awaryjną; okna wyznacza **High Water Mark**, a nie my; `DateType` przy
+> synchronizacji jest przybity do `PermanentStorage`; kompletność wymaga
+> **iteracji po typach podmiotu**; szyfrowanie AES-256 wraca do zakresu
+> etapu 1. Przeoczony wcześniej limit `GET /invoices/ksef/{ksefNumber}`
+> = **64 żądania/h** przesądził o odejściu od ścieżki synchronicznej.
 >
-> Powód w skrócie: eksport paczek (`/invoices/exports`) jest **zalecanym**
-> mechanizmem synchronizacji, nie ścieżką awaryjną; delta opiera się na
-> **High Water Mark**, nie na własnym znaczniku; deduplikacja idzie po
-> `_metadata.json`; faktury pobiera się **oddzielnie dla każdego typu
-> podmiotu**. Dodatkowo przeoczono limit `GET /invoices/ksef/{ksefNumber}`
-> = **64 żądania/h**, przez co sufit wolumenu jest ~80× niższy, niż
-> zakładano.
+> Co się **nie** zmieniło, wbrew temu, co po drodze zaraportowano:
+> deduplikacja po numerze KSeF po naszej stronie **jest** wymagana —
+> `_metadata.json` jej nie zastępuje, tylko ją zasila. [D-005] stoi.
 >
-> Rewizję prowadzi zadanie sesji „Przemodelować synchronizację wg
-> kanonicznego wzorca MF". Reszta decyzji obowiązuje bez zmian.
+> `D-024` jest zastąpione. `D-005`, `D-008` i `D-022` obowiązują z
+> korektami opisanymi w [D-031] — ich wpisy odsyłają do właściwych
+> sekcji.
 
 ---
 
@@ -121,9 +120,11 @@
 
 ## D-005 — Idempotencja pobierania od pierwszego dnia; indeks deduplikacji odrębny od treści
 
-- **Status:** ⚠️ **W REWIZJI — nie implementować.** Rozdzielenie indeksu
-  od treści pozostaje słuszne, ale trzeba ustalić, czy własny indeks nie
-  dubluje deduplikacji po `_metadata.json`, którą daje eksport paczek.
+- **Status:** **Aktywna — potwierdzona przez [D-031].** Podejrzenie, że
+  własny indeks dubluje mechanizm MF, okazało się błędne: dokumentacja
+  HWM wymaga deduplikacji **po stronie systemu lokalnego**, po numerze
+  KSeF. Plik `_metadata.json` w paczce jej nie zastępuje — jest jej
+  **wejściem**, bo niesie numery KSeF wszystkich faktur w paczce.
 - **Warsztat:** 001
 - **Decyzja:** Pobranie okresu jest powtarzalne. Deduplikacja po **numerze
   KSeF** (nigdy po numerze własnym sprzedawcy). Ponowne odpytanie okresu
@@ -170,11 +171,12 @@
 
 ## D-008 — `subjectType` przybity do `Subject2`, niewystawiony jako parametr narzędzia
 
-- **Status:** ⚠️ **W REWIZJI — nie implementować.** Samo przybicie do
-  `Subject2` jest poprawne dla faktur zakupowych [D-019], ale MF zaleca
-  pobieranie **oddzielnie dla każdego typu podmiotu** (Podmiot 1/2/3/
-  upoważniony), bo ta sama firma może występować w różnych rolach — i
-  dopiero iteracja po typach gwarantuje kompletność okresu.
+- **Status:** **Aktywna, z korektą z [D-031].** Przybicie do `Subject2`
+  pozostaje poprawne dla faktur zakupowych [D-019] i pole nadal nie
+  wychodzi do sygnatury toola. Korekta: eksport wymaga wskazania typu
+  podmiotu, a punkt kontynuacji jest **osobny dla każdego typu** — więc
+  etap 1 potrzebuje pętli po typach, jeśli ma deklarować kompletność
+  okresu, a nie tylko „faktury, gdzie jestem nabywcą".
 - **Warsztat:** 001
 - **Decyzja:** Kierunek faktur jest w modelu obecny od pierwszego dnia
   (pole **wymagane** przez API), ale w etapie 1 ma wartość stałą
@@ -446,11 +448,11 @@
 
 ## D-022 — Deduplikacja i raport „co nowego" to dwie osobne rzeczy
 
-- **Status:** ⚠️ **W REWIZJI — nie implementować.** Rozdzielenie obu
-  mechanizmów pozostaje słuszne, ale własny „trwały znacznik" należy
-  zastąpić **High Water Mark** (`PermanentStorageHwmDate` +
-  `restrictToPermanentStorageHwmDate`), a deduplikację — mechanizmem MF
-  opartym na `_metadata.json` w paczkach eksportu.
+- **Status:** **Aktywna, z korektą z [D-031].** Rozdzielenie obu
+  mechanizmów pozostaje słuszne. Korekta: własny „trwały znacznik"
+  zastępuje **High Water Mark** — punkt kontynuacji to
+  `PermanentStorageHwmDate` albo `LastPermanentStorageDate` dla paczek
+  obciętych, przechowywany **osobno dla każdego typu podmiotu**.
 - **Warsztat:** 001
 - **supersedes:** D-005 (w części łączącej oba mechanizmy)
 - **Decyzja:** Rozdzielamy:
@@ -476,12 +478,13 @@
 
 ## D-024 — Ścieżka `exports` poza etapem 1
 
-- **Status:** ⚠️ **W REWIZJI — nie implementować.** Obalona ustaleniem, że
-  eksport paczek jest **zalecanym** mechanizmem synchronizacji
-  przyrostowej, a nie ścieżką dla dużych wolumenów. Sufit przyjęty w tej
-  decyzji („przyjmujemy sufit wolumenu") opierał się na błędnym
-  oszacowaniu ~5000 faktur/h; realny limit `GET
-  /invoices/ksef/{ksefNumber}` to **64/h**.
+- **Status:** **Zastąpiona przez D-031.** Obalona ustaleniem, że eksport
+  paczek jest **zalecanym** mechanizmem synchronizacji przyrostowej, a nie
+  ścieżką dla dużych wolumenów. Sufit przyjęty w tej decyzji
+  („przyjmujemy sufit wolumenu") opierał się na błędnym oszacowaniu
+  ~5000 faktur/h; realny limit `GET /invoices/ksef/{ksefNumber}` to
+  **64/h**. Szyfrowanie AES-256, którego ta decyzja unikała, wraca do
+  zakresu etapu 1.
 - **Warsztat:** 001
 - **Decyzja:** `POST /invoices/exports` nie wchodzi do etapu 1.
   Przyjmujemy sufit wolumenu wynikający z limitów zapytań.
@@ -758,6 +761,207 @@
   przez agenta, więc nasza zgodność z tym wymogiem **stoi i upada na
   lokalnym archiwum** — bez niego budujemy dokładnie to, czego MF
   zabrania.
+
+## D-031 — Synchronizacja przyrostowa wg kanonicznego wzorca MF
+
+- **Status:** Aktywna
+- **Warsztat:** 001
+- **supersedes:** D-024; rewiduje D-005, D-008, D-022
+- **Źródła:** `CIRFMF/ksef-api` — `pobieranie-faktur/hwm.md`,
+  `pobieranie-faktur/przyrostowe-pobieranie-faktur.md`,
+  `limity/limity-api.md`, `limity/limity.md`. Czytane w całości.
+
+### Decyzja
+
+Synchronizację opieramy na **eksporcie paczek** z **High Water Mark**,
+w **scenariuszu „tylko do HWM"**.
+
+### 1. Eksport paczek jest ścieżką podstawową, nie awaryjną
+
+`POST /invoices/exports` — asynchroniczny, kolejkowany. MF wymienia
+*„synchronizację wyłącznie poprzez pobieranie pojedynczych faktur, bez
+wykorzystania eksportu paczek"* jako **niezalecaną implementację**.
+Obala to D-024, w którym eksport wystawiono poza etap 1.
+
+Twardy powód liczbowy: `GET /invoices/ksef/{ksefNumber}` ma limit
+**64 żądania/h**. Ścieżka synchroniczna jest dopuszczalna wyłącznie
+w profilach niskiego wolumenu.
+
+### 2. `PermanentStorage` jest jedynym dopuszczalnym typem daty
+
+Cytat: *„Dla przyrostowego pobierania faktur **konieczne** jest użycie
+daty typu `PermanentStorage`… inne typy dat (jak `Issue` czy
+`Invoicing`) mogą prowadzić do nieprzewidywalnych zachowań"*.
+
+**Korekta modelu:** `DateType` **nie jest** wyborem użytkownika w
+`Okres`, jak wcześniej zapisano. Przy synchronizacji jest przybity do
+`PermanentStorage`. `Issue` i `Invoicing` mogą służyć wyłącznie do
+zapytań na **lokalnej** bazie — co jest zgodne z wymogiem MF, by
+operacje biznesowe działały lokalnie [D-030].
+
+### 3. Scenariusz „tylko do HWM"
+
+HWM to moment, do którego system gwarantuje, że wszystkie faktury są
+trwale zapisane i **żadna nowa już się nie pojawi**. Wszystko ≤ HWM to
+zbiór zamknięty i kompletny; wszystko > HWM jest potencjalnie niepełne.
+
+Pobieramy od ostatniego punktu kontynuacji **do bieżącego HWM**. Dane są
+definitywne, duplikatów minimum. Cena przyjęta świadomie: faktury z
+przedziału `(HWM, Teraz]` pojawią się dopiero w kolejnym cyklu.
+
+Odrzucono scenariusz „do Teraz" (świeższe dane kosztem powtarzania
+zakresu i większego zużycia budżetu 20/h) oraz wariant mieszany.
+
+### 4. Okna wyznacza KSeF, nie my
+
+Zalecenie: **pomijać `DateRange.To`** — system zbuduje możliwie dużą,
+spójną paczkę w granicach własnych limitów. Kontynuacja:
+
+| Warunek | Początek kolejnego okna |
+|---|---|
+| `IsTruncated = true` | `LastPermanentStorageDate` |
+| `IsTruncated = false` | `PermanentStorageHwmDate` |
+
+Zakresy muszą **przylegać**, bez nakładania. **Rozwiązuje to pytanie o
+maksymalne okno zapytania** — nie my je wybieramy, więc pytanie znika.
+
+### 5. Iteracja po typach podmiotu
+
+Eksport wymaga wskazania typu podmiotu, a **punkt kontynuacji jest
+osobny dla każdego typu**. Firma może występować w różnych rolach na
+różnych fakturach, więc kompletność daje dopiero iteracja.
+
+Budżet 20 eksportów/h dzielimy między typy; zalecane ~4/h na typ.
+`Podmiot 3` i `Podmiot upoważniony` występują rzadko — wystarczy raz na
+dobę w oknie nocnym. Interwał cykliczny **nie krótszy niż 15 minut** na
+typ podmiotu.
+
+**Korekta D-008:** przybicie do `Subject2` pozostaje poprawne dla
+faktur zakupowych, ale etap 1 i tak potrzebuje pętli po typach, jeśli
+ma deklarować kompletność okresu.
+
+### 6. Deduplikacja po numerze KSeF zostaje — wbrew mojemu wcześniejszemu twierdzeniu
+
+**Sprostowanie:** zaraportowałem, że MF deduplikuje za nas i że D-005
+dubluje mechanizm. To było błędne. Dokument HWM mówi wprost, że przy
+powtarzaniu zakresu *„po stronie systemu lokalnego konieczna jest
+deduplikacja (np. po numerze KSeF)"*. Plik `_metadata.json` w paczce
+nie zastępuje deduplikacji — jest jej **wejściem**, bo niesie numery
+KSeF wszystkich faktur w paczce. Od 27.10.2025 jest dołączany zawsze,
+wcześniej wymagał nagłówka `X-KSeF-Feature: include-metadata`.
+
+D-005 obowiązuje dalej, wraz z rozdzieleniem indeksu od treści.
+
+### 7. Szyfrowanie wraca do zakresu etapu 1
+
+Paczka to **zaszyfrowany ZIP dzielony na części**: pobranie części z
+osobnych URL-i, deszyfrowanie **AES-256** kluczem i IV wygenerowanymi
+przy inicjalizacji eksportu, złożenie strumienia, rozpakowanie.
+
+**Konsekwencja:** [D-004] musi objąć **klucze**, nie tylko token.
+
+### 8. Rzeczywiste limity da się odpytać
+
+`GET /limits/context` zwraca obowiązujące limity dla bieżącego
+kontekstu. Licznik budżetu [D-020] powinien z tego korzystać zamiast
+zakładać wartości domyślne — zwłaszcza że MF dopuszcza indywidualne
+podniesienie limitów na wniosek.
+
+### 9. Limity kontekstu, wcześniej nieznane
+
+Faktura ≤ **1 MB** bez załącznika, ≤ **3 MB** z załącznikiem. Maksimum
+**10 000** faktur w sesji. Do 500 faktur w pojedynczym identyfikatorze
+zbiorczym.
+
+### 10. Jedna ścieżka, także dla niskiego wolumenu
+
+MF dopuszcza ścieżkę synchroniczną dla profili niskiego wolumenu, a
+etap 1 (jeden podmiot, faktury zakupowe) prawdopodobnie zmieściłby się
+w limicie 64 pobrań na godzinę. **Mimo to budujemy wyłącznie eksport.**
+
+Uzasadnienie: druga ścieżka oznaczałaby drugi mechanizm do napisania i
+utrzymania oraz **próg przełączania**, który trzeba by stroić. Persona
+księgowej nazwała wybór „interaktywna czy wsadowa" decyzją techniczną
+niepotrzebnie spadającą na użytkownika — a próg przełączania to ta sama
+decyzja, tylko przebrana za automat. Koszt jednej ścieżki: AES-256 i
+polling od pierwszego dnia. Zysk: etap 1 i etap 3 działają tak samo.
+
+### Co pozostaje otwarte
+
+- Kształt lokalnego magazynu punktów kontynuacji per typ podmiotu —
+  częściowo rozstrzygnięte w [D-032], doprecyzowanie razem z polityką
+  retencji.
+
+## D-032 — Lokalny magazyn rozdzielony wg XDG: cache osobno od trwałego stanu
+
+- **Status:** Aktywna
+- **Warsztat:** 001
+- **Decyzja:** Magazyn dzielimy na dwa korzenie, zgodnie z konwencją
+  katalogów użytkownika. Ścieżki wyznaczamy biblioteką `platformdirs`,
+  nigdy nie sklejamy ich ręcznie — inaczej Windows i macOS dostaną
+  ścieżki linuksowe.
+
+### Katalog cache — wolno skasować
+
+| System | Ścieżka |
+|---|---|
+| Linux | `$XDG_CACHE_HOME/ksef-mcp` lub `~/.cache/ksef-mcp` |
+| macOS | `~/Library/Caches/ksef-mcp` |
+| Windows | `%LOCALAPPDATA%\ksef-mcp\Cache` |
+
+Trafia tu **wyłącznie to, co da się odtworzyć jednym zapytaniem**:
+cache metadanych okresu [D-021] i wyniki zapytań. Utrata kosztuje
+budżet, nie ciągłość.
+
+### Katalog danych — trwały stan, nie kasować
+
+| System | Ścieżka |
+|---|---|
+| Linux | `$XDG_DATA_HOME/ksef-mcp` lub `~/.local/share/ksef-mcp` |
+| macOS | `~/Library/Application Support/ksef-mcp` |
+| Windows | `%LOCALAPPDATA%\ksef-mcp` |
+
+Trafia tu wszystko, czego utrata jest droga:
+
+- **Punkty kontynuacji HWM per typ podmiotu** [D-031] — ich utrata
+  wymusza **pełną resynchronizację**, a budżet to 20 eksportów na
+  godzinę dzielony między cztery typy podmiotu.
+- **Indeks deduplikacji** (numery KSeF + skróty), odrębny od treści
+  [D-005].
+- **Archiwum XML** — to jest ta „lokalna baza danych", na której wg MF
+  mają działać operacje biznesowe [D-030].
+
+### Uzasadnienie rozdziału
+
+Konwencja katalogu cache brzmi: *wolno skasować w dowolnym momencie*.
+Czyszczarki systemowe i narzędzia porządkowe z tego korzystają. Gdyby
+punkty kontynuacji leżały w cache, rutynowe sprzątanie dysku kasowałoby
+ciągłość synchronizacji — a objaw (nagłe odpytywanie wszystkiego od
+nowa i uderzanie w limity) byłby oddalony w czasie od przyczyny i
+bardzo trudny do zdiagnozowania.
+
+### Rozdział wobec wyników dla użytkownika
+
+Ani cache, ani katalog danych **nie są** miejscem, gdzie lądują pliki
+zamówione przez użytkownika. Te idą do **zadeklarowanego katalogu
+roboczego**, osobnego per NIP, z `chmod 0700` i ostrzeżeniem przy
+ścieżkach synchronizowanych do chmury. Magazyn jest wewnętrzny,
+katalog roboczy jest produktem.
+
+### Konsekwencje dla retencji i prywatności
+
+Archiwum w katalogu danych zawiera dane osobowe kontrahentów i **nie
+czyści się samo**. Potrzebna jest jawna polityka retencji i komenda
+czyszcząca — bez nich po roku na dysku leży komplet faktur wszystkich
+obsługiwanych podmiotów. Rozdzielenie indeksu od treści [D-005]
+pozwala skasować treść bez utraty idempotencji.
+
+### Otwarte
+
+- Konkretna polityka retencji i jej domyślna wartość.
+- Czy archiwum per podmiot ma być osobnym podkatalogiem w katalogu
+  danych — wskazuje na to wymóg twardego rozdziału kontekstów w
+  etapie 3 [D-009].
 
 ## D-015 — Nazwa dystrybucji `ksef-mcp` na PyPI
 

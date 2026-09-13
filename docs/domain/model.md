@@ -27,9 +27,19 @@ wiele poświadczeń, nie dokłada parametru gdzie indziej.
 Odpowiada na pytanie: *które faktury za ten okres już mamy, a których
 jeszcze nie?*
 
-Zapytania o listę, paginacja, pobieranie treści, deduplikacja, delta
-„nowe od ostatniego pobrania". To tutaj mieszka jedyny niezmiennik wart
-obrony.
+Synchronizacja przyrostowa przez **eksport paczek** z **High Water
+Mark**, deduplikacja, lokalne archiwum. To tutaj mieszka jedyny
+niezmiennik wart obrony.
+
+Kanoniczny przebieg [D-031]: zainicjuj eksport dla typu podmiotu, od
+punktu kontynuacji, z `DateType = PermanentStorage` i
+`RestrictToPermanentStorageHwmDate`, bez `DateRange.To` → odpytuj
+status → pobierz części → odszyfruj AES-256 → złóż i rozpakuj →
+deduplikuj po numerze KSeF na podstawie `_metadata.json` → przesuń
+punkt kontynuacji.
+
+**Operacje biznesowe — wyszukiwanie, filtrowanie, raportowanie —
+działają na lokalnym archiwum, nigdy przez odpytanie KSeF** [D-030].
 
 ### Mapa kontekstów
 
@@ -65,12 +75,33 @@ wywołaniu API, nie przed [D-002].
 | Typ | Zawartość | Uwagi |
 |---|---|---|
 | `NumerKSeF` | identyfikator nadany przez KSeF | klucz naturalny deduplikacji; **nigdy** numer własny sprzedawcy |
-| `Okres` | zakres dat **+ `DateType`** | `Issue` / `Invoicing` / `PermanentStorage` — trzy różne odpowiedzi na „sierpień"; archetyp Range |
+| `Okres` | zakres dat + `DateType` | Przy **synchronizacji** `DateType` jest przybity do `PermanentStorage` — inne typy dają nieprzewidywalne zachowanie [D-031]. `Issue` i `Invoicing` tylko do zapytań na lokalnym archiwum |
+| `PunktKontynuacji` | znacznik czasu **per typ podmiotu** | `PermanentStorageHwmDate` albo `LastPermanentStorageDate` dla paczek obciętych; utrata wymusza pełną resynchronizację |
 | `KierunekFaktur` | `subjectType` | wymagane przez API; etap 1 przybity do `Subject2` |
 | `KontekstPodmiotu` | NIP + rola | własność poświadczenia [D-009] |
 | `Środowisko` | TEST / DEMO / PROD | oznaczane w każdej odpowiedzi narzędzia |
 | `Poświadczenie` | referencja do keyringu | nigdy sam sekret w konfiguracji |
 | `LinkWeryfikacyjny` | NIP + data + SHA-256 base64url pliku | KOD I; składany lokalnie [D-016] |
+
+## Magazyn lokalny
+
+Dwa korzenie, rozdzielone wg konwencji katalogów użytkownika [D-032],
+wyznaczane biblioteką `platformdirs`:
+
+| Korzeń | Zawartość | Cena utraty |
+|---|---|---|
+| **Katalog cache** | metadane okresu, wyniki zapytań | jedno odpytanie |
+| **Katalog danych** | punkty kontynuacji HWM, indeks deduplikacji, archiwum XML | **pełna resynchronizacja** |
+
+Rozdział istnieje, bo konwencja katalogu cache brzmi *wolno skasować w
+dowolnym momencie*. Punkty kontynuacji tego nie zniosą — objaw
+(odpytywanie wszystkiego od nowa i uderzanie w limity) byłby oddalony
+w czasie od przyczyny.
+
+**Żaden z tych korzeni nie jest miejscem na pliki zamówione przez
+użytkownika** — te idą do zadeklarowanego katalogu roboczego, osobnego
+per NIP, z `chmod 0700`. Magazyn jest wewnętrzny, katalog roboczy jest
+produktem.
 
 ## Indeks deduplikacji
 
@@ -84,8 +115,13 @@ powtarzalności.
 
 | Ograniczenie | Konsekwencja | Status |
 |---|---|---|
-| Limity zapytań metadanych 8/s, 16/min, **20/h** | `pageSize=250` jest niezmiennikiem, nie strojeniem [D-010] | [Verify] |
-| `pageSize` 10–250, domyślnie 10 | naiwna paginacja wyczerpuje limit godzinowy na 200 fakturach | [Verify] |
+| Limity metadanych 8/s, 16/min, **20/h** | `pageSize=250` jest niezmiennikiem, nie strojeniem [D-010] | potwierdzone |
+| Limit eksportu **20/h** | budżet dzielony między cztery typy podmiotu, ~4/h na typ [D-031] | potwierdzone |
+| `GET /invoices/ksef/{ksefNumber}` — **64/h** | ścieżka synchroniczna tylko dla niskiego wolumenu; stąd eksport jako ścieżka podstawowa | potwierdzone |
+| Interwał cykliczny ≥ **15 minut** na typ podmiotu | harmonogram synchronizacji | potwierdzone |
+| Środowisko TE ma limity **10× wyższe** niż produkcja | zielony test na TE nie dowodzi niczego o produkcji | potwierdzone |
+| Limity per para **kontekst + adres IP**, sliding window | istotne dla etapu 3; systematyczne używanie wielu IP w jednym kontekście traktowane jako zagrożenie | potwierdzone |
+| Data otrzymania faktury = **data nadania numeru KSeF** | niezależna od momentu pobrania | potwierdzone |
 | `subjectType` jest polem **wymaganym** | kierunek nie jest szwem na zapas | potwierdzone |
 | Ścieżka eksportu wymaga szyfrowania | AES/RSA wraca do zakresu przy dużym wolumenie | [Verify] |
 | Token KSeF wyświetlany **jednorazowo** | jego utrata jest kosztowna | potwierdzone |
