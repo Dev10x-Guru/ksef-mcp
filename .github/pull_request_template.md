@@ -1,46 +1,54 @@
 <!--
-  Title convention: <gitmoji> <outcome>
-  e.g. ✨ Enable invoice lookup through the KSeF test environment
+  Konwencja tytułu: <gitmoji> <rezultat>
+  np. ✨ Umożliwia wyszukanie faktury w środowisku testowym KSeF
 -->
 
 ## Job Story
 
-<!-- Third person, with a concrete role — accountant, integrator,
-     taxpayer. Never "I want to", never "the user".
-     When <situation>, <actor> wants to <motivation>, so <beneficiary>
-     can <expected outcome>. -->
+<!-- Trzecia osoba i konkretna rola — księgowa, integrator, podatnik.
+     Nigdy „chcę", nigdy bezosobowy „użytkownik".
+     Gdy <sytuacja>, <rola> chce <motywacja>, żeby <beneficjent> mógł
+     <oczekiwany rezultat>.
 
-## Summary
+     UWAGA: walidator `create_pr` we wtyczce Dev10x oraz workflow
+     claude-pr-hygiene.yml szukają dosłownych angielskich znaczników
+     **When** / **wants to** / **so ... can**. Polskie znaczniki nie są
+     przez nie rozpoznawane — patrz references/git-jtbd.md. -->
 
-<!-- What changed and why. Link the issue(s) this closes. -->
+## Podsumowanie
+
+<!-- Co się zmieniło i dlaczego. Podlinkuj zamykane zgłoszenia. -->
 
 Fixes:
 
-## KSeF safety gate
+## Bramka bezpieczeństwa KSeF
 
-Sending an invoice to production KSeF creates a document with tax
-consequences and **cannot be undone**. Anything that can reach the KSeF
-API has to justify itself here.
+Wysłanie faktury do produkcyjnego KSeF tworzy dokument o skutkach
+podatkowych i **jest nieodwracalne**. Wszystko, co może sięgnąć API
+KSeF, musi się tutaj wytłumaczyć.
 
-- [ ] This PR does **not** add or change code that calls the KSeF API,
-      **or** every new call is confined to the test environment.
-- [ ] No test added here reaches a live KSeF endpoint by default —
-      network-touching tests carry the `ksef_live` marker and stay
-      deselected in the default suite.
-- [ ] No credential, token or NIP is committed, logged, or written into
-      a CI artifact; no invoice XML is uploaded as a build artifact.
+- [ ] Ten PR **nie** dodaje ani nie zmienia kodu wołającego API KSeF,
+      **albo** każde nowe wywołanie ogranicza się do środowiska
+      testowego.
+- [ ] Żaden dodany tu test nie sięga domyślnie działającego punktu
+      końcowego KSeF — testy dotykające sieci noszą marker `ksef_live`
+      i pozostają odfiltrowane z domyślnego zestawu.
+- [ ] Żadne poświadczenie, token ani NIP nie trafia do repozytorium,
+      do logów ani do artefaktu CI; żaden XML faktury nie jest
+      wysyłany jako artefakt budowania.
 
-> Justification (required if any box is unchecked):
+> Uzasadnienie (wymagane, jeśli któreś pole zostało niezaznaczone):
 
-## Testing
+## Testy
 
-- [ ] Tests pass (`uv run pytest`) with coverage at 100%
-- [ ] `bin/` tooling tests pass, if touched
-      (`uv run --no-project --with pytest pytest bin/`)
-- [ ] Manual verification, if user-facing
+- [ ] Testy przechodzą (`uv run pytest`) przy pokryciu 100%
+- [ ] Testy narzędzi z `bin/` przechodzą, jeśli były dotykane
+      (`uv run --no-project --with pytest --with pytest-cov pytest bin/ --no-cov`)
+- [ ] Weryfikacja ręczna, jeśli zmiana jest widoczna dla użytkownika
 
-## Rollback
+## Wycofanie
 
-<!-- How to revert if this breaks. "Revert the PR" is a valid answer only
-     if the change is self-contained. A released version cannot be
-     unpublished from PyPI — say how to yank and re-release instead. -->
+<!-- Jak wycofać, gdy to coś zepsuje. „Wycofać PR-a" jest poprawną
+     odpowiedzią tylko wtedy, gdy zmiana jest samowystarczalna.
+     Wydanej wersji nie da się usunąć z PyPI — opisz zamiast tego, jak
+     ją wycofać ze sprzedaży (yank) i wydać ponownie. -->

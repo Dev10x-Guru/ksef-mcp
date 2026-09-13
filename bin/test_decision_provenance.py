@@ -94,7 +94,12 @@ def test_human_weight_reason_reports_both_markers() -> None:
         ("n/a", False),
         ("tbd", False),
         ("todo", False),
+        ("brak", False),
+        ("nikt", False),
+        ("do uzupełnienia", False),
+        ("BRAK", False),
         ("[named human(s) who read ...]", False),
+        ("[nazwani człowiek/ludzie, którzy przeczytali cały tekst]", False),
         ("Janusz Skonieczny", True),
     ],
 )

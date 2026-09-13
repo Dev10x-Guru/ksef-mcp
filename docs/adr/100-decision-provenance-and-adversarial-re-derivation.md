@@ -1,111 +1,119 @@
-# ADR-100: Decision Provenance and Adversarial Re-Derivation
+# ADR-100: Prowenienacja decyzji i adwersarialna ponowna derywacja
 
 - **Date:** 2026-09-13
 - **Status:** Proposed
 - **Deciders:** Janusz Skonieczny
 - **Authored-by:** agent (claude-opus-5)
 - **Reviewed-by:** —
-- **Sources:** prior practice on AI-authored codebases; the procedure is
-  implemented here by `bin/check-adr-numbers.py`,
-  `bin/check-adr-drift.py`, `bin/decision_provenance.py` and
+- **Sources:** dotychczasowa praktyka na kodowych bazach tworzonych przez AI;
+  procedura jest tu zaimplementowana przez `bin/check-adr-numbers.py`,
+  `bin/check-adr-drift.py`, `bin/decision_provenance.py` oraz
   `bin/rederive-sample.py`
 
-## Context
+## Kontekst
 
-This codebase is written almost entirely by AI agents committing under a
-human operator's git identity. Two consequences follow, both of which
-have been observed in practice on codebases of this shape:
+Ta baza kodu jest pisana niemal wyłącznie przez agentów AI, commitujących
+pod tożsamością git operatora-człowieka. Wynikają z tego dwie
+konsekwencje, obie obserwowane w praktyce na bazach kodu o takim
+kształcie:
 
-1. **Authorship is structurally unanswerable after the fact.** The
-   `Deciders:` field is written by whoever authors the file, so it cannot
-   distinguish "a human decided this" from "an agent filled in the
-   human's name". Provenance recorded at decision time is cheap;
-   reconstructing it later is impossible.
-2. **Review runs one way only.** An AI decision gets a human reviewer. A
-   human decision gets nothing — even when the ground shifts under it.
-   Nothing re-examines whether the implementation still honours it, in
-   either direction.
+1. **Autorstwo jest strukturalnie nie do ustalenia po fakcie.** Pole
+   `Deciders:` wypełnia ten, kto tworzy plik, więc nie da się nim
+   odróżnić „człowiek to zdecydował" od „agent wpisał nazwisko
+   człowieka". Prowenienacja zapisana w chwili decyzji jest tania;
+   odtworzenie jej później jest niemożliwe.
+2. **Przegląd działa tylko w jedną stronę.** Decyzja AI dostaje ludzkiego
+   recenzenta. Decyzja człowieka nie dostaje niczego — nawet gdy grunt
+   pod nią się przesuwa. Nic nie sprawdza ponownie, czy implementacja
+   wciąż ją honoruje, w żadnym z obu kierunków.
 
-Because nearly every commit here is agent-authored, marking AI authorship
-is near-universal noise. The load-bearing goal is not authorship
-bookkeeping but **protecting the subset of human-weighted decisions from
-silent AI reversal**.
+Ponieważ niemal każdy commit tutaj jest autorstwa agenta, oznaczanie
+autorstwa AI to niemal wszechobecny szum. Istotnym celem nie jest
+księgowanie autorstwa, lecz **ochrona podzbioru decyzji ważonych przez
+człowieka przed cichym odwróceniem przez AI**.
 
-## Decision
+## Decyzja
 
-Adopt a decision-provenance procedure with five parts. Authorship is
-recorded at decision time, and *both* directions of decision-making are
-subject to review.
+Przyjąć procedurę prowenienacji decyzji złożoną z pięciu części.
+Autorstwo jest zapisywane w chwili decyzji, a *obydwa* kierunki
+podejmowania decyzji podlegają przeglądowi.
 
-1. **Provenance header fields** (see [TEMPLATE.md](TEMPLATE.md)):
-   - `Authored-by:` — `human` or `agent (<model id>)`. Unmarked means
-     AI-made, which is the default here.
-   - `Reviewed-by:` — named human(s) who read the full text before
-     acceptance. Empty means **unreviewed**; an unreviewed ADR may not
-     claim `Accepted`.
-   - `Sources:` — inspiration and pattern origins. Opaque references are
-     allowed, so that imported assumptions are visible rather than
-     reading as first-principles derivation.
-   - `Deciders:` — one canonical string per person.
+1. **Pola nagłówka prowenienacji** (zob. [TEMPLATE.md](TEMPLATE.md)):
+   - `Authored-by:` — `human` albo `agent (<identyfikator modelu>)`.
+     Brak oznaczenia oznacza, że decyzję podjęło AI, co jest tu
+     wartością domyślną.
+   - `Reviewed-by:` — nazwani człowiek/ludzie, którzy przeczytali cały
+     tekst przed akceptacją. Puste oznacza **niezrecenzowane**; ADR
+     niezrecenzowany nie może rościć sobie statusu `Accepted`.
+   - `Sources:` — inspiracje i źródła pochodzenia wzorców. Nieprzejrzyste
+     odwołania są dozwolone, żeby zapożyczone założenia były widoczne,
+     zamiast sprawiać wrażenie wywiedzenia z pierwszych zasad.
+   - `Deciders:` — jeden kanoniczny ciąg znaków na osobę.
 
-   `Authored-by: human` or a non-empty `Reviewed-by:` is what marks a
-   decision as human-weighted, and therefore high-attention.
+   To `Authored-by: human` albo niepuste `Reviewed-by:` oznacza decyzję
+   jako ważoną przez człowieka, a więc wymagającą podwyższonej uwagi.
 
-2. **Drift warning on human-weighted ADRs.** A PR that modifies an ADR
-   carrying either marker raises a CI warning
-   (`adr-provenance-drift.yml`). It is advisory, not blocking — the point
-   is visibility, not a gate.
+2. **Ostrzeżenie o dryfie na ADR-ach ważonych przez człowieka.** PR
+   modyfikujący ADR z jednym z tych znaczników podnosi ostrzeżenie CI
+   (`adr-provenance-drift.yml`). Jest to kontrola doradcza, nie
+   blokująca — chodzi o widoczność, nie o bramkę.
 
-3. **Acceptance gate (Proposed → Accepted).** A human flips the status.
-   The PR that does so must pass:
-   - **(a) Number-collision scan** — no duplicate `docs/adr/NNN-*`
-     number in the merged tree. Enforced by `adr-numbering.yml`.
-   - **(b) Realization check** — every runtime-behaviour claim in the
-     Decision section is verified against code, or explicitly marked
-     "not yet wired, tracked in GH-XXXX".
-   - **(c) Supersession backlinks** — older ADRs whose decisions this one
-     changes get a pointer back.
+3. **Bramka akceptacji (Proposed → Accepted).** Status przełącza
+   człowiek. PR, który to robi, musi przejść:
+   - **(a) skan kolizji numerów** — brak duplikatu numeru
+     `docs/adr/NNN-*` w scalonym drzewie. Egzekwowane przez
+     `adr-numbering.yml`.
+   - **(b) kontrolę realizacji** — każde twierdzenie o zachowaniu
+     w czasie działania w sekcji Decyzja jest zweryfikowane wobec kodu
+     albo jawnie oznaczone jako „jeszcze niepodłączone, śledzone w
+     GH-XXXX".
+   - **(c) odsyłacze zwrotne supersesji** — starsze ADR-y, których
+     decyzje ten dokument zmienia, dostają wskaźnik zwrotny.
 
-4. **Periodic adversarial re-derivation.** Quarterly (or on dispatch), a
-   capable model re-derives a sample of human-weighted decisions from
-   current circumstances and files confirm / amend / supersede / drift
-   recommendations, citing `path:line` evidence. Wired by
-   `adr-rederivation.yml`; the result is a review bundle in a GitHub
-   issue, never an automatic change.
+4. **Okresowa adwersarialna ponowna derywacja.** Kwartalnie (albo na
+   żądanie), zdolny model ponownie wyprowadza próbkę decyzji ważonych
+   przez człowieka z bieżących okoliczności i zgłasza rekomendacje
+   potwierdź / popraw / zastąp / dryf, cytując dowody w formacie
+   `ścieżka:linia`. Podłączone przez `adr-rederivation.yml`; wynikiem
+   jest pakiet do przeglądu w zgłoszeniu GitHub, nigdy automatyczna
+   zmiana.
 
-5. **Status hygiene.** Use `Superseded` for fully-replaced decisions with
-   a machine-checkable `Superseded-by:` pointer; use the dated-amendment
-   style (a `> **Amendment (YYYY-MM-DD):**` block at the top) for partial
-   supersession.
+5. **Higiena statusów.** Używaj `Superseded` dla decyzji w pełni
+   zastąpionych, z maszynowo sprawdzalnym wskaźnikiem `Superseded-by:`;
+   używaj stylu datowanej poprawki (blok
+   `> **Amendment (YYYY-MM-DD):**` na górze) dla częściowej supersesji.
 
-## Rationale
+## Uzasadnienie
 
-Making `Reviewed-by:` a precondition for `Accepted` turns "was merged"
-back into "is current, vetted guidance" — the property an ADR corpus
-loses once every entry drifts to a bare `Accepted`.
+Uczynienie `Reviewed-by:` warunkiem koniecznym dla `Accepted` przywraca
+znaczenie „zostało scalone" jako „jest aktualną, zweryfikowaną
+wytyczną" — właściwość, którą korpus ADR traci, gdy każdy wpis dryfuje
+do gołego `Accepted`.
 
-Adversarial re-derivation closes the asymmetry in part 2 of the Context.
-It treats "a decision that changed under new circumstances" as something
-to re-decide consciously, rather than by default of whoever last touched
-the code.
+Adwersarialna ponowna derywacja zamyka asymetrię z części 2 Kontekstu.
+Traktuje „decyzję, która zmieniła się w nowych okolicznościach" jako
+coś do świadomego ponownego zdecydowania, zamiast domyślnie pozostawiać
+to temu, kto ostatnio dotknął kodu.
 
-## Consequences
+## Konsekwencje
 
-**Positive:**
-- Human-vs-AI authorship is answerable at decision time, not by archaeology.
-- Unreviewed ADRs cannot masquerade as accepted guidance.
-- Human decisions gain a re-examination path symmetric to AI review.
+**Pozytywne:**
+- Autorstwo człowiek-kontra-AI jest ustalane w chwili decyzji, a nie
+  przez archeologię.
+- Niezrecenzowane ADR-y nie mogą udawać zaakceptowanej wytycznej.
+- Decyzje człowieka zyskują ścieżkę ponownego rozpatrzenia symetryczną
+  do przeglądu AI.
 
-**Negative:**
-- Adds header fields and CI checks to every ADR-touching PR.
-- Adversarial re-derivation needs a periodic owner and an API budget;
-  unscheduled, it lapses.
-- `Reviewed-by:` gating `Accepted` slows solo-authored ADRs until a
-  second human reads them.
+**Negatywne:**
+- Dodaje pola nagłówka i kontrole CI do każdego PR-a dotykającego ADR.
+- Adwersarialna ponowna derywacja potrzebuje okresowego właściciela
+  i budżetu na API; bez harmonogramu wygasa.
+- Bramkowanie `Accepted` przez `Reviewed-by:` spowalnia ADR-y pisane
+  solo, dopóki nie przeczyta ich drugi człowiek.
 
-## Related
+## Powiązane
 
-- [TEMPLATE.md](TEMPLATE.md) — carries the provenance header fields
-- `.github/workflows/adr-numbering.yml` — gate 3a
-- `.github/workflows/adr-provenance-drift.yml` — part 2
-- `.github/workflows/adr-rederivation.yml` — part 4
+- [TEMPLATE.md](TEMPLATE.md) — niesie pola nagłówka prowenienacji
+- `.github/workflows/adr-numbering.yml` — bramka 3a
+- `.github/workflows/adr-provenance-drift.yml` — część 2
+- `.github/workflows/adr-rederivation.yml` — część 4

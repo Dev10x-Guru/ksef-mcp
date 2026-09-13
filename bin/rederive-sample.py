@@ -3,30 +3,33 @@
 # requires-python = ">=3.11"
 # dependencies = []
 # ///
-"""Select a sample of human-weighted decisions for adversarial re-derivation.
+"""Wybierz próbkę decyzji ważonych przez człowieka do adwersarialnej ponownej derywacji.
 
-The ADR-100 re-derivation half re-examines *human* decisions under
-current circumstances. This sampler builds the candidate set, picks a small
-rotating sample, and emits it as JSON for the re-derivation agent to consume.
+Połowa ADR-100 odpowiadająca za ponowną derywację powtórnie rozpatruje
+decyzje *ludzkie* w świetle bieżących okoliczności. Ten próbkownik buduje
+zbiór kandydatów, wybiera małą rotującą próbkę i emituje ją jako JSON do
+skonsumowania przez agenta ponownej derywacji.
 
-One candidate source today: the **ADR corpus** (`docs/adr/*.md`) — ADRs the
-human-weighted predicate (from `decision_provenance`, the shared library)
-flags (`Authored-by: human` or a non-empty `Reviewed-by:`). Empty today;
-grows as provenance markers accumulate.
+Jedno źródło kandydatów na dziś: **korpus ADR** (`docs/adr/*.md`) — ADR-y,
+które predykat „ważony przez człowieka" (z `decision_provenance`, wspólnej
+biblioteki) oznacza (`Authored-by: human` albo niepuste `Reviewed-by:`).
+Dziś puste; rośnie wraz z przyrostem znaczników prowenienacji.
 
-Selection, in priority order:
+Wybór, w kolejności priorytetu:
 
-1. **Override** — an explicit `--override "ADR-050,ADR-007"` list (from
-   `workflow_dispatch`) selects exactly those IDs and ignores rotation.
-2. **Pins** — `--pin ADR-050` (repeatable) is always included until it has
-   been confirmed once (`--confirm ADR-050` records that in the cursor).
-3. **Rotation** — remaining slots are filled from the least-recently-sampled
-   candidates via a persisted cursor, so coverage rotates instead of
-   re-checking the same easy decisions.
+1. **Override** — jawna lista `--override "ADR-050,ADR-007"` (z
+   `workflow_dispatch`) wybiera dokładnie te identyfikatory i ignoruje
+   rotację.
+2. **Piny** — `--pin ADR-050` (powtarzalne) jest zawsze uwzględniany,
+   dopóki nie zostanie raz potwierdzony (`--confirm ADR-050` zapisuje to
+   w kursorze).
+3. **Rotacja** — pozostałe miejsca wypełniane są kandydatami najdawniej
+   próbkowanymi, na podstawie utrwalonego kursora, dzięki czemu pokrycie
+   rotuje zamiast wciąż sprawdzać te same łatwe decyzje.
 
-The cursor is a small JSON file the caller persists between runs (committed
-back or cached by the workflow). This script only reads and writes
-it; it does not decide how CI persists it.
+Kursor to mały plik JSON, który utrwala wywołujący między uruchomieniami
+(zacommitowany z powrotem albo cache'owany przez workflow). Ten skrypt
+tylko go odczytuje i zapisuje; nie decyduje, jak CI go utrwala.
 """
 
 from __future__ import annotations
@@ -45,9 +48,9 @@ DEFAULT_ADR_DIR = Path("docs/adr")
 DEFAULT_CURSOR = Path(".rederivation-cursor.json")
 DEFAULT_OUT = Path(".claude-output/rederivation-sample.json")
 DEFAULT_COUNT = 3
-# No pinned decisions yet. Pin an id here once a human-weighted decision
-# is important enough that every rotation must re-derive it until it has
-# been confirmed once.
+# Na razie brak przypiętych decyzji. Przypnij tu identyfikator, gdy
+# decyzja ważona przez człowieka jest na tyle istotna, że każda rotacja
+# musi ją ponownie wyprowadzić, dopóki nie zostanie raz potwierdzona.
 DEFAULT_PINS: tuple[str, ...] = ()
 
 _ADR_HEADING = "# "
@@ -57,14 +60,14 @@ _ADR_HEADING = "# "
 class Candidate:
     id: str
     title: str
-    reference: str  # ADR path + human-weight reason
+    reference: str  # ścieżka ADR + powód ważenia przez człowieka
 
 
 @dataclass
 class Cursor:
     run: int
-    sampled: dict[str, int]  # candidate id -> run number it was last sampled
-    confirmed: list[str]  # pins that have been confirmed at least once
+    sampled: dict[str, int]  # id kandydata -> numer run, w którym był ostatnio próbkowany
+    confirmed: list[str]  # piny, które zostały choć raz potwierdzone
 
     @classmethod
     def load(cls, *, path: Path) -> Cursor:
@@ -144,7 +147,8 @@ def select(
             selected.append(by_id[cid])
 
     remaining = [c for c in candidates if c.id not in {s.id for s in selected}]
-    # Least-recently-sampled first (never-sampled == run 0); stable id tiebreak.
+    # Najpierw najdawniej próbkowane (nigdy-niepróbkowane == run 0); przy remisie
+    # rozstrzyga stabilnie identyfikator.
     remaining.sort(key=lambda c: (cursor.sampled.get(c.id, 0), c.id))
     for candidate in remaining:
         if len(selected) >= count:

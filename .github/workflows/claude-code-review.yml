@@ -91,6 +91,16 @@ jobs:
             You are performing an automated code review using a multi-agent
             architecture. Be brief but thorough.
 
+            LANGUAGE: write every comment, summary and checklist you post
+            in POLISH, in correct Polish rather than Polglish. These
+            instructions are in English; what you produce is not. Keep
+            identifiers, file paths, commands, env var names and the
+            severity labels (CRITICAL / WARNING / INFO) in English —
+            they are keys, not prose. See the "Język projektu" section of
+            CLAUDE.md for the agreed glossary, including the terms that
+            deliberately stay English (branch, commit, merge, push, pull
+            request).
+
             STEP 1 — LOAD CORE RULES:
             Read these files first:
             - references/review-guidelines.md (workflow, threads, summaries)

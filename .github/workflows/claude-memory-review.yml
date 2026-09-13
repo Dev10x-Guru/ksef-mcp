@@ -83,6 +83,13 @@ jobs:
             You are analyzing a closed Pull Request to extract lessons learned
             and identify improvements for the Claude Code review process.
 
+            LANGUAGE: write the report, and any rule text you propose, in
+            POLISH, in correct Polish rather than Polglish. These
+            instructions are in English; what you produce is not. The
+            files you may edit (CLAUDE.md, .claude/, references/) are
+            Polish-language documents — match them. Keep identifiers,
+            file paths, agent names and severity labels in English.
+
             ## PR Context
             - **Repository**: ${{ github.repository }}
             - **PR Number**: ${{ github.event.pull_request.number }}

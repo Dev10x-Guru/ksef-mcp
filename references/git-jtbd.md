@@ -1,158 +1,171 @@
-# JTBD Job Story Guidelines
+# Wytyczne Job Story JTBD
 
-Rules for writing Job Stories used in PR titles, PR descriptions,
-commit messages, and issue tickets.
+Zasady pisania Job Story używanych w tytułach PR-ów, opisach PR-ów,
+treściach commitów i zgłoszeniach.
 
-> **Scope**: This format governs Job Stories in commits and PR descriptions.
-> It also applies to issue titles and tickets.
-> **Critical dependency**: Release notes parsing requires the precise JTBD
-> structured format — `**When** … **[actor] wants to** … **so [beneficiary]
-> can** …`. Dropping the `**[actor] wants to**` / `**so [beneficiary] can**`
-> markers breaks automated release notes collection.
+> **Zakres**: ten format obowiązuje w Job Story w commitach i opisach
+> PR-ów. Dotyczy też tytułów i treści zgłoszeń.
+> **Krytyczna zależność**: parsowanie release notes wymaga precyzyjnej
+> strukturalnej formy JTBD — `**Gdy** … **[rola] chce** … **żeby
+> [beneficjent] mógł** …`. Pominięcie znaczników `**[rola] chce**` /
+> `**żeby [beneficjent] mógł**` psuje automatyczne zbieranie release
+> notes.
+
+> **UWAGA — ryzyko dla automatyzacji PR-ów**: polskie znaczniki
+> `**Gdy**`, `**chce**`, `**żeby ... mógł**` opisane niżej **nie są
+> rozpoznawane** przez walidator `mcp__plugin_Dev10x_cli__create_pr`
+> ani przez workflow `claude-pr-hygiene.yml`. Oba te mechanizmy szukają
+> dosłownych angielskich znaczników `**When**`, `**wants to**`,
+> `**so ... can**`. Dopóki wtyczka Dev10x nie zostanie dostosowana,
+> tworzenie PR-a przez tę umiejętność **odrzuci polskie Job Story**, a
+> kontrola higieny PR-a **zgłosi jego brak** — mimo że treść jest
+> poprawna wg zasad tego pliku. Do czasu tej zmiany traktuj wymóg
+> polskich znaczników jako decyzję właściciela projektu, świadomą tego
+> ograniczenia narzędzi.
 
 ## Format
 
 ```
-**When** [situation], **[actor] wants to** [motivation], **so [beneficiary] can** [expected outcome].
+**Gdy** [sytuacja], **[rola] chce** [motywacja], **żeby [beneficjent] mógł** [oczekiwany rezultat].
 ```
 
-One sentence. No bullet points. No implementation details.
+Jedno zdanie. Bez wypunktowań. Bez szczegółów implementacyjnych.
 
-Name a concrete domain **actor** (who has the need) and a concrete
-**beneficiary** (who gains from the outcome). They are often the same
-role — then name that role in both slots ("**the accountant wants to** …
-**so the accountant can** …"). When they differ, name both explicitly.
-See § Choosing the Actor for how to pick the role.
+Nazwij konkretną dziedzinową **rolę** (kto ma potrzebę) i konkretnego
+**beneficjenta** (kto zyskuje na rezultacie). Często to ta sama rola —
+wtedy nazwij ją w obu miejscach („**księgowa chce** … **żeby księgowa
+mogła** …"). Gdy się różnią, nazwij obie wprost. Patrz § Wybór roli, jak
+ją dobrać.
 
-## Voice Requirement
+## Wymóg głosu
 
-Job Stories must use **third-person, domain-actor voice**: name the
-actor and beneficiary as concrete roles. First-person ("I want to") and
-faceless ("the user wants to") phrasing are both wrong.
+Job Story musi używać **głosu trzecioosobowego, z konkretną rolą
+dziedzinową**: nazwij rolę i beneficjenta jako konkretne role. Zarówno
+pierwsza osoba („chcę"), jak i bezosobowe „użytkownik chce" są błędne.
 
-| Form | Example | Status |
+| Forma | Przykład | Status |
 |------|---------|--------|
-| ✅ Third-person actor | **the integrator wants to** query invoice status | REQUIRED |
-| ✅ Explicit beneficiary | **so the accountant can** reconcile submissions | REQUIRED |
-| ❌ First-person | **I want to** query invoice status | WRONG (legacy) |
-| ❌ Faceless actor | **the user wants to** query invoice status | WRONG (no role) |
+| ✅ Trzecia osoba, konkretna rola | **integrator chce** sprawdzić status faktury | WYMAGANE |
+| ✅ Wyraźny beneficjent | **żeby księgowa mogła** uzgodnić zgłoszenia | WYMAGANE |
+| ❌ Pierwsza osoba | **chcę** sprawdzić status faktury | ŹLE (przestarzałe) |
+| ❌ Bezosobowa rola | **użytkownik chce** sprawdzić status faktury | ŹLE (brak roli) |
 
-The difference: name the role ("the integrator wants to"), never
-"I" and never a generic "user"/"customer". When the outcome benefits a
-different role, say so explicitly: `**so [role/system] can** ...`.
+Różnica: nazwij rolę („integrator chce"), nigdy „ja" i nigdy ogólnego
+„użytkownika"/„klienta". Gdy rezultat korzysta innej roli, powiedz to
+wprost: `**żeby [rola/system] mógł** ...`.
 
-## Choosing the Actor
+## Wybór roli
 
-- **Actors want outcomes, not work.** Nobody wants to *work* — people
-  want **outcomes**. The actor rarely wants to *do* anything; in the
-  ideal case they want the outcome to happen with zero effort on their
-  part. If the actor would be happiest doing nothing, name the outcome
-  they want to *happen* — then check whether the true beneficiary is a
-  *different* role than the one performing the action. When it is, the
-  performer is a **mechanism**, and the beneficiary owns the job.
-- Name a concrete domain role, never a faceless "user" or "customer".
-  In ksef-mcp the common actors are **accountant**, **integrator**
-  (the developer/system wiring an MCP client to KSeF), and
-  **taxpayer/business owner**.
-- This set is open — discover new actors as the domain grows.
-- Internal maintainers are rarely the actor. When one genuinely is, make
-  the benefit explicit (reduces cost, increases reliability). Developer
-  tooling is the honest exception — a Job Story whose actor is a
-  maintainer is legitimate when the change is tooling (CI, packaging,
-  release process).
+- **Role chcą rezultatów, nie pracy.** Nikt nie chce *pracować* — ludzie
+  chcą **rezultatów**. Rola rzadko chce *coś zrobić*; w idealnym
+  przypadku chce, żeby rezultat nastąpił bez żadnego jej wysiłku. Jeśli
+  rola byłaby najszczęśliwsza, nic nie robiąc, nazwij rezultat, który
+  chce, żeby *się wydarzył* — a potem sprawdź, czy prawdziwym
+  beneficjentem jest *inna* rola niż ta wykonująca czynność. Gdy tak
+  jest, wykonawca jest **mechanizmem**, a Job Story należy do
+  beneficjenta.
+- Nazwij konkretną dziedzinową rolę, nigdy bezosobowego „użytkownika"
+  ani „klienta". W ksef-mcp typowe role to **księgowa**, **integrator**
+  (deweloper/system podłączający klienta MCP do KSeF) oraz
+  **podatnik/właściciel firmy**.
+- Ten zbiór jest otwarty — odkrywaj nowe role wraz z rozwojem dziedziny.
+- Osoby utrzymujące projekt rzadko są rolą w Job Story. Gdy faktycznie
+  nią są, nazwij korzyść wprost (obniża koszt, zwiększa niezawodność).
+  Narzędzia deweloperskie to uczciwy wyjątek — Job Story, której rolą
+  jest osoba utrzymująca projekt, jest zasadna, gdy zmiana dotyczy
+  narzędzi (CI, pakowanie, proces wydania).
 
-## Key Principles
+## Kluczowe zasady
 
-### 1. No Personas — Focus on Situation
+### 1. Bez person — skup się na sytuacji
 
-Job stories replace "As a [persona]..." with the **situation** — the
-context that creates the need.
+Job Story zastępuje „Jako [persona]..." **sytuacją** — kontekstem, który
+tworzy potrzebę.
 
-### 2. Situation Over Implementation
+### 2. Sytuacja ważniejsza niż implementacja
 
-The "When" clause describes the real-world context, not UI interactions.
+Klauzula „Gdy" opisuje realny kontekst, nie interakcję z interfejsem.
 
-- Good: "When an invoice fails KSeF validation"
-- Bad:  "When calling the validate_invoice tool"
+- Dobrze: „Gdy faktura nie przejdzie walidacji KSeF"
+- Źle:  „Gdy wywoływane jest narzędzie validate_invoice"
 
-### 3. Motivation Reveals Anxiety
+### 3. Motywacja ujawnia obawę
 
-The "[actor] wants to" clause captures what the actor is trying to
-accomplish.
+Klauzula „[rola] chce" opisuje, co rola próbuje osiągnąć.
 
-- Good: "the accountant wants to see the rejection reason immediately"
-- Bad:  "the accountant wants a new MCP tool"
+- Dobrze: „księgowa chce od razu zobaczyć powód odrzucenia"
+- Źle:  „księgowa chce nowego narzędzia MCP"
 
-### 4. Expected Outcome Shows Value
+### 4. Oczekiwany rezultat pokazuje wartość
 
-The "so [beneficiary] can" clause describes the measurable benefit or
-the problem that goes away. It should contrast with the current broken
-state.
+Klauzula „żeby [beneficjent] mógł" opisuje mierzalną korzyść lub
+problem, który znika. Powinna kontrastować z obecnym, wadliwym stanem.
 
-- Good: "so the taxpayer can correct and resubmit before the deadline"
-- Bad:  "so the system has validation"
+- Dobrze: „żeby podatnik mógł poprawić i wysłać ponownie przed terminem"
+- Źle:  „żeby system miał walidację"
 
-## Anti-Patterns
+## Antywzorce
 
-| Anti-Pattern | Problem | Fix |
+| Antywzorzec | Problem | Poprawka |
 |---|---|---|
-| Technical language | Not understandable by stakeholders | Use business/domain language |
-| Solution-focused "When" | Prescribes implementation | Describe the real-world trigger |
-| CLI/command-invocation "When" | "When running `uvx ksef-mcp`" prescribes the tool | Describe the real-world trigger: "When an invoice submission times out" |
-| Vague outcome | Not testable | Be specific about what improves |
-| No contrast with current state | Unclear why it matters | Show what's wrong today |
-| Faceless actor ("the user wants to") | No concrete role — untraceable to the domain | Name the role: "the accountant wants to" (see § Choosing the Actor) |
-| Solution-focused "wants to" | "the integrator wants to call a new endpoint" names the implementation, not the need | Describe the motivation: "the integrator wants to detect KSeF outages without polling manually" |
-| UI-verb motivation ("wants to see/view/manage X") | Describes operating the feature, not the outcome | Name the end state: "wants to be told when a submission fails", not "wants to view the status page" |
+| Język techniczny | Niezrozumiały dla interesariuszy | Użyj języka biznesowego/dziedzinowego |
+| „Gdy" nastawione na rozwiązanie | Narzuca implementację | Opisz realny wyzwalacz |
+| „Gdy" odwołujące się do polecenia/CLI | „Gdy uruchamiane jest `uvx ksef-mcp`" narzuca narzędzie | Opisz realny wyzwalacz: „Gdy wysyłka faktury przekroczy limit czasu" |
+| Niejasny rezultat | Nie da się zweryfikować | Sprecyzuj, co konkretnie się poprawia |
+| Brak kontrastu z obecnym stanem | Niejasne, dlaczego to ważne | Pokaż, co dziś jest nie tak |
+| Bezosobowa rola („użytkownik chce") | Brak konkretnej roli — nie da się jej przypisać do dziedziny | Nazwij rolę: „księgowa chce" (patrz § Wybór roli) |
+| Motywacja nastawiona na rozwiązanie | „integrator chce wywołać nowy endpoint" nazywa implementację, nie potrzebę | Opisz motywację: „integrator chce wykrywać awarie KSeF bez ręcznego odpytywania" |
+| Motywacja czasownikiem interfejsu („chce zobaczyć/przeglądać/zarządzać X") | Opisuje obsługę funkcji, nie rezultat | Nazwij stan końcowy: „chce być poinformowana, gdy zgłoszenie się nie powiedzie", nie „chce oglądać stronę statusu" |
 
-## Title Writing Principle
+## Zasada pisania tytułu
 
-Shift the perspective from what changed in the code to what it
-enables for the actor. The "so [beneficiary] can" clause captures the
-outcome.
+Przesuń perspektywę z tego, co zmieniło się w kodzie, na to, co
+umożliwia roli. Klauzula „żeby [beneficjent] mógł" ujmuje rezultat.
 
-### Common patterns
+### Typowe wzorce
 
-| Change type | Bad (implementation) | Good (outcome) |
+| Rodzaj zmiany | Źle (implementacja) | Dobrze (rezultat) |
 |---|---|---|
-| New MCP tool | `Add get_invoice_status tool` | `Enable checking invoice status from an MCP client` |
-| Bug fix | `Fix token refresh race` | `Prevent duplicate token refresh under concurrent calls` |
-| CI | `Add ruff workflow` | `Catch lint errors before merge` |
-| Refactor | `Extract KSeF client from server.py` | `Enable reusing the KSeF client across tools` |
-| Docs | `Add review guidelines rule file` | `Standardize code review workflow` |
-| Release | `Bump version to 0.2.0` | `Release invoice-status and token-refresh fixes` |
+| Nowe narzędzie MCP | `Dodaje narzędzie get_invoice_status` | `Umożliwia sprawdzenie statusu faktury z klienta MCP` |
+| Poprawka błędu | `Poprawia race condition odświeżania tokenu` | `Zapobiega podwójnemu odświeżeniu tokenu przy równoległych wywołaniach` |
+| CI | `Dodaje workflow ruff` | `Wyłapuje błędy lintu przed merge'em` |
+| Refaktoryzacja | `Wydziela klienta KSeF z server.py` | `Umożliwia ponowne użycie klienta KSeF w różnych narzędziach` |
+| Dokumentacja | `Dodaje plik reguł przeglądu` | `Standaryzuje przebieg przeglądu kodu` |
+| Wydanie | `Podbija wersję do 0.2.0` | `Wydaje poprawki statusu faktury i odświeżania tokenu` |
 
-### The "rename test"
+### Test przemianowania
 
-If your title reads like a git diff summary, rewrite it. Ask:
-*"What can the actor do now that they couldn't before?"* — that
-answer is your title.
+Jeśli tytuł czyta się jak podsumowanie git diff, przeformułuj go.
+Zadaj pytanie: *„Co rola może teraz zrobić, czego nie mogła
+wcześniej?"* — ta odpowiedź jest Twoim tytułem.
 
-## Examples
+## Przykłady
 
-### New MCP Tool
-**When** an MCP client needs invoice status without opening the KSeF
-web portal, **the integrator wants to** expose a `get_invoice_status`
-tool, **so the accountant can** confirm submission outcome inside their
-chat client.
+### Nowe narzędzie MCP
+**Gdy** klient MCP potrzebuje statusu faktury bez otwierania portalu
+webowego KSeF, **integrator chce** udostępnić narzędzie
+`get_invoice_status`, **żeby księgowa mogła** potwierdzić wynik wysyłki
+w swoim kliencie czatu.
 
-### Bug Fix
-**When** two tool calls race past the token-expiry check, **the
-maintainer wants to** serialize token refresh with a lock, **so the
-integrator can** rely on the client without intermittent 401s.
+### Poprawka błędu
+**Gdy** dwa wywołania narzędzia wyścigują się nad kontrolą wygaśnięcia
+tokenu, **osoba utrzymująca projekt chce** zserializować odświeżanie
+tokenu blokadą, **żeby integrator mógł** polegać na kliencie bez
+sporadycznych błędów 401.
 
-### Documentation
-**When** onboarding a new contributor, **the maintainer wants to** have
-clear commit and PR conventions, **so contributors can** follow them
-without reading every prior PR.
+### Dokumentacja
+**Gdy** onboardowany jest nowy współtwórca, **osoba utrzymująca
+projekt chce** mieć jasne konwencje commitów i PR-ów, **żeby
+współtwórcy mogli** je stosować bez czytania każdego wcześniejszego PR-a.
 
-### Release
-**When** a batch of fixes is ready, **the maintainer wants to** publish
-a semver release to PyPI, **so integrators can** pin `ksef-mcp` to a
-stable version via `uvx`.
+### Wydanie
+**Gdy** paczka poprawek jest gotowa, **osoba utrzymująca projekt chce**
+opublikować wydanie semver na PyPI, **żeby integratorzy mogli**
+przypiąć `ksef-mcp` do stabilnej wersji przez `uvx`.
 
-## See Also
+## Zobacz też
 
-`.claude/rules/INDEX.md` documents where these references are loaded from.
-If a skill's own reference doc diverges from this format, this file is
-authoritative for PR/commit JTBD text.
+`.claude/rules/INDEX.md` dokumentuje, skąd te opracowania są wczytywane.
+Jeśli dokumentacja własna jakiejś umiejętności różni się od tego
+formatu, ten plik jest rozstrzygający dla treści JTBD w PR-ach i
+commitach.
