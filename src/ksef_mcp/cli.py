@@ -261,7 +261,7 @@ def run_onboarding(
     return EXIT_OK
 
 
-def describe_invoices(invoices: tuple[ksef_port.InvoiceSummary, ...]) -> tuple[str, ...]:
+def describe_invoices(invoices: tuple[ksef_port.InvoiceMetadata, ...]) -> tuple[str, ...]:
     return tuple(
         f"  {invoice.issue_date}  {invoice.gross_amount:>12,.2f} {invoice.currency}  "
         f"{invoice.seller_name or invoice.seller_nip}"
@@ -274,6 +274,7 @@ def run_verify(console: Console, *, configuration_file: Path | None) -> int:
     # which costs about half a second. Only this command talks to KSeF, and
     # `token status` can run in a loop from a script.
     from ksef_mcp import ksef_port
+    from ksef_mcp.ksef_port.adapter import Ksef2Port
 
     configuration = config.load_configuration(path=configuration_file)
     if configuration is None:
@@ -295,9 +296,9 @@ def run_verify(console: Console, *, configuration_file: Path | None) -> int:
         )
     try:
         checked = ksef_port.check_connection(
+            port=Ksef2Port(environment=configuration.environment),
             nip=configuration.nip,
             token=stored.value,
-            environment=configuration.environment,
         )
     except ksef_port.KsefRateLimited as refusal:
         console.write(str(refusal))

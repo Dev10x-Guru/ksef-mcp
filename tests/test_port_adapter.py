@@ -1,0 +1,478 @@
+from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
+
+import httpx
+import pytest
+from ksef2 import Environment
+from ksef2.core.exceptions import (
+    KSeFAuthError,
+    KSeFRateLimitError,
+    KSeFSessionError,
+)
+from ksef2.domain.models.invoices import (
+    InvoiceExportStatusResponse,
+    InvoiceMetadata,
+    InvoiceMetadataBuyer,
+    InvoiceMetadataSeller,
+    InvoicePackage,
+    PackagePart,
+    QueryInvoicesMetadataResponse,
+)
+from ksef2.domain.models.limits import (
+    ApiRateLimits,
+    ContextLimits,
+    RateLimitValues,
+    SessionLimits,
+)
+
+from doubles import (
+    HWM,
+    FakeApiRateLimits,
+    FakeAuthenticated,
+    FakeAuthentication,
+    FakeBuyer,
+    FakeContextLimits,
+    FakeExportStatusInfo,
+    FakeExportStatusResponse,
+    FakeInvoicePackage,
+    FakeInvoicesService,
+    FakeLimitsClient,
+    FakeMetadata,
+    FakeMetadataPage,
+    FakePackagePart,
+    FakeRateValues,
+    FakeSdkClient,
+    FakeSeller,
+    FakeSessionLimits,
+    sdk_metadata,
+    sdk_part,
+)
+from ksef_mcp.config import KsefEnvironment
+from ksef_mcp.ksef_port import (
+    DateType,
+    ExportPart,
+    ExportState,
+    InvoiceDirection,
+    KsefAuthenticationFailed,
+    KsefRateLimited,
+    KsefRefused,
+    KsefSession,
+    KsefUnreachable,
+    Period,
+)
+from ksef_mcp.ksef_port import adapter as port_adapter
+from ksef_mcp.ksef_port.adapter import Ksef2Port
+from ksef_mcp.ksef_port.types import PAGE_SIZE
+
+NIP = "1234567890"
+
+TOKEN = "aaaabbbbccccdddd"
+
+WINDOW = Period(
+    date_from=datetime(2026, 8, 1, tzinfo=UTC),
+    date_to=datetime(2026, 9, 1, tzinfo=UTC),
+    date_type=DateType.ISSUE,
+)
+
+
+def ready_status() -> FakeExportStatusResponse:
+    return FakeExportStatusResponse(
+        status=FakeExportStatusInfo(code=200, description="Zakończone"),
+        package=FakeInvoicePackage(
+            invoice_count=2,
+            parts=[sdk_part(1), sdk_part(2)],
+            is_truncated=True,
+            last_permanent_storage_date=HWM - timedelta(days=1),
+            permanent_storage_hwm_date=HWM,
+        ),
+    )
+
+
+class Plan:
+    def __init__(
+        self,
+        *,
+        page: list[FakeMetadata] | None = None,
+        status: FakeExportStatusResponse | None = None,
+        authentication_error: Exception | None = None,
+        call_error: Exception | None = None,
+    ) -> None:
+        self.service = FakeInvoicesService(
+            page=list(page if page is not None else [sdk_metadata(1), sdk_metadata(2)]),
+            status=status if status is not None else ready_status(),
+            error=call_error,
+        )
+        self.authentication_error = authentication_error
+        self.built: list[FakeSdkClient] = []
+
+    def install(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def build(*, environment: object, transport_config: object) -> FakeSdkClient:
+            client = FakeSdkClient(
+                environment=environment,
+                transport_config=transport_config,
+                authentication=FakeAuthentication(
+                    authenticated=FakeAuthenticated(
+                        invoices=self.service,
+                        limits=FakeLimitsClient(),
+                    ),
+                    error=self.authentication_error,
+                ),
+            )
+            self.built.append(client)
+            return client
+
+        monkeypatch.setattr(port_adapter, "Client", build)
+
+
+@pytest.fixture
+def plan(monkeypatch: pytest.MonkeyPatch) -> Plan:
+    prepared = Plan()
+    prepared.install(monkeypatch)
+    return prepared
+
+
+@pytest.fixture
+def port() -> Ksef2Port:
+    return Ksef2Port(environment=KsefEnvironment.TEST)
+
+
+@pytest.fixture
+def session(plan: Plan, port: Ksef2Port) -> Iterator[KsefSession]:
+    with port.session(nip=NIP, token=TOKEN) as opened:
+        yield opened
+
+
+@pytest.mark.parametrize(
+    ("double", "real"),
+    [
+        (FakeMetadata, InvoiceMetadata),
+        (FakeSeller, InvoiceMetadataSeller),
+        (FakeBuyer, InvoiceMetadataBuyer),
+        (FakeMetadataPage, QueryInvoicesMetadataResponse),
+        (FakeRateValues, RateLimitValues),
+        (FakeApiRateLimits, ApiRateLimits),
+        (FakeSessionLimits, SessionLimits),
+        (FakeContextLimits, ContextLimits),
+        (FakePackagePart, PackagePart),
+        (FakeInvoicePackage, InvoicePackage),
+        (FakeExportStatusResponse, InvoiceExportStatusResponse),
+    ],
+)
+def test_the_doubles_still_match_the_sdk_models(double: type, real: type) -> None:
+    # Without this the suite stays green when ksef2 renames a field, and the
+    # rename surfaces as an AttributeError on the user's machine instead.
+    assert set(double.__annotations__) <= set(real.model_fields)
+
+
+@pytest.mark.parametrize(
+    ("chosen", "expected"),
+    [
+        (KsefEnvironment.TEST, Environment.TEST),
+        (KsefEnvironment.DEMO, Environment.DEMO),
+        (KsefEnvironment.PRODUCTION, Environment.PRODUCTION),
+    ],
+)
+def test_the_environment_is_always_passed_explicitly(
+    plan: Plan,
+    chosen: KsefEnvironment,
+    expected: Environment,
+) -> None:
+    with Ksef2Port(environment=chosen).session(nip=NIP, token=TOKEN):
+        pass
+
+    assert plan.built[0].environment is expected
+
+
+def test_the_sdk_retry_loop_is_disabled(session: KsefSession, plan: Plan) -> None:
+    assert plan.built[0].transport_config.retry.max_attempts == 1
+
+
+def test_the_client_is_closed_when_the_session_ends(plan: Plan, port: Ksef2Port) -> None:
+    with port.session(nip=NIP, token=TOKEN):
+        pass
+
+    assert plan.built[0].closed is True
+
+
+def test_the_token_reaches_authentication(session: KsefSession, plan: Plan) -> None:
+    assert plan.built[0].authentication.credentials == [(NIP, TOKEN)]
+
+
+def test_metadata_is_requested_newest_first(session: KsefSession, plan: Plan) -> None:
+    session.query_metadata(period=WINDOW, direction=InvoiceDirection.BUYER)
+
+    assert plan.service.metadata_calls[0][1].sort_order == "desc"
+
+
+def test_the_page_size_is_the_ceiling_not_the_sdk_default(
+    session: KsefSession,
+    plan: Plan,
+) -> None:
+    session.query_metadata(period=WINDOW, direction=InvoiceDirection.BUYER)
+
+    assert plan.service.metadata_calls[0][1].page_size == PAGE_SIZE == 250
+
+
+def test_the_direction_reaches_the_sdk_as_a_role(session: KsefSession, plan: Plan) -> None:
+    session.query_metadata(period=WINDOW, direction=InvoiceDirection.SELLER)
+
+    assert plan.service.metadata_calls[0][0].role == "seller"
+
+
+def test_an_open_ended_window_asks_ksef_to_stop_at_the_high_water_mark(
+    session: KsefSession,
+    plan: Plan,
+) -> None:
+    session.query_metadata(
+        period=Period.for_synchronisation(since=datetime(2026, 8, 1, tzinfo=UTC)),
+        direction=InvoiceDirection.BUYER,
+    )
+    sent = plan.service.metadata_calls[0][0]
+
+    assert (sent.date_type, sent.restrict_to_permanent_storage_hwm_date) == (
+        "permanent_storage",
+        True,
+    )
+
+
+def test_an_invoice_arrives_as_the_eight_columns_plus_its_counterparties(
+    session: KsefSession,
+) -> None:
+    page = session.query_metadata(period=WINDOW, direction=InvoiceDirection.BUYER)
+    first = page.invoices[0]
+
+    assert (
+        str(first.ksef_number),
+        first.seller_invoice_number,
+        first.seller_nip,
+        first.seller_name,
+        first.buyer_name,
+        first.currency,
+    ) == (
+        "1234567890-20260901-0100AB12CD01-56",
+        "FV/2026/09/001",
+        "9876543210",
+        "Dostawca sp. z o.o.",
+        "Moja Firma sp. z o.o.",
+        "PLN",
+    )
+
+
+def test_amounts_arrive_as_decimals_so_a_comparison_cannot_invent_a_grosz(
+    session: KsefSession,
+) -> None:
+    page = session.query_metadata(period=WINDOW, direction=InvoiceDirection.BUYER)
+    first = page.invoices[0]
+
+    assert (first.gross_amount, first.net_amount, first.vat_amount) == (
+        Decimal("1230.0"),
+        Decimal("1000.0"),
+        Decimal("230.0"),
+    )
+
+
+def test_a_page_carries_the_high_water_mark_the_next_window_starts_from(
+    session: KsefSession,
+) -> None:
+    page = session.query_metadata(period=WINDOW, direction=InvoiceDirection.BUYER)
+
+    assert page.hwm_date == HWM
+
+
+def test_the_limits_the_budget_spends_against_come_from_ksef(session: KsefSession) -> None:
+    limits = session.read_limits()
+
+    assert (
+        limits.rates.metadata_queries.per_hour,
+        limits.rates.exports.per_hour,
+        limits.rates.export_statuses.per_hour,
+        limits.rates.invoice_downloads.per_hour,
+    ) == (20, 20, 200, 64)
+
+
+def test_the_session_ceilings_come_from_ksef_too(session: KsefSession) -> None:
+    limits = session.read_limits()
+
+    assert (
+        limits.ceilings.max_invoice_megabytes,
+        limits.ceilings.max_invoice_with_attachment_megabytes,
+        limits.ceilings.max_invoices_per_session,
+    ) == (1, 3, 10_000)
+
+
+def test_an_export_keeps_the_key_it_was_minted_with(session: KsefSession) -> None:
+    handle = session.start_export(period=WINDOW, direction=InvoiceDirection.BUYER)
+
+    assert (handle.reference, handle.encryption.key, handle.encryption.initialisation_vector) == (
+        "EXP-1",
+        b"k" * 32,
+        b"i" * 16,
+    )
+
+
+def test_a_ready_export_reports_where_its_parts_live(session: KsefSession) -> None:
+    handle = session.start_export(period=WINDOW, direction=InvoiceDirection.BUYER)
+
+    status = session.check_export(handle=handle)
+
+    assert (status.state, len(status.parts), status.parts[0].url) == (
+        ExportState.READY,
+        2,
+        "https://storage.example/part/1",
+    )
+
+
+def test_a_truncated_export_names_the_date_the_next_window_starts_from(
+    session: KsefSession,
+) -> None:
+    handle = session.start_export(period=WINDOW, direction=InvoiceDirection.BUYER)
+
+    status = session.check_export(handle=handle)
+
+    assert (status.truncated, status.last_permanent_storage_date, status.hwm_date) == (
+        True,
+        HWM - timedelta(days=1),
+        HWM,
+    )
+
+
+@pytest.mark.parametrize(
+    ("code", "expected"),
+    [(100, ExportState.RUNNING), (415, ExportState.FAILED)],
+)
+def test_an_export_without_a_package_is_running_or_failed(
+    monkeypatch: pytest.MonkeyPatch,
+    port: Ksef2Port,
+    code: int,
+    expected: ExportState,
+) -> None:
+    plan = Plan(
+        status=FakeExportStatusResponse(
+            status=FakeExportStatusInfo(code=code, description="—"),
+            package=None,
+        )
+    )
+    plan.install(monkeypatch)
+
+    with port.session(nip=NIP, token=TOKEN) as session:
+        handle = session.start_export(period=WINDOW, direction=InvoiceDirection.BUYER)
+        status = session.check_export(handle=handle)
+
+    assert status.state is expected
+
+
+def test_an_invoice_is_downloaded_as_the_bytes_ksef_holds(
+    session: KsefSession,
+    plan: Plan,
+) -> None:
+    page = session.query_metadata(period=WINDOW, direction=InvoiceDirection.BUYER)
+
+    body = session.download_invoice(ksef_number=page.invoices[0].ksef_number)
+
+    assert (body, plan.service.downloaded) == (
+        b"<Faktura/>",
+        ["1234567890-20260901-0100AB12CD01-56"],
+    )
+
+
+@pytest.mark.parametrize(
+    ("raised", "expected"),
+    [
+        (KSeFRateLimitError(120, "za dużo zapytań"), KsefRateLimited),
+        (KSeFAuthError(401, "brak uprawnień"), KsefAuthenticationFailed),
+        (KSeFSessionError("sesja padła"), KsefRefused),
+        (httpx.ConnectError("brak sieci"), KsefUnreachable),
+    ],
+)
+def test_every_failure_family_leaves_as_one_hierarchy(
+    monkeypatch: pytest.MonkeyPatch,
+    port: Ksef2Port,
+    raised: Exception,
+    expected: type[Exception],
+) -> None:
+    Plan(authentication_error=raised).install(monkeypatch)
+
+    with pytest.raises(expected), port.session(nip=NIP, token=TOKEN):
+        pass
+
+
+def test_a_refusal_carries_the_wait_ksef_asked_for(
+    monkeypatch: pytest.MonkeyPatch,
+    port: Ksef2Port,
+) -> None:
+    Plan(authentication_error=KSeFRateLimitError(120, "za dużo")).install(monkeypatch)
+
+    with pytest.raises(KsefRateLimited) as refusal, port.session(nip=NIP, token=TOKEN):
+        pass
+
+    assert refusal.value.retry_after == 120
+
+
+def test_a_rejected_token_never_names_the_subject_in_the_message(
+    monkeypatch: pytest.MonkeyPatch,
+    port: Ksef2Port,
+) -> None:
+    Plan(authentication_error=KSeFAuthError(401, "brak uprawnień")).install(monkeypatch)
+
+    with pytest.raises(KsefAuthenticationFailed) as rejection, port.session(nip=NIP, token=TOKEN):
+        pass
+
+    assert NIP not in str(rejection.value)
+
+
+def test_a_failure_mid_call_is_translated_too(
+    monkeypatch: pytest.MonkeyPatch,
+    port: Ksef2Port,
+) -> None:
+    Plan(call_error=KSeFSessionError("sesja padła")).install(monkeypatch)
+
+    with pytest.raises(KsefRefused), port.session(nip=NIP, token=TOKEN) as session:
+        session.query_metadata(period=WINDOW, direction=InvoiceDirection.BUYER)
+
+
+PART = ExportPart(
+    ordinal=1,
+    name="package_part_1.zip.aes",
+    method="GET",
+    url="https://storage.example/part/1",
+    size_bytes=1024,
+    content_hash="c3BsaXQ=",
+    encrypted_size_bytes=1040,
+    encrypted_content_hash="ZW5jcnlwdGVk",
+)
+
+
+def answering(handler: object) -> httpx.Client:
+    return httpx.Client(transport=httpx.MockTransport(handler))
+
+
+def test_a_package_part_arrives_encrypted_and_untouched(
+    session: KsefSession,
+    plan: Plan,
+) -> None:
+    session.transport = answering(lambda request: httpx.Response(200, content=b"\x00encrypted"))
+    handle = session.start_export(period=WINDOW, direction=InvoiceDirection.BUYER)
+
+    assert session.fetch_part(handle=handle, part=PART) == b"\x00encrypted"
+
+
+def test_an_expired_package_link_is_a_refusal_not_a_dead_network(
+    session: KsefSession,
+) -> None:
+    session.transport = answering(lambda request: httpx.Response(403))
+    handle = session.start_export(period=WINDOW, direction=InvoiceDirection.BUYER)
+
+    with pytest.raises(KsefRefused):
+        session.fetch_part(handle=handle, part=PART)
+
+
+def test_storage_that_cannot_be_reached_says_so(session: KsefSession) -> None:
+    def refuse(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("brak sieci")
+
+    session.transport = answering(refuse)
+    handle = session.start_export(period=WINDOW, direction=InvoiceDirection.BUYER)
+
+    with pytest.raises(KsefUnreachable):
+        session.fetch_part(handle=handle, part=PART)
