@@ -408,6 +408,7 @@ dependencies = [
     { name = "ksef2" },
     { name = "mcp" },
     { name = "platformdirs" },
+    { name = "secretstorage", marker = "sys_platform == 'linux'" },
 ]
 
 [package.dev-dependencies]
@@ -425,6 +426,7 @@ requires-dist = [
     { name = "ksef2", specifier = "==0.19.0" },
     { name = "mcp", specifier = "==2.2.0" },
     { name = "platformdirs", specifier = "==4.11.8" },
+    { name = "secretstorage", marker = "sys_platform == 'linux'", specifier = "==3.5.0" },
 ]
 
 [package.metadata.requires-dev]

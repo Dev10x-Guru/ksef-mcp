@@ -1,7 +1,9 @@
+from collections.abc import Callable
+
 import pytest
 from keyring.errors import KeyringError, PasswordDeleteError
 
-from ksef_mcp import token_store
+from ksef_mcp import preflight, token_store
 from ksef_mcp.metadata import SERVER_NAME
 
 NIP = "1234567890"
@@ -72,6 +74,15 @@ def lying_keyring(monkeypatch: pytest.MonkeyPatch) -> LyingKeyring:
 
 
 @pytest.fixture
+def locked_collection(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        preflight,
+        "inspect_collection_lock",
+        lambda: preflight.CollectionLock.LOCKED,
+    )
+
+
+@pytest.fixture
 def stored_fingerprint(fake_keyring: FakeKeyring) -> token_store.TokenFingerprint:
     return token_store.store_token(nip=NIP, token=TOKEN)
 
@@ -115,6 +126,68 @@ def test_store_reports_an_unusable_keyring(broken_keyring: BrokenKeyring) -> Non
 def test_read_reports_an_unusable_keyring(broken_keyring: BrokenKeyring) -> None:
     with pytest.raises(token_store.TokenStoreUnavailable):
         token_store.read_token(nip=NIP)
+
+
+TOUCHES: list[Callable[[], object]] = [
+    lambda: token_store.read_token(nip=NIP),
+    lambda: token_store.store_token(nip=NIP, token=TOKEN),
+    lambda: token_store.delete_token(nip=NIP),
+]
+
+TOUCH_NAMES = ["read", "store", "delete"]
+
+
+@pytest.mark.parametrize("touch", TOUCHES, ids=TOUCH_NAMES)
+def test_a_locked_collection_stops_every_touch_of_the_secret(
+    fake_keyring: FakeKeyring,
+    locked_collection: None,
+    touch: Callable[[], object],
+) -> None:
+    with pytest.raises(token_store.TokenStoreLocked):
+        touch()
+
+
+@pytest.mark.parametrize("touch", TOUCHES, ids=TOUCH_NAMES)
+def test_a_locked_collection_leaves_the_keyring_untouched(
+    fake_keyring: FakeKeyring,
+    locked_collection: None,
+    touch: Callable[[], object],
+) -> None:
+    # Reaching the keyring at all is the failure: its own code unlocks, and the
+    # prompt that opens hangs the stdio transport (D-004, ST-3).
+    with pytest.raises(token_store.TokenStoreLocked):
+        touch()
+
+    assert (fake_keyring.calls, fake_keyring.stored) == ([], {})
+
+
+def test_the_locked_message_names_the_documented_fallback(locked_collection: None) -> None:
+    with pytest.raises(token_store.TokenStoreLocked) as refusal:
+        token_store.refuse_a_locked_collection()
+
+    assert token_store.FALLBACK_ENVIRONMENT_VARIABLE in str(refusal.value)
+
+
+def test_a_locked_collection_is_reported_as_an_unusable_store(locked_collection: None) -> None:
+    # The CLI catches TokenStoreUnavailable at one place and turns it into an
+    # exit code; a lock that escaped that hierarchy would surface as a crash.
+    with pytest.raises(token_store.TokenStoreUnavailable):
+        token_store.refuse_a_locked_collection()
+
+
+def test_an_exported_token_is_read_without_consulting_the_collection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The fallback exists for machines whose store cannot answer; making it
+    # depend on that same store would close the escape hatch.
+    monkeypatch.setenv(token_store.FALLBACK_ENVIRONMENT_VARIABLE, TOKEN)
+    monkeypatch.setattr(
+        preflight,
+        "inspect_collection_lock",
+        lambda: preflight.CollectionLock.LOCKED,
+    )
+
+    assert token_store.read_token(nip=NIP).value == TOKEN
 
 
 def test_read_returns_none_for_an_unknown_nip(fake_keyring: FakeKeyring) -> None:

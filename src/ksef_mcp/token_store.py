@@ -6,6 +6,7 @@ from typing import Final
 import keyring
 from keyring.errors import KeyringError, PasswordDeleteError
 
+from ksef_mcp import preflight
 from ksef_mcp.metadata import SERVER_NAME
 
 SUFFIX_LENGTH: Final[int] = 4
@@ -19,8 +20,28 @@ UNAVAILABLE_MESSAGE: Final[str] = (
 )
 
 
+LOCKED_MESSAGE: Final[str] = (
+    "The system keyring collection is locked, so nothing was read or written: "
+    "asking the keyring would open an unlock prompt and hang the MCP "
+    "transport. Unlock the collection in your desktop session, or export "
+    f"{FALLBACK_ENVIRONMENT_VARIABLE} as the documented fallback."
+)
+
+
 class TokenStoreUnavailable(RuntimeError):
     pass
+
+
+class TokenStoreLocked(TokenStoreUnavailable):
+    """The store exists and would answer — after a prompt we must never open."""
+
+
+def refuse_a_locked_collection() -> None:
+    # Called before every single touch of the secret, not once at startup: a
+    # collection locks itself again when the machine suspends or the store's
+    # own timeout expires, and the second touch would be the one that hangs.
+    if preflight.inspect_collection_lock() is preflight.CollectionLock.LOCKED:
+        raise TokenStoreLocked(LOCKED_MESSAGE)
 
 
 class TokenVerificationFailed(RuntimeError):
@@ -61,6 +82,7 @@ def read_from_keyring(*, nip: str) -> str | None:
     # The service name is the MCP server identity, imported rather than spelled
     # out: a literal here would orphan every stored token the day SERVER_NAME
     # changes, and the symptom would be "the token vanished".
+    refuse_a_locked_collection()
     try:
         return keyring.get_password(SERVER_NAME, nip)
     except KeyringError as error:
@@ -84,6 +106,7 @@ def read_token(*, nip: str) -> StoredToken | None:
 
 
 def store_token(*, nip: str, token: str) -> TokenFingerprint:
+    refuse_a_locked_collection()
     try:
         keyring.set_password(SERVER_NAME, nip, token)
     except KeyringError as error:
@@ -108,6 +131,7 @@ def delete_token(*, nip: str) -> Removal:
     # exported variable outranks the keyring on read, so a bare "deleted"
     # would be false in the one direction that matters for a secret.
     still_exported = bool(os.environ.get(FALLBACK_ENVIRONMENT_VARIABLE))
+    refuse_a_locked_collection()
     try:
         keyring.delete_password(SERVER_NAME, nip)
     except PasswordDeleteError:
