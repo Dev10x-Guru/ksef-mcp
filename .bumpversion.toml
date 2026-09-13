@@ -1,0 +1,23 @@
+[tool.bumpversion]
+current_version = "0.1.0"
+allow_dirty = false
+
+# Neither commit nor tag: bin/release.py owns both, so that the guard rails
+# run between changing the number and making it irreversible. A tag created
+# here would be pushed before anything checked whether PyPI already has it.
+commit = false
+tag = false
+
+[[tool.bumpversion.files]]
+filename = "pyproject.toml"
+search = 'version = "{current_version}"'
+replace = 'version = "{new_version}"'
+
+# The lockfile repeats the project's own version. Anchored on the package
+# name so the replacement cannot wander into a dependency's version.
+[[tool.bumpversion.files]]
+filename = "uv.lock"
+search = '''name = "ksef-mcp"
+version = "{current_version}"'''
+replace = '''name = "ksef-mcp"
+version = "{new_version}"'''
