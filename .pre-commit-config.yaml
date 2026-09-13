@@ -3,6 +3,9 @@ repos:
     rev: v6.0.0
     hooks:
       - id: check-added-large-files
+        # The vendored Ministry of Finance invoice renderer is ~3.1 MB and is a
+        # binary pin, like any other pinned version. Only that path is exempt.
+        exclude: ^src/ksef_mcp/vendor/
       - id: check-merge-conflict
       - id: check-toml
       - id: check-yaml
@@ -15,3 +18,11 @@ repos:
       - id: ruff-check
         args: [--fix]
       - id: ruff-format
+
+  # Local half of the commit-message contract; the other half is the gitlint
+  # step in .github/workflows/git.yml. Edit .gitlint and that step together.
+  - repo: https://github.com/jorisroovers/gitlint
+    rev: v0.19.1
+    hooks:
+      - id: gitlint
+        stages: [commit-msg]

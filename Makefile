@@ -17,6 +17,7 @@ build-requirements: ## Build the requirements files
 
 hooks: ## Install the pre-commit git hooks
 	uv run pre-commit install
+	uv run pre-commit install --hook-type commit-msg
 
 lint: ## Run every pre-commit hook over the whole tree
 	uv run pre-commit run --all-files
@@ -34,7 +35,7 @@ serve: ## Run the MCP server from the working copy over stdio
 build: ## Build the sdist and wheel into dist/
 	uv build
 
-clean: ## Remove build artefacts and caches
-	rm -rf dist .pytest_cache .ruff_cache .coverage .tmp
+clean: ## Remove build artefacts, caches and coverage output
+	rm -rf dist .pytest_cache .ruff_cache .coverage htmlcov .tmp
 
 .PHONY: help install upgrade-requirements build-requirements hooks lint test coverage-report serve build clean
