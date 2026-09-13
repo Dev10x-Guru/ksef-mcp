@@ -74,10 +74,17 @@ D-001 … D-034 — pełna treść w `decisions.md`. Najważniejsze:
 | D-032 | Magazyn rozdzielony wg XDG: cache osobno od trwałego stanu |
 | D-033 | Klucz eksportu ma własny cykl życia, poza keyringiem |
 | D-034 | Archiwum bezterminowe, czyszczone jawną komendą |
+| D-035 | Sześć powierzchni nazewniczych; wszystkie zbiegają się do `ksef-mcp` |
+| D-036 | Dwa rejestry decyzji: produktowe w `decisions.md`, strukturalne w `docs/adr/` |
 
 Zastąpione: D-003 przez D-016, D-002 przez D-017, D-016 przez D-027,
 D-024 przez D-031. `D-005`, `D-008` i `D-022` obowiązują z korektami
 opisanymi w `D-031`.
+
+**D-015 nie została zastąpiona** — nazwa pakietu wróciła do `ksef-mcp` po
+przejściowym odstępstwie wprowadzonym w implementacji wbrew obowiązującej
+decyzji. `D-035` ją potwierdza i opisuje sekwencję, żeby nie czytała się
+jako dwie sprzeczne decyzje.
 
 ## Model Changes
 
@@ -97,25 +104,34 @@ opisanymi w `D-031`.
 
 ## Open Questions
 
-Zamknięte w trakcie sesji: renderowanie PDF (`D-027`), zachowanie
-`keyring` bez D-Bus (ST-3), limity zapytań (`D-031`), maksymalne okno
-zapytania — pytanie zniknęło, bo okna wyznacza KSeF — oraz falsyfikacja
-tezy o wartości (`D-025`).
+**Zamknięte w trakcie sesji — wszystkie weryfikacją, nie dyskusją:**
 
-Pozostają otwarte:
+| Pytanie | Rozstrzygnięcie |
+|---|---|
+| Renderowanie PDF | oficjalny generator MF pod Node [D-027] |
+| Limity zapytań | potwierdzone u źródła, plus przeoczony limit 64/h [D-031] |
+| Maksymalne okno zapytania | **pytanie zniknęło** — okna wyznacza KSeF |
+| Teza o wartości produktu | sfalsyfikowana i przetrwała [D-025] |
+| `keyring` bez D-Bus | wykrywalny bez promptu, ST-3 |
+| `keyring` **zablokowany** | wykrywalny, ale trzeba ominąć API `keyring`, ST-3 |
+| Próg listy w czacie | **50 pozycji** [D-023] |
+| Aktualizacja bundla MF | ręcznie przy wydaniu [D-027] |
+| Format `.mcpb` | potwierdzony; rachunek kosztów odwrotny [D-028] |
 
-1. **`keyring` z backendem obecnym, lecz zablokowanym** (kwallet,
-   gnome-keyring wymagający odblokowania). Brak backendu umiemy wykryć
-   bez promptu; stan zablokowania — nie. ST-3.
-2. **Próg listy w czacie** [D-023] — konkretna wartość i forma skrótu.
-3. **Polityka aktualizacji zwendorowanego bundla MF** — nazwa pliku
-   niesie wersję, więc zmiana jest wykrywalna; brak ustalenia kto i kiedy.
-4. **Format `.mcpb`/DXT** — oznaczony `[Verify]` w [D-028], oparty na
-   pamięci, niesprawdzony u źródła. Nie blokuje etapu 1.
-5. **Zakres komendy czyszczącej** — per podmiot, per okres, czy po obu
-   wymiarach [D-034].
-6. **Czy wartość utrzymuje się dla biur rachunkowych** — test [D-025]
-   objął jeden podmiot i nie uogólnia się na etap 3.
+**Pozostają otwarte — obie wymagają danych, których dziś nie mamy:**
+
+1. **Zakres komendy czyszczącej** — per podmiot, per okres, czy po obu
+   wymiarach [D-034]. Rozstrzygnie się, gdy archiwum urośnie na tyle, by
+   pokazać, którym wymiarem ludzie faktycznie chcą ciąć.
+2. **Czy wartość utrzymuje się dla biur rachunkowych** — test [D-025]
+   objął **jeden podmiot** i nie uogólnia się na etap 3. Powtórzenie
+   wymaga dostępu do archiwum biura, nie tylko tokenu.
+
+---
+
+> **Zapis zamknięty 2026-09-13.** Od tego momentu niemutowalny zgodnie
+> z `document-structure.md`. Stan decyzji żyje dalej w `decisions.md` —
+> ten dokument opisuje, **co się wydarzyło**, nie **co obowiązuje**.
 
 ## Artifacts Produced
 
