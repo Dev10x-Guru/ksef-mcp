@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -64,7 +65,7 @@ def _run(*paths: Path) -> subprocess.CompletedProcess[str]:
 
 
 @pytest.fixture
-def adr_file(tmp_path):
+def adr_file(tmp_path: Path) -> Callable[..., Path]:
     def _make(*, filename: str, content: str) -> Path:
         path = tmp_path / filename
         path.write_text(content, encoding="utf-8")
@@ -83,20 +84,25 @@ def adr_file(tmp_path):
         ("notes.md", HUMAN_AUTHORED, False),
     ],
 )
-def test_flags_only_human_weighted_adrs(adr_file, filename, content, should_warn):
+def test_flags_only_human_weighted_adrs(
+    adr_file: Callable[..., Path],
+    filename: str,
+    content: str,
+    should_warn: bool,
+) -> None:
     path = adr_file(filename=filename, content=content)
     result = _run(path)
     assert result.returncode == 0
     assert (f"::warning file={path}::" in result.stdout) is should_warn
 
 
-def test_no_arguments_is_silent_and_passes():
+def test_no_arguments_is_silent_and_passes() -> None:
     result = _run()
     assert result.returncode == 0
     assert "::warning" not in result.stdout
 
 
-def test_reason_names_the_triggering_marker(adr_file):
+def test_reason_names_the_triggering_marker(adr_file: Callable[..., Path]) -> None:
     path = adr_file(filename="203-human-authored.md", content=HUMAN_AUTHORED)
     result = _run(path)
     assert "Authored-by: human" in result.stdout
