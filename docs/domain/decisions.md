@@ -108,8 +108,16 @@
   `keyring.get_keyring()` zwraca `keyring.backends.fail.Keyring`, a
   `SecretService` znika z listy dostępnych backendów — wykrycie nie
   wymaga odczytu, zapisu ani interakcji. Obrona jest wykonalna jedną
-  linijką przy starcie. **Ryzyko rezydualne:** backend obecny, lecz
-  zablokowany (kwallet, gnome-keyring) — niezweryfikowany, patrz ST-3.
+  linijką przy starcie.
+- **Drugi tryb awarii — backend obecny, lecz zablokowany.** Zweryfikowany
+  (ST-3) i groźniejszy niż brak backendu, bo pułapka siedzi w samym
+  `keyring`: `get_preferred_collection()` po sprawdzeniu `is_locked()`
+  **sam woła `unlock()`**, czyli otwiera prompt w środku wywołania
+  wyglądającego na odczyt. Obrona: odczytać stan blokady przez
+  `secretstorage` (`collection.is_locked()` — czysty odczyt właściwości
+  D-Bus), **zanim** dotkniemy `keyring.get_password()`. Sprawdzenie musi
+  poprzedzać **każde** dotknięcie sekretu, nie tylko start — kolekcja
+  może zostać zablokowana po uśpieniu maszyny.
 - **Kontekst:** token KSeF wyświetla się **jednorazowo** przy generowaniu i
   nie da się go odczytać ponownie — jego utrata jest kosztowna.
   Hosty MCP nie czytają `.env`; zmienne przychodzą z bloku `env` w
@@ -487,11 +495,27 @@
 
 - **Status:** Aktywna
 - **Warsztat:** 001
-- **Decyzja:** Odpowiedź tekstowa ma ustalony próg pozycji; powyżej niego
-  narzędzie zwraca podsumowanie i ścieżkę do pliku, nigdy pełną listę.
-- **Uzasadnienie:** 250 faktur to kilkadziesiąt tysięcy tokenów przy
-  każdym wywołaniu. Próg nie był ustalony.
-- **Do rozstrzygnięcia:** konkretna wartość progu i forma skrótu.
+- **Decyzja:** Odpowiedź tekstowa pokazuje najwyżej **50 pozycji**.
+  Powyżej progu narzędzie zwraca **liczbę faktur i sumę brutto**, nigdy
+  pełną listę.
+- **Uzasadnienie wartości progu — wymiarowane wobec potrzeby, nie wobec
+  limitów API:** w rzeczywistym archiwum podmiotu z badania [D-025]
+  miesiąc to około **13 faktur**, a pełne 90 dni — **38**. Próg 50 mieści
+  więc i typowy miesiąc, i cały kwartał, przez co **w codziennej pracy
+  jest niewidoczny**. Odcina dopiero wolumen, który i tak byłby
+  nieczytelny w oknie rozmowy.
+- **Dlaczego skrót nie zawiera ścieżki do pliku:** tool zwraca ścieżki i
+  metadane **w każdej odpowiedzi** [D-011], więc powtarzanie ich w
+  podsumowaniu byłoby zdublowaniem. Skrót ma dodać to, czego w ścieżce
+  nie widać — rozmiar i wartość okresu.
+- **Niezmiennik przeniesiony z badania person:** skrócenie musi być
+  **powiedziane wprost** („pokazuję 50 z 812"). Cicha obcinka została
+  nazwana rzeczą, która zabija zaufanie do narzędzia natychmiast — *„jeśli
+  raz złapię narzędzie na tym, że pokazało 50 z 812 i nie powiedziało,
+  nie zaufam już żadnej jego liczbie"*.
+- **Odrzucone:** próg 25 (skracałby typowy kwartał, więc użytkownik
+  widziałby skrót zbyt często) oraz 100 (przy większym podmiocie to już
+  rząd dziesięciu tysięcy tokenów w każdej odpowiedzi).
 
 ## D-024 — Ścieżka `exports` poza etapem 1
 
@@ -777,8 +801,32 @@ nie ma mechanizmu, który powiedziałby „czegoś brakuje".
   - **Nota licencyjna MIT** jako osobny plik obok bundla, z jawnym
     wskazaniem, że dotyczy wyłącznie tego artefaktu, nie reszty projektu
     (AGPL-3.0-only). Musi jechać w wheelu, nie tylko w repo.
-- **Nierozstrzygnięte:** polityka aktualizacji zwendorowanego bundla przy
-  nowych wersjach generatora MF.
+### Polityka aktualizacji zwendorowanego bundla
+
+- **Kiedy sprawdzamy:** **ręcznie, jako krok listy kontrolnej przed
+  wydaniem**. Bez automatu, bez zadania cyklicznego.
+- **Dlaczego nie automat:** sprawdzanie wymagałoby odpytywania portalu,
+  czyli kanału **bez kontraktu** — tego samego, który odrzuciliśmy jako
+  źródło PDF-ów [D-013]. Dokładanie mechanizmu, który sam w sobie jest
+  kruchy, żeby pilnować artefaktu, który działa, jest złym rachunkiem.
+  Stary bundel nie przestaje renderować, gdy MF wyda nowy.
+- **Jak wykrywamy zmianę:** nazwa pliku niesie wersję
+  (`ksef-fe-invoice-converter.<wersja>.js`), a **stopka wygenerowanego
+  PDF-a też** („ksef-pdf-generator - wersja 1.1.39"). Podmiana jest więc
+  widoczna w wyniku, nie tylko w repozytorium — i nie da się jej
+  przeprowadzić niepostrzeżenie.
+- **Jak weryfikujemy po podmianie:** **test porównujący z portalem** —
+  wygenerować PDF ze znanej faktury i porównać rozmiar oraz treść z tym,
+  co daje portal MF. Dokładnie ta procedura potwierdziła pierwszą wersję.
+  Wymaga faktury testowej w repozytorium albo przebiegu pod markerem
+  `ksef_live`.
+- **Znane ograniczenie tego testu:** sprawdza **zgodność**, nie
+  **jakość**. Gdy MF zmieni layout, test przejdzie — bo porównuje z
+  portalem, który też się zmieni. Wariant renderowany przez `ksef2`
+  odrzucono właśnie dlatego, że *wyglądał* źle, a żaden test rozmiaru by
+  tego nie złapał [D-027]. Przy zmianie wersji **majora** warto obejrzeć
+  wynik, nie tylko go porównać.
+- **Nota licencyjna MIT** aktualizuje się razem z bundlem.
 
 ## D-028 — Odbiorcą etapu 1 jest użytkownik techniczny; księgowa to etap późniejszy
 
@@ -796,10 +844,40 @@ nie ma mechanizmu, który powiedziałby „czegoś brakuje".
   jest dla księgowej, byłoby projektowaniem pod fikcyjnego użytkownika.
 - **Szew na przyszłość (zaprojektowany, nie zbudowany):** dystrybucja dla
   odbiorcy nietechnicznego to osobny etap — instalator Windows albo
-  rozszerzenie Claude Desktop pakujące serwer wraz z runtime'em.
-  [Verify] format `.mcpb`/DXT wymaga sprawdzenia u źródła przed
-  jakąkolwiek decyzją. Nic z tego nie budujemy teraz; zapisujemy, żeby
-  wybory etapu 1 nie zamknęły tej drogi.
+  rozszerzenie Claude Desktop. Nic z tego nie budujemy teraz; zapisujemy,
+  żeby wybory etapu 1 nie zamknęły tej drogi.
+
+### Format `.mcpb` — zweryfikowany u źródła (2026-09-13)
+
+Wcześniejsze `[Verify]` zdjęte. Format istnieje i robi to, co zakładano:
+archiwum zip z `manifest.json`, instalacja jednym kliknięciem
+(dwuklik, przeciągnięcie do okna albo Ustawienia → Rozszerzenia),
+transport stdio, działa offline, pakuje zależności.
+
+**Cztery ustalenia, których nie znaliśmy — dwa zmieniają rachunek:**
+
+1. **Node.js ships razem z Claude Desktop** na macOS i Windows.
+   Dokumentacja mówi wprost: „users need no separate runtime", a Node jest
+   **językiem zalecanym**.
+2. **Python nie jest dostarczany.** Serwer pythonowy musiałby go
+   zapakować albo wymagać.
+3. **Brak Linuksa.** Obsługiwane wyłącznie `darwin` i `win32`.
+4. **`user_config` w manifeście generuje interfejs ustawień** automatycznie,
+   wraz z obsługą danych wrażliwych.
+
+**Odwrócenie kosztów, które warto zobaczyć teraz, a nie za rok.** Dla
+ścieżki `uvx` Python jest darmowy, a Node jest ciężarem [D-029]. Dla
+ścieżki `.mcpb` jest **dokładnie odwrotnie**: Node dostajemy za darmo —
+czyli ten sam runtime, którego potrzebuje generator PDF [D-027] — a
+ciężarem staje się Python.
+
+**Konsekwencje dla szwu:**
+- Ścieżka `.mcpb` **usuwa** problem, którym jest dziś zależność od Node.
+- Wprowadza natomiast **dwa nowe**: spakowanie Pythona i brak Linuksa.
+- `user_config` mógłby zastąpić znaczną część komendy `onboarding` — ale
+  tylko na tej ścieżce, więc komenda i tak musi istnieć dla `uvx`.
+- Decyzja nie jest dziś potrzebna. Zapisane, bo **rachunek jest odwrotny,
+  niż podpowiada intuicja z etapu 1**, i ktoś mógłby go źle przyjąć.
 
 ## D-029 — Node instalowany natywnie, nie przez koło pythonowe
 
