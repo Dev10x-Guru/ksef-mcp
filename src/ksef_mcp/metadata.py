@@ -6,6 +6,6 @@ from typing import Final
 # so conflating them breaks the version lookup whenever either is renamed.
 SERVER_NAME: Final[str] = "ksef-mcp"
 
-DISTRIBUTION_NAME: Final[str] = "ksef-dev10x-guru"
+DISTRIBUTION_NAME: Final[str] = "ksef-mcp"
 
 VERSION: Final[str] = version(DISTRIBUTION_NAME)
