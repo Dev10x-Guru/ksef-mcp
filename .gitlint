@@ -1,0 +1,18 @@
+# Local half of the commit-message contract. The other half is the
+# gitlint-action step in .github/workflows/git.yml, which enforces the
+# same rules in CI with its own inline regex. Edit both together — a
+# subject that passes one and fails the other is the failure mode this
+# comment exists to prevent.
+#
+# CI accepts any emoji plus a capital letter; this file lists the set
+# actually in use, so a local run catches an off-convention emoji that
+# CI would wave through.
+
+[general]
+ignore=body-is-missing
+
+[title-max-length]
+line-length=72
+
+[title-match-regex]
+regex=^(✅|🐛|♻️|♻|✨|📝|📐|🔒|⚡️|⚡|💄|🔧|🔖|🩹|🔥|🏗️|🐳|🤖|👽|⏪|⏩) ([A-Z]+-\d+ )?.*
