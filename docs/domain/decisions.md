@@ -963,6 +963,66 @@ pozwala skasować treść bez utraty idempotencji.
   danych — wskazuje na to wymóg twardego rozdziału kontekstów w
   etapie 3 [D-009].
 
+## D-033 — Klucz eksportu ma własny cykl życia, poza keyringiem
+
+- **Status:** Aktywna
+- **Warsztat:** 001
+- **Doprecyzowuje:** D-031 §7, D-004
+- **Decyzja:** Klucz AES-256 i IV eksportu zapisujemy **przy rekordzie
+  oczekującego eksportu** w katalogu danych [D-032] i **kasujemy
+  natychmiast** po odszyfrowaniu i zarchiwizowaniu paczki. **Nie trafiają
+  do keyringu.**
+- **Sprostowanie mojego wcześniejszego zapisu:** D-031 §7 stwierdza, że
+  „[D-004] musi objąć klucze, nie tylko token". To było nieprecyzyjne.
+  Klucze potrzebują **własnego cyklu życia**, a nie tego samego magazynu
+  co token. [D-004] pozostaje decyzją o **tokenie**.
+- **Dlaczego nie keyring:** keyring trzyma długowieczny sekret, którego
+  utrata jest kosztowna (token wyświetla się jednorazowo). Klucz eksportu
+  żyje minuty do godzin i po zarchiwizowaniu paczki jest bezwartościowy.
+  Wrzucanie go do keyringu zapełniałoby magazyn wpisami, których nikt nie
+  sprząta — a na headless [D-004] i tak schodzi na ścieżkę awaryjną.
+- **Dlaczego trwały, a nie efemeryczny:** eksport jest **asynchroniczny i
+  kolejkowany**, więc między inicjacją a pobraniem części mija czas, w
+  którym serwer MCP pod `uvx` bywa ubijany razem z sesją agenta. Klucz w
+  pamięci znika wtedy razem z procesem, a eksport staje się bezużyteczny
+  — kosztem jednego z **20 eksportów na godzinę**.
+- **Dlaczego to nie pogarsza bezpieczeństwa:** klucz nie jest wrażliwszy
+  niż to, co chroni. Odszyfrowane faktury lądują w tym samym katalogu
+  danych. Klucz na dysku obok archiwum nie otwiera niczego, co nie leży
+  już obok w postaci jawnej.
+- **Niezmiennik:** klucz nie przeżywa zakończonego eksportu. Kasowanie
+  jest częścią operacji archiwizacji, nie osobnym sprzątaniem.
+
+## D-034 — Archiwum bezterminowe, czyszczone jawną komendą
+
+- **Status:** Aktywna
+- **Warsztat:** 001
+- **Domyka:** otwarty punkt z D-032
+- **Decyzja:** Archiwum XML **nie wygasa samo**. Czyszczenie odbywa się
+  **jawną komendą** użytkownika. Archiwum per podmiot mieszka w
+  **osobnym podkatalogu** katalogu danych.
+- **Uzasadnienie osobnych podkatalogów:** wymóg twardego rozdziału
+  kontekstów w etapie 3 [D-009] oraz ostrzeżenie compliance, że wspólny
+  katalog jest **głównym wektorem** pomieszania klientów biura
+  rachunkowego — agent pobiera faktury klienta A, odpowiadając o
+  kliencie B, a API nie zgłosi błędu, bo uprawnienie istnieje.
+- **Uzasadnienie bezterminowości:** lokalne archiwum jest deklarowaną
+  osią wartości produktu [D-025] i tym, czego MF wprost wymaga jako bazy
+  dla operacji biznesowych [D-030]. Automatyczne wygasanie podkopywałoby
+  jedno i drugie. Księgowa chce mieć historię pod ręką.
+- **Przyjęte ryzyko, nazwane wprost:** compliance ostrzegał, że bez
+  polityki po roku na laptopie leży komplet faktur wszystkich
+  obsługiwanych podmiotów, wraz z danymi osobowymi kontrahentów.
+  Świadomie wybieramy użyteczność kosztem minimalizacji danych —
+  **komenda czyszcząca jest obowiązkowym elementem etapu 1**, nie
+  dodatkiem, bo bez niej ta decyzja nie ma bezpiecznika.
+- **Co to umożliwia:** rozdzielenie indeksu deduplikacji od treści
+  [D-005] pozwala skasować faktury **nie tracąc idempotencji** — po
+  wyczyszczeniu archiwum ponowna synchronizacja nie ściągnie ich
+  powtórnie, bo indeks pamięta numery KSeF.
+- **Otwarte:** czy komenda czyszcząca ma działać per podmiot, per okres,
+  czy po obu wymiarach naraz.
+
 ## D-015 — Nazwa dystrybucji `ksef-mcp` na PyPI
 
 - **Status:** Aktywna
