@@ -16,8 +16,8 @@ build-requirements: ## Build the requirements files
 	uv export --frozen --no-hashes --no-annotate --only-group dev -o requirements/development.txt
 
 hooks: ## Install the pre-commit git hooks
-	uv run pre-commit install
-	uv run pre-commit install --hook-type commit-msg
+	uv run pre-commit install --allow-missing-config
+	uv run pre-commit install --hook-type commit-msg --allow-missing-config
 
 lint: ## Run every pre-commit hook over the whole tree
 	uv run pre-commit run --all-files
