@@ -107,12 +107,39 @@ isinstance(keyring.get_keyring(), keyring.backends.fail.Keyring)
 **Co to zamyka:** przypadek **braku backendu** (headless, WSL, kontener).
 Obrona z [D-004] jest wykonalna jedną linijką przy starcie.
 
-**Czego NIE zamyka — ryzyko rezydualne:** przypadek, w którym backend
-**istnieje, ale jest zablokowany** (kwallet lub gnome-keyring wymagający
-odblokowania hasłem). Wtedy `get_keyring()` zwróci działający backend z
-priorytetem > 0, a dopiero `get_password()` zawiesi się na oknie
-odblokowania — czyli na stdio zawiesi transport. To osobny tryb awarii,
-niezweryfikowany.
+**Drugi tryb awarii — ZWERYFIKOWANY (2026-09-13), backend zablokowany.**
+
+Kolekcja obecna, lecz zablokowana (kwallet, gnome-keyring wymagający
+odblokowania) to **osobny tryb awarii** i groźniejszy, niż wyglądał.
+Pułapka siedzi w samym `keyring`, w `SecretService.get_preferred_collection()`:
+
+```python
+if collection.is_locked():
+    collection.unlock()  # ← PROMPT
+    if collection.is_locked():
+        raise KeyringLocked(...)
+```
+
+Czyli `keyring.get_password()` na zablokowanej kolekcji **sam otwiera
+okno odblokowania**, w środku wywołania wyglądającego na niewinny
+odczyt. Na stdio zawiesza transport — dokładnie to, czego zabrania
+[D-004].
+
+**Obrona, zweryfikowana wykonaniem:** stan blokady da się odczytać
+**bez** promptu, omijając wysokopoziomowe API:
+
+```python
+collection = secretstorage.get_default_collection(secretstorage.dbus_init())
+if collection.is_locked():  # get_property('Locked') — czysty odczyt
+    ...  # nie woła unlock(), nie pyta
+```
+
+Potwierdzone: zwraca `bool`, zero interakcji.
+
+**Wniosek dla implementacji:** sprawdzenie musi poprzedzać **każde**
+dotknięcie `keyring.get_password()`, a nie tylko start. Kolekcja może
+zostać zablokowana w trakcie pracy — po uśpieniu maszyny albo po
+wygaśnięciu limitu czasu w konfiguracji magazynu.
 
 ---
 
