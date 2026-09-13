@@ -30,7 +30,7 @@ coverage-report: ## Uruchamia testy i otwiera raport pokrycia w HTML
 	open .tmp/coverage/index.html
 
 serve: ## Uruchamia serwer MCP z kopii roboczej przez stdio
-	uvx --from . ksef-dev10x-guru
+	uvx --from . ksef-mcp
 
 build: ## Buduje sdist i wheel do katalogu dist/
 	uv build

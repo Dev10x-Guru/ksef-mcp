@@ -62,7 +62,7 @@ jobs:
     needs: build
     environment:
       name: pypi
-      url: https://pypi.org/project/ksef-dev10x-guru/
+      url: https://pypi.org/project/ksef-mcp/
     permissions:
       id-token: write
     steps:
