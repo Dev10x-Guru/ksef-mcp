@@ -821,12 +821,19 @@ nie ma mechanizmu, który powiedziałby „czegoś brakuje".
   (`Schniz.fnm`). Wersję przypinamy plikiem **`.node-version` w repo** z
   wartością `22.17.0` — tą, na której render został zweryfikowany
   (generator MF deklaruje minimum 22.14.0).
-- **Kiedy plik `.node-version` wchodzi:** nie osobno, tylko **tym PR-em,
-  który wenduje bundel** — pin i jego konsument lądują razem. Pin bez
-  konsumenta jest deklaracją wyprzedzającą potrzebę; README opisuje
-  wymaganie i pułapkę z `fnm env` już teraz, więc wiedza nie ginie.
-  To zastosowanie reguły „foundation-ready, nie przedwcześnie zbudowane"
-  do artefaktu konfiguracyjnego, nie tylko do kodu.
+- **Kiedy plik `.node-version` wchodzi — decyzja pierwotna:** nie osobno,
+  tylko **tym PR-em, który wenduje bundel** — pin i jego konsument lądują
+  razem. Pin bez konsumenta jest deklaracją wyprzedzającą potrzebę;
+  README opisuje wymaganie i pułapkę z `fnm env` już teraz, więc wiedza
+  nie ginie. To zastosowanie reguły „foundation-ready, nie przedwcześnie
+  zbudowane" do artefaktu konfiguracyjnego, nie tylko do kodu.
+- **Odstępstwo przyjęte świadomie:** `.node-version` (22.17.0) dodano
+  **przed** bundlem, decyzją właściciela produktu. Powód przeważający:
+  README od dawna odsyłał do tego pliku, więc jego brak był **odwołaniem
+  w próżnię** — instrukcją, której nie da się wykonać. Domknięcie
+  istniejącego rozjazdu okazało się ważniejsze niż unikanie pinu bez
+  konsumenta. Odnotowane, bo to odstępstwo od reguły powyżej, a nie jej
+  zastosowanie.
 - **Symetria, o którą chodzi:** `uv` pilnuje Pythona `3.13.14`, `fnm`
   pilnuje Node `22.17.0`, obie wersje są **zadeklarowane w repo**, nie w
   czyjejś głowie. Spójne z regułą „zawsze konkretna wersja, nigdy
@@ -1144,9 +1151,134 @@ pozwala skasować treść bez utraty idempotencji.
 
 ## D-015 — Nazwa dystrybucji `ksef-mcp` na PyPI
 
-- **Status:** Aktywna
+- **Status:** **Aktywna.** Potwierdzona i doprecyzowana przez [D-035] po
+  przejściowym odstępstwie — patrz tam.
 - **Warsztat:** 001
 - **Decyzja:** Publikujemy jako `ksef-mcp`.
 - **Kontekst:** [Verify] nazwa jest wolna na PyPI; repozytorium to
   `Dev10x-Guru/ksef-mcp`. Inny projekt (`olegtyshcneko/ksef-mcp`) używa tej
   nazwy lokalnie, ale nigdy jej nie opublikował — warto zająć ją świadomie.
+
+## D-035 — Sześć powierzchni nazewniczych; wszystkie zbiegają się do `ksef-mcp`
+
+- **Status:** Aktywna
+- **Potwierdza:** D-015 — **nie zastępuje**, patrz „Odstępstwo" niżej
+- **Decyzja:** Projekt ma **sześć odrębnych powierzchni nazewniczych**.
+  Wszystkie noszą dziś nazwę `ksef-mcp` — i **mimo to pozostają
+  rozdzielone**, bo rządzą nimi różne ograniczenia i mogą się kiedyś
+  rozjechać.
+
+| Powierzchnia | Wartość | Źródło |
+|---|---|---|
+| Repozytorium | `ksef-mcp` | GitHub |
+| Dystrybucja PyPI | `ksef-mcp` | `pyproject.toml` `name` |
+| Skrypt konsolowy | `ksef-mcp` | `[project.scripts]` → `ksef_mcp.cli:main` |
+| Pakiet importu | `ksef_mcp` | `src/ksef_mcp/` |
+| Nazwa serwera MCP | `ksef-mcp` | `metadata.SERVER_NAME` |
+| Usługa w keyringu | importowany `SERVER_NAME` | [D-004] |
+| Katalogi XDG | `ksef-mcp` | [D-032] |
+
+### Dlaczego rozdzielone, skoro równe
+
+- **`DISTRIBUTION_NAME` ≠ `SERVER_NAME` mimo identycznej wartości.**
+  `importlib.metadata.version()` rozstrzyga po nazwie **dystrybucji**,
+  więc sklejenie obu stałych w jedną jest bombą z opóźnionym zapłonem:
+  wybuchnie `PackageNotFoundError` przy imporcie, gdy tylko któraś nazwa
+  się zmieni. Rozdział kosztuje jedną stałą i dokumentuje rozróżnienie,
+  które dziś jest niewidoczne.
+- Trzy różne presje na tę samą literę: **dystrybucja** potrzebuje
+  unikalności w rejestrze pakietów, **nazwa serwera MCP** jest
+  tożsamością protokołu, na której opierają się konfiguracje klientów, a
+  **katalogi i keyring** to nazwy produktu widziane przez użytkownika.
+  Dlatego trzy osobne miejsca, a nie jedno.
+- **Zgodność nazwy skryptu z dystrybucją jest celowa** — dzięki niej
+  `uvx ksef-mcp` działa bez przełącznika `--from`.
+- Punkt wejścia wskazuje `cli:main`, nie `server:main`. `ksef-mcp` bez
+  argumentów nadal uruchamia serwer na stdio, więc konfiguracje klientów
+  MCP się nie zmieniają — parser był potrzebny dla `onboarding` i operacji
+  na tokenie.
+
+### Niezmiennik: usługa w keyringu nie idzie za nazwą dystrybucji
+
+Nazwą usługi jest **importowany `SERVER_NAME`, nigdy literał**. Zapisane
+przy samym wywołaniu w kodzie, nie tylko w dokumentacji — żeby przetrwało
+moment, w którym obie wartości znów się rozjadą.
+
+Ryzyko jest **realne, nie teoretyczne**: token zapisany podczas przebiegu
+na sucho leży pod `service=ksef-mcp`. Zmiana bez migracji dałaby objaw
+„token zniknął", przed którym ostrzega [D-004]. Gdyby nazwa kiedykolwiek
+musiała się zmienić, potrzebna jest migracja czytająca starą i zapisująca
+nową.
+
+Ta sama ostrożność dotyczy katalogów XDG [D-032] — przemianowanie
+osieroci archiwum i punkty kontynuacji HWM, a ich utrata wymusza pełną
+resynchronizację z budżetu 20 eksportów na godzinę.
+
+### Odstępstwo i powrót — zapis dla czytającego za pół roku
+
+Między GH-13 a GH-20 dystrybucja nosiła przejściowo nazwę
+`ksef-dev10x-guru`. **Nie była to decyzja zastępująca D-015** — była to
+zmiana wprowadzona w implementacji **wbrew decyzji o statusie Aktywna**,
+na podstawie błędnego przekonania, że `ksef-mcp` jest zajęte na PyPI.
+Sprawdzenie wykazało 404 dla obu nazw; sama treść GH-13 zresztą to
+odnotowywała.
+
+Powrót nie jest więc trzecią decyzją, tylko **przywróceniem D-015**. Bez
+tego zapisu sekwencja czyta się jako dwie sprzeczne decyzje zamiast
+jednej decyzji i jednego odstępstwa.
+
+**Wniosek procesowy, ważniejszy od samej nazwy.** Model i implementacja
+żyją w osobnych sesjach i **rozjeżdżają się w godzinach, nie w
+tygodniach**. Rozjazd idzie w **obie strony** i oba kierunki kosztują:
+
+- **Implementacja wyprzedza model** — nazwę zmieniono, nie sprawdziwszy
+  `decisions.md`, wbrew decyzji o statusie Aktywna. Dokumentacja domenowa
+  została scalona w tej samej godzinie, w której `main` dostał tę zmianę.
+- **Dokumentacja wyprzedza kod** — w jednym repozytorium znalazły się
+  **trzy odwołania w próżnię**: README opisywał pułapkę `fnm env` i
+  odsyłał do `.node-version`, którego nie było; `CLAUDE.md` wymagał
+  markera `ksef_live` i odsyłał do konfiguracji w `pyproject.toml`,
+  której tam nie było; GH-4 powoływało się na decyzje niedostępne dla
+  nikogo poza sesją, która je pisała.
+
+Pierwszy kierunek daje sprzeczność, drugi — instrukcje, których nie da
+się wykonać. Oba są niewidoczne dla autora, bo każdy widzi tylko swoją
+stronę.
+
+Jedyne, co temu zapobiegło, to **pytanie zadane właścicielowi produktu**
+i **sprawdzenie stanu przeciw remote'owi zamiast przeciw dyskowi** — nie
+żaden mechanizm.
+
+### Bez zmian
+
+Odwołania do `olegtyshcneko/ksef-mcp` w [D-030] dotyczą cudzego projektu.
+
+## D-036 — Dwa rejestry decyzji: co gdzie mieszka
+
+- **Status:** Aktywna
+- **Decyzja:** Repozytorium prowadzi **dwa rejestry** i mają rozłączne
+  zakresy:
+
+| Rejestr | Trzyma | Przykład |
+|---|---|---|
+| `docs/domain/decisions.md` | decyzje **produktowe i dziedzinowe** | jak nazywa się pakiet [D-035], co wchodzi do MVP [D-001], którego klienta używamy [D-017] |
+| `docs/adr/` | decyzje **o strukturze kodu** | dlaczego dwie stałe zamiast jednej i jaki wzorzec awarii to wyklucza |
+
+- **Reguła rozstrzygająca:** pytaj, **czy decyzja przetrwałaby przepisanie
+  implementacji od zera**. Jeśli tak — jest dziedzinowa i idzie do
+  `decisions.md`. Jeśli znika razem z konkretnym kształtem kodu — jest
+  architektoniczna i idzie do `docs/adr/`.
+- **Warunek niepowielania:** każdy wpis **odsyła** do swojego
+  odpowiednika w drugim rejestrze, nigdy go nie **streszcza**. Streszczenie
+  starzeje się niezależnie od oryginału i to właśnie z niego biorą się dwa
+  rejestry z dwiema teoriami.
+- **Przypadek graniczny, na którym to ustalono:** nazwa pakietu jest
+  decyzją produktową [D-035]; rozdział `SERVER_NAME` od
+  `DISTRIBUTION_NAME` — wraz z uzasadnieniem, że
+  `importlib.metadata.version()` rozstrzyga po nazwie dystrybucji — jest
+  decyzją o strukturze i należy do ADR-a. To nie jest powielenie, dopóki
+  każdy odsyła do drugiego.
+- **Powód istnienia tej decyzji:** propozycja ADR-101 powstała w tym samym
+  dniu co [D-035] i opisywała to samo rozróżnienie. Bez rozstrzygnięcia
+  zakresów oba rejestry zaczęłyby rosnąć równolegle, a czytelnik nie
+  wiedziałby, który jest wiążący.
