@@ -23,7 +23,32 @@ udokumentowane.
   o zgodę przed nadpisaniem, więc własne zmiany nie znikają niezauważone
   ([GH-34]).
 
+- Serwer rozmawia z KSeF przez własną warstwę pośredniczącą, a nie
+  bezpośrednio przez bibliotekę klienta. Dla podatnika oznacza to jedno:
+  gdy biblioteka się zmieni albo zostanie wymieniona, narzędzia i ich
+  odpowiedzi zostaną takie same ([GH-35]).
+- Serwer odczytuje z KSeF rzeczywiste limity zapytań i liczy, ile z nich
+  już zużył, zamiast zakładać wartości z dokumentacji. Podmiot, któremu
+  Ministerstwo podniosło limit, dostaje tyle, ile mu przyznano
+  ([GH-35]).
+
+### Zmienione
+
+- Po odmowie z powodu wyczerpanego limitu serwer czeka dokładnie tyle,
+  ile podał KSeF, i tylko wtedy, gdy KSeF to podał — a domyślnie nie
+  ponawia wcale i oddaje decyzję człowiekowi. Ministerstwo odnotowuje
+  przekroczenia limitów i wydłuża blokadę przy powtórzeniach, więc
+  wytrwałość klienta szkodzi bardziej niż pojedyncze niepowodzenie
+  ([GH-35]).
+- Zbyt szerokie okno dat i numer, który nie jest numerem KSeF, są
+  odrzucane, zanim cokolwiek poleci do KSeF. Wcześniej kosztowały jedno
+  zapytanie z godzinowej puli i wracały jako błąd serwera ([GH-35]).
+- Kwoty faktur są liczone dokładnie, a nie w przybliżeniu — porównanie
+  archiwum z ewidencją nie pokaże już różnicy o grosz, której nie ma
+  ([GH-35]).
+
 [GH-34]: https://github.com/Dev10x-Guru/ksef-mcp/issues/34
+[GH-35]: https://github.com/Dev10x-Guru/ksef-mcp/issues/35
 
 ## 0.1.1 — 2026-09-13
 

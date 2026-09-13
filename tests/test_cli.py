@@ -2,13 +2,13 @@ import getpass
 import subprocess
 import sys
 from collections.abc import Callable, Sequence
-from datetime import date
 from pathlib import Path
 
 import pytest
 
 from ksef_mcp import cli, config, ksef_port, preflight, skill, token_store
 from ksef_mcp.config import Configuration, KsefEnvironment
+from synthetic import synthetic_metadata
 
 NIP = "1234567890"
 
@@ -550,15 +550,8 @@ def test_token_status_reports_a_missing_token(monkeypatch: pytest.MonkeyPatch) -
     assert (code, "Brak tokenu" in recorder.transcript) == (cli.EXIT_NO_TOKEN, True)
 
 
-def invoice(number: str) -> ksef_port.InvoiceSummary:
-    return ksef_port.InvoiceSummary(
-        ksef_number=number,
-        issue_date=date(2026, 9, 1),
-        seller_name="Dostawca sp. z o.o.",
-        seller_nip="9876543210",
-        gross_amount=1230.0,
-        currency="PLN",
-    )
+def invoice(ordinal: int) -> ksef_port.InvoiceMetadata:
+    return synthetic_metadata(ordinal)
 
 
 @pytest.fixture
@@ -625,7 +618,7 @@ def test_verify_greets_the_subject_by_name(
         lambda **kwargs: ksef_port.ConnectionCheck(
             environment=KsefEnvironment.TEST,
             subject_name="Moja Firma sp. z o.o.",
-            invoices=(invoice("KSEF-1"),),
+            invoices=(invoice(1),),
         ),
     )
     recorder = Recorder()
@@ -649,7 +642,7 @@ def test_verify_lists_the_invoices_it_found(
         lambda **kwargs: ksef_port.ConnectionCheck(
             environment=KsefEnvironment.TEST,
             subject_name="Moja Firma sp. z o.o.",
-            invoices=(invoice("KSEF-1"), invoice("KSEF-2")),
+            invoices=(invoice(1), invoice(2)),
         ),
     )
     recorder = Recorder()
