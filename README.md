@@ -54,10 +54,14 @@ Aby uruchomić wersję z lokalnego katalogu roboczego zamiast z PyPI:
 
 ## Rozwój
 
+`make help` wypisuje wszystkie dostępne komendy.
+
 ```bash
-uv sync --group dev
-uv run pytest
-pre-commit run --all-files
+make install              # uv sync --group dev
+make test                 # uv run pytest z pokryciem
+make lint                 # pre-commit na całym drzewie
+make upgrade-requirements # uv lock --upgrade
+make build-requirements   # eksport do requirements/*.txt
 ```
 
 Linting i formatowanie idą wyłącznie przez pre-commit — to ta sama ścieżka,
