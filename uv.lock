@@ -230,7 +230,7 @@ wheels = [
 ]
 
 [[package]]
-name = "ksef-mcp"
+name = "ksef-dev10x-guru"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
