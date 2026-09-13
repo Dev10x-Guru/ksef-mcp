@@ -2,7 +2,7 @@
 
 Lokalny serwer MCP do KSeF (Krajowy System e-Faktur), zbudowany przez Dev10x.Guru.
 
-Uruchamiany na własnej maszynie przez `uvx ksef-dev10x-guru` — dane faktur nie
+Uruchamiany na własnej maszynie przez `uvx ksef-mcp` — dane faktur nie
 przechodzą przez żadną usługę pośredniczącą.
 
 ## Stan projektu
@@ -74,7 +74,7 @@ Konfiguracja w kliencie MCP (`.mcp.json`, `claude_desktop_config.json`):
   "mcpServers": {
     "ksef": {
       "command": "uvx",
-      "args": ["ksef-dev10x-guru"]
+      "args": ["ksef-mcp"]
     }
   }
 }
@@ -87,13 +87,13 @@ Aby uruchomić wersję z lokalnego katalogu roboczego zamiast z PyPI:
   "mcpServers": {
     "ksef": {
       "command": "uvx",
-      "args": ["--from", "/ścieżka/do/ksef-mcp", "ksef-dev10x-guru"]
+      "args": ["--from", "/ścieżka/do/ksef-mcp", "ksef-mcp"]
     }
   }
 }
 ```
 
-🚧 Po instalacji pierwszym krokiem będzie `ksef-dev10x-guru onboarding` — sprawdzi
+Po instalacji pierwszym krokiem jest `ksef-mcp onboarding` — sprawdzi
 zależności, przeprowadzi przez konfigurację poświadczeń i wybór środowiska.
 
 ## Wizualizacja PDF
