@@ -14,31 +14,45 @@ Elementy, które nie powinny się zmienić przy rozszerzeniach etapu 2 i 3:
 
 ---
 
-## ST-1 — Miesiąc z 5000 faktur
+## ST-1 — Miesiąc z 5000 faktur *(przemodelowany)*
 
-**Scenariusz:** biuro pobiera miesiąc dużego klienta; lista przekracza
-sufit godzinowy zapytań metadanych.
+> **Pierwotna wersja tego scenariusza była wymiarowana wobec błędnych
+> liczb.** Zakładała sufit ~5000 faktur/h wyliczony z limitu metadanych
+> i traktowała eksport jako szew awaryjny. Realny limit pobierania
+> treści to **64/h**, a eksport jest ścieżką podstawową [D-031].
+
+**Scenariusz:** biuro synchronizuje miesiąc dużego klienta.
 
 | Etap | Wynik |
 |---|---|
 | Uwierzytelnienie | ZERO zmian |
-| Zapytanie o listę | ZERO zmian przy `pageSize=250` [D-010] |
-| Paginacja | **ŁAMIE SIĘ** powyżej ~5000 pozycji/h |
-| Pobieranie treści | ZERO zmian |
-| Deduplikacja | ZERO zmian |
+| Inicjacja eksportu | ZERO zmian — budżet 20/h dzielony na 4 typy podmiotu |
+| Okno czasowe | ZERO zmian — **wyznacza je KSeF**, my pomijamy `DateRange.To` |
+| Paczki obcięte | ADDYTYWNY — `IsTruncated` przesuwa punkt kontynuacji |
+| Deszyfrowanie i rozpakowanie | ZERO zmian |
+| Deduplikacja | ZERO zmian — po numerze KSeF z `_metadata.json` |
 
-**Szew:** ścieżka `POST /invoices/exports`. Wymaga szyfrowania, więc
-wciąga AES/RSA do MVP czysto odczytowego.
+**Ocena:** model przestał się łamać na wolumenie, bo **przestaliśmy
+wymiarować okno sami**. KSeF buduje największą spójną paczkę w granicach
+własnych limitów, a `IsTruncated` mówi, gdzie wznowić. Niezmiennik
+Archiwum trzyma niezależnie od liczby faktur.
 
-**Ocena:** niezmiennik Archiwum trzyma — deduplikacja po numerze KSeF
-działa niezależnie od tego, czy faktury przyszły listą czy paczką
-eksportu. Szew leży we właściwym miejscu: wymiana **źródła** listy, nie
-zmiana modelu.
+**Gdzie teraz leży realne ryzyko:** nie w wolumenie, tylko w **budżecie
+20 eksportów na godzinę dzielonym między cztery typy podmiotu**. Przy
+zalecanych ~4/h na typ i minimalnym interwale 15 minut, biuro z
+kilkudziesięcioma podmiotami wyczerpie budżet na samej liczbie
+kontekstów, nie na liczbie faktur. To jest ograniczenie **etapu 3**
+[D-009], nie etapu 1.
 
-**Do rozstrzygnięcia:** czy próg przełączenia na eksport jest
-automatyczny, czy jawną decyzją człowieka. Persona księgowej wskazała, że
-„interaktywna czy wsadowa" to decyzja techniczna spadająca na księgową —
-sygnał, że powinna być automatyczna.
+**Łagodzi je** naliczanie limitów per para *kontekst + adres IP* — różne
+podmioty to różne konteksty, więc liczniki są niezależne. Ale MF wprost
+ostrzega, że systematyczne używanie wielu adresów IP w ramach jednego
+kontekstu bywa traktowane jako zagrożenie bezpieczeństwa, więc obejście
+przez rozpraszanie IP nie wchodzi w grę.
+
+**Nie do rozstrzygnięcia „automatycznie czy ręcznie":** pytanie z
+pierwotnej wersji zniknęło. Nie ma progu przełączania między ścieżką
+synchroniczną a eksportem, bo eksport jest ścieżką domyślną.
 
 ---
 
