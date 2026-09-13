@@ -1,7 +1,11 @@
 # Domain Documentation — ksef-mcp
 
-Lokalny serwer MCP do KSeF, uruchamiany w procesie przez `uvx`,
+Lokalny serwer MCP do KSeF, uruchamiany w procesie przez `uvx ksef-mcp`,
 zbudowany na bazie biblioteki klienta KSeF z PyPI.
+
+Sześć powierzchni nazewniczych zbiega się dziś do `ksef-mcp`, ale
+pozostaje rozdzielonych — patrz [D-035], w szczególności niezmiennik, że
+**usługa w keyringu i katalogi XDG nie idą za nazwą dystrybucji**.
 
 ## Mapa dokumentów
 
