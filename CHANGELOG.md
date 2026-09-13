@@ -10,6 +10,9 @@ udokumentowane.
 
 ## Bez wydania
 
+## 0.1.1 — 2026-09-13
+
+
 **Pierwsze wydanie tego pakietu.** Nie ma tu więc zmian zachowania wobec
 poprzedniej wersji — nie było poprzedniej. Wszystko poniżej jest nowe
 i cała lista opisuje stan początkowy, a nie przyrost.

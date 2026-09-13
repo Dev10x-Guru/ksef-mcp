@@ -1,5 +1,5 @@
 [tool.bumpversion]
-current_version = "0.1.0"
+current_version = "0.1.1"
 allow_dirty = false
 
 # Neither commit nor tag: bin/release.py owns both, so that the guard rails
