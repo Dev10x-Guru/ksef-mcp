@@ -15,9 +15,10 @@ jawny, nie żeby sugerować gotowość.
 | Obszar | Stan |
 |---|---|
 | Pakiet, uruchamianie przez `uvx`, testy | ✅ działa |
+| Konfiguracja: `onboarding`, `doctor`, `token` | ✅ działa |
+| Potwierdzenie połączenia: `verify` | ✅ działa |
 | Wyszukiwanie i pobieranie faktur | 🚧 planowane |
 | Wizualizacja PDF | 🚧 planowane |
-| Komenda `onboarding` | 🚧 planowane |
 
 ## Co ten projekt robi
 
@@ -95,6 +96,31 @@ Aby uruchomić wersję z lokalnego katalogu roboczego zamiast z PyPI:
 
 Po instalacji pierwszym krokiem jest `ksef-mcp onboarding` — sprawdzi
 zależności, przeprowadzi przez konfigurację poświadczeń i wybór środowiska.
+
+| Komenda | Co robi | Sięga do KSeF |
+|---|---|---|
+| `ksef-mcp` | uruchamia serwer MCP na stdio | nie |
+| `ksef-mcp onboarding` | konfiguracja przed pierwszym uruchomieniem | nie |
+| `ksef-mcp doctor` | same warunki wstępne | nie |
+| `ksef-mcp token set\|delete\|status` | token w keyringu | nie |
+| `ksef-mcp verify` | potwierdza połączenie i pokazuje ostatnie faktury | **tak** |
+
+Na maszynie bez magazynu keyringu (headless, WSL, kontener) tokenu nie da się
+zapisać. Ścieżką awaryjną jest zmienna `KSEF_TOKEN` — gdy jest ustawiona,
+ma pierwszeństwo przed keyringiem, a `ksef-mcp token status` powie, z którego
+źródła token pochodzi. Pierwszeństwo jest celowe: kto ją eksportuje, robi to
+świadomie, a ciche preferowanie keyringu wyglądałoby na zignorowanie eksportu.
+
+`verify` jest osobną komendą, a nie ostatnim krokiem onboardingu, celowo.
+Onboarding uruchamia się wielokrotnie przy poprawianiu konfiguracji, a każde
+zapytanie do KSeF zjada godzinowy budżet, którego przekroczenia Ministerstwo
+Finansów rejestruje. Budżet wydajemy wtedy, gdy prosisz o to świadomie.
+
+Gdy KSeF odmówi z powodu limitu, `verify` wypisze czas oczekiwania i **nie
+ponowi** zapytania samoczynnie. Wbudowane ponawianie w `ksef2` jest z tego
+samego powodu ograniczone do jednej próby: jego okno wynosi cztery sekundy,
+a rzeczywisty `Retry-After` bywa liczony w minutach, więc pętla nie doczeka
+końca limitu — doda tylko prób do wzorca wyglądającego na jego obchodzenie.
 
 ## Wizualizacja PDF
 
