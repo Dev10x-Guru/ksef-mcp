@@ -38,4 +38,18 @@ build: ## Buduje sdist i wheel do katalogu dist/
 clean: ## Usuwa artefakty budowania, pamięci podręczne i wyniki pokrycia
 	rm -rf dist .pytest_cache .ruff_cache .coverage htmlcov .tmp
 
-.PHONY: help install upgrade-requirements build-requirements hooks lint test coverage-report serve build clean
+release-dry: ## Przechodzi kontrole wydania, nic nie zmieniając
+	bin/release.py fixes --dry-run
+
+release-fixes: ## Wydaje wersję poprawkową (0.1.0 -> 0.1.1)
+	bin/release.py fixes
+
+release-features: ## Wydaje wersję z nowymi funkcjami (0.1.0 -> 0.2.0)
+	bin/release.py features
+
+release-major: ## Wydaje wersję główną (0.1.0 -> 1.0.0)
+	bin/release.py major
+
+.PHONY: help install upgrade-requirements build-requirements hooks lint test \
+	coverage-report serve build clean release-dry release-fixes \
+	release-features release-major

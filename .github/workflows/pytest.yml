@@ -10,11 +10,17 @@ on:
   pull_request:
     branches: [main]
     types: [opened, reopened, synchronize, ready_for_review]
+    # `bin/**` należy tu tak samo jak `src/**`: narzędzia z tego katalogu mają
+    # własny pakiet testów i własne zadanie, ale filtr ich nie wymieniał, więc
+    # PR zmieniający wyłącznie `bin/` nie uruchamiał żadnego zadania. Skrypt
+    # wydania przeszedł CI jedynie dlatego, że przy okazji dotknął pyproject.
     paths:
       - "src/**/*.py"
       - "tests/**/*.py"
+      - "bin/**"
       - "pyproject.toml"
       - "uv.lock"
+      - ".bumpversion.toml"
       - ".github/workflows/pytest.yml"
 
 permissions:

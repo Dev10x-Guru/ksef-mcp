@@ -41,6 +41,7 @@ packages = ["src/ksef_mcp"]
 [dependency-groups]
 dev = [
     "anyio==4.15.1",
+    "bump-my-version==1.5.1",
     "pytest==9.1.1",
     "pytest-cov==7.1.0",
     "ruff==0.16.7",
