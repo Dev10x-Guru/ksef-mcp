@@ -21,8 +21,8 @@ Pliki pasujące do: `.github/workflows/**/*.yml`, `pyproject.toml`,
 
 - `references/review-checks-common.md` § Zagadnienia specyficzne dla
   KSeF — reguły bazowe (wyłączanie znacznika `ksef_live`, tajność
-  poświadczeń). Kątem tego agenta jest egzekwowanie reguł w CI — patrz
-  punkty 4-5 poniżej.
+  poświadczeń). Ten agent skupia się na egzekwowaniu tych reguł w CI —
+  patrz punkty 4-5 poniżej.
 
 ## Lista kontrolna
 

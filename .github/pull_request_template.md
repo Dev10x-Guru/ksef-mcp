@@ -10,10 +10,11 @@
      Gdy <sytuacja>, <rola> chce <motywacja>, żeby <beneficjent> mógł
      <oczekiwany rezultat>.
 
-     UWAGA: walidator `create_pr` we wtyczce Dev10x oraz workflow
-     claude-pr-hygiene.yml szukają dosłownych angielskich znaczników
-     **When** / **wants to** / **so ... can**. Polskie znaczniki nie są
-     przez nie rozpoznawane — patrz references/git-jtbd.md. -->
+     UWAGA: WYŁĄCZNIE walidator `mcp__plugin_Dev10x_cli__create_pr` we
+     wtyczce Dev10x szuka dosłownych angielskich znaczników **When** /
+     **wants to** / **so ... can** i nie rozpoznaje polskich znaczników.
+     Kontrola higieny PR-a (workflow claude-pr-hygiene.yml) rozpoznaje
+     polskie Job Story poprawnie — patrz references/git-jtbd.md. -->
 
 ## Podsumowanie
 

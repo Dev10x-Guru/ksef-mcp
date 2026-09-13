@@ -16,8 +16,7 @@ zgodności z kodem.
 
 ## Rozróżnienie ważności
 
-Patrz `references/review-checks-common.md` po wytyczne dot. poziomu
-ważności.
+Wytyczne dot. poziomu ważności — zob. `references/review-checks-common.md`.
 
 ## Wyzwalacz
 
