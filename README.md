@@ -13,7 +13,13 @@ jeszcze zaimplementowane — model domenowy jest w trakcie ustalania.
 
 ## Wymagania
 
-- Python 3.12 lub nowszy
+- Python 3.13.14 — pin dokładny, nie dolna granica (`.python-version`
+  oraz `requires-python` w `pyproject.toml`). `uv` pobierze ten interpreter
+  sam, więc nie trzeba instalować go ręcznie.
+
+  Zasada obowiązuje w całym projekcie: przypinamy konkretne wersje, nigdy
+  zakresy — także zależności. Rozjazd interpretera pociąga rozjazd
+  rozwiązanych wersji bibliotek, a `uvx` i tak rozwiązuje wersję za nas.
 - [`uv`](https://docs.astral.sh/uv/)
 
 ## Instalacja i uruchomienie

@@ -7,7 +7,7 @@ name = "ksef-mcp"
 version = "0.1.0"
 description = "Local MCP server for KSeF, Poland's national e-invoicing system"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = "==3.13.14"
 license = "AGPL-3.0-only"
 license-files = ["LICENSE"]
 authors = [{ name = "Dev10x.Guru" }]
@@ -16,11 +16,10 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Natural Language :: Polish",
-    "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Office/Business :: Financial :: Accounting",
 ]
-dependencies = ["mcp>=2.2.0"]
+dependencies = ["mcp==2.2.0"]
 
 [project.urls]
 Homepage = "https://github.com/Dev10x-Guru/ksef-mcp"
@@ -30,7 +29,12 @@ Issues = "https://github.com/Dev10x-Guru/ksef-mcp/issues"
 ksef-mcp = "ksef_mcp.server:main"
 
 [dependency-groups]
-dev = ["pytest>=8.0", "pytest-cov>=5.0", "anyio>=4.0", "ruff>=0.6"]
+dev = [
+    "anyio==4.15.1",
+    "pytest==9.1.1",
+    "pytest-cov==7.1.0",
+    "ruff==0.16.7",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -46,7 +50,7 @@ exclude_also = ["if TYPE_CHECKING:"]
 
 [tool.ruff]
 line-length = 100
-src = ["src", "tests"]
+src = ["src", "tests", "bin"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "ANN", "RUF"]
