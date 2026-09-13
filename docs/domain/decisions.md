@@ -508,6 +508,17 @@
   metadane **w każdej odpowiedzi** [D-011], więc powtarzanie ich w
   podsumowaniu byłoby zdublowaniem. Skrót ma dodać to, czego w ścieżce
   nie widać — rozmiar i wartość okresu.
+- **Kolumny zestawienia CSV — rozstrzygnięte:** numer KSeF, numer faktury
+  sprzedawcy, data wystawienia, NIP sprzedawcy, nazwa sprzedawcy, brutto,
+  netto, VAT. **Osiem kolumn.**
+  Świadomie pominięte: adresy, numery rachunków, pozycje faktury.
+  Compliance nazwał CSV formatem „wrzucę do arkusza w chmurze" — obok
+  PDF-a najbardziej wyciekowym z artefaktów. NIP i numer wystarczają do
+  uzgodnień. Ścieżki do plików również pominięte: CSV ma przeżyć
+  przesłanie dalej, a ścieżki lokalne po przesłaniu są bezużyteczne.
+  Ten zestaw jest zarazem **minimalnym kontraktem `MetadaneFaktury`** w
+  porcie [D-017] — te same pola są potrzebne do porównania archiwum z
+  rejestrem, które w badaniu [D-025] wykryło brakującą fakturę.
 - **Niezmiennik przeniesiony z badania person:** skrócenie musi być
   **powiedziane wprost** („pokazuję 50 z 812"). Cicha obcinka została
   nazwana rzeczą, która zabija zaufanie do narzędzia natychmiast — *„jeśli
@@ -1224,8 +1235,15 @@ pozwala skasować treść bez utraty idempotencji.
   [D-005] pozwala skasować faktury **nie tracąc idempotencji** — po
   wyczyszczeniu archiwum ponowna synchronizacja nie ściągnie ich
   powtórnie, bo indeks pamięta numery KSeF.
-- **Otwarte:** czy komenda czyszcząca ma działać per podmiot, per okres,
-  czy po obu wymiarach naraz.
+- **Zakres komendy czyszczącej — rozstrzygnięty:** **po obu wymiarach**,
+  per podmiot oraz per okres, z możliwością połączenia. Oba przypadki są
+  realne: biuro tnie po kliencie, który odszedł; jednoosobowa firma tnie
+  po roku podatkowym. Wykluczenie któregokolwiek byłoby zgadywaniem.
+  Etap 1 ma jeden podmiot, więc wymiar podmiotowy wygląda dziś na zbędny
+  — ale archiwum leży już w **osobnych podkatalogach per podmiot**
+  [D-032], więc wymiar istnieje w danych niezależnie od tego, czy komenda
+  go wystawia. Dołożenie go później byłoby rozszerzeniem interfejsu, nie
+  danych.
 
 ## D-015 — Nazwa dystrybucji `ksef-mcp` na PyPI
 
