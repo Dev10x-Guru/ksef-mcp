@@ -74,6 +74,20 @@ jobs:
             ${{ github.repository }} for metadata hygiene — title, description,
             and commit history quality. This is NOT a code review.
 
+            LANGUAGE: write the comment you post in POLISH, in correct
+            Polish rather than Polglish. These instructions are in
+            English; what you produce is not. Keep the REQUIRED /
+            RECOMMENDED labels, the `Fixes:` label and all file paths in
+            English — they are keys, not prose.
+
+            NOTE ON THE JOB STORY FORMAT: this project writes its Job
+            Stories in Polish (`**Gdy** ... **<rola> chce** ... **żeby
+            <beneficjent> mógł** ...`), which does NOT match the English
+            markers described below. Do not report a Polish Job Story as
+            missing or malformed — report it as present. The English
+            markers remain documented here only because the plugin's
+            `create_pr` validator still requires them.
+
             REQUIRED FIRST STEP:
             Read these files:
             1. references/git-commits.md — conventions for commit messages,

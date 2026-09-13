@@ -3,17 +3,19 @@
 # requires-python = ">=3.11"
 # dependencies = []
 # ///
-"""Fail when two ADRs share the same NNN number in the merged tree.
+"""Zakończ błędem, gdy dwa ADR-y mają ten sam numer NNN w scalonym drzewie.
 
-ADR number collisions have happened twice (089/090, and a live 095
-duplicate) because bot-authored ADR PRs race on the next free number
-with no reservation. This guard scans the whole `docs/adr/` tree — the
-state the branch would merge into — and exits non-zero on any duplicate,
-so the collision is caught on the PR rather than after merge.
+Kolizje numerów ADR zdarzyły się już dwukrotnie (089/090 oraz aktywny
+duplikat 095), ponieważ PR-y z ADR-ami tworzone przez boty ścigają się
+o kolejny wolny numer bez żadnej rezerwacji. Ten strażnik skanuje całe
+drzewo `docs/adr/` — czyli stan, do którego scaliłby się dany branch —
+i kończy się kodem niezerowym przy każdym duplikacie, dzięki czemu
+kolizję wyłapuje się na etapie PR-a, a nie po merge'u.
 
-Run directly (`bin/check-adr-numbers.py`) or via the pre-commit hook /
-CI workflow. Takes no arguments — it always scans the full corpus, not
-just changed files, because a collision is a property of the tree.
+Uruchamiaj bezpośrednio (`bin/check-adr-numbers.py`) albo przez hook
+pre-commit / workflow CI. Nie przyjmuje żadnych argumentów — zawsze
+skanuje pełny zbiór, a nie tylko zmienione pliki, bo kolizja jest
+właściwością całego drzewa, nie pojedynczego pliku.
 """
 
 from __future__ import annotations
@@ -48,8 +50,8 @@ def main() -> int:
     for number, names in sorted(collisions.items()):
         print(f"  ADR-{number}: {', '.join(names)}", file=sys.stderr)
     print(
-        "\nRenumber one file to the next free number and fix its header "
-        "and cross-references (see ADR-100 acceptance gate).",
+        "\nZmień numerację jednego pliku na kolejny wolny numer i popraw "
+        "jego nagłówek oraz odwołania (zob. bramkę akceptacji w ADR-100).",
         file=sys.stderr,
     )
     return 1

@@ -3,30 +3,33 @@
 # requires-python = ">=3.11"
 # dependencies = []
 # ///
-"""Warn when a PR modifies a *human-weighted* ADR (ADR-100 drift guard).
+"""Ostrzegaj, gdy PR modyfikuje ADR *ważony przez człowieka* (strażnik dryfu ADR-100).
 
-This repo is developed almost entirely by AI, so marking AI authorship is
-near-universal noise. The load-bearing risk is the inverse: a decision a
-human actually weighed in on being silently reversed or narrowed by an
-agent and never revisited.
+To repozytorium jest tworzone niemal wyłącznie przez AI, więc oznaczanie
+autorstwa AI to niemal wszechobecny szum. Istotnym ryzykiem jest sytuacja
+odwrotna: decyzja, w której człowiek faktycznie brał udział, zostaje po
+cichu odwrócona lub zawężona przez agenta i nigdy nie jest ponownie
+rozpatrzona.
 
-A decision is *human-weighted* when its ADR header carries either
-`Authored-by: human` or a non-empty `Reviewed-by:`. When a PR modifies such
-an ADR, this guard emits a GitHub Actions warning so a human reviews the
-change rather than letting it slip through. It is **advisory** — it always
-exits 0 and never blocks the merge.
+Decyzja jest *ważona przez człowieka*, gdy jej nagłówek ADR zawiera
+`Authored-by: human` albo niepuste pole `Reviewed-by:`. Gdy PR modyfikuje
+taki ADR, ten strażnik emituje ostrzeżenie GitHub Actions, żeby człowiek
+przejrzał zmianę zamiast dopuścić ją bez kontroli. Jest to kontrola
+**doradcza** — zawsze kończy się kodem 0 i nigdy nie blokuje merge'a.
 
-The check is header-only by design: it never inspects git trailers
-(`Co-Authored-By: Claude` is forbidden by CLAUDE.md and would be noise).
+Kontrola celowo dotyczy wyłącznie nagłówka: nigdy nie sprawdza trailerów
+gita (`Co-Authored-By: Claude` jest zabronione przez CLAUDE.md i byłoby
+szumem).
 
-The "human-weighted" predicate itself lives in `decision_provenance` so the
-re-derivation sampler shares one definition; this script is a thin caller
-that maps flagged ADRs to GitHub Actions warnings.
+Sam predykat „ważony przez człowieka" żyje w `decision_provenance`, dzięki
+czemu próbkownik ponownej derywacji współdzieli jedną definicję; ten
+skrypt jest cienkim wywołującym, który mapuje oflagowane ADR-y na
+ostrzeżenia GitHub Actions.
 
-Usage: pass the changed ADR paths as arguments. The CI workflow computes
-the modified/renamed `docs/adr/*.md` set (`git diff --diff-filter=MR`) and
-passes it here, so this script stays a pure function of its inputs and does
-not touch git itself.
+Użycie: przekaż zmienione ścieżki ADR jako argumenty. Workflow CI wylicza
+zbiór zmodyfikowanych/przemianowanych plików `docs/adr/*.md`
+(`git diff --diff-filter=MR`) i przekazuje go tutaj, dzięki czemu skrypt
+pozostaje czystą funkcją swoich wejść i sam nie dotyka gita.
 """
 
 from __future__ import annotations
@@ -34,9 +37,10 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-# The shared predicate lives beside this script; `uv run --script` and a plain
-# `python bin/check-adr-drift.py` both put bin/ on sys.path[0], but insert it
-# explicitly so the import is robust regardless of the invocation's cwd.
+# Współdzielony predykat żyje obok tego skryptu; zarówno `uv run --script`,
+# jak i zwykłe `python bin/check-adr-drift.py` umieszczają bin/ w
+# sys.path[0], ale wstawiamy je jawnie, żeby import był odporny niezależnie
+# od katalogu roboczego wywołania.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from decision_provenance import human_weight_reason, is_adr

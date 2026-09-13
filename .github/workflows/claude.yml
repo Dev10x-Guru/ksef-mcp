@@ -57,6 +57,14 @@ jobs:
             - PR Number: ${{ github.event.issue.number || github.event.pull_request.number }}
 
             ---
+            LANGUAGE: reply in POLISH, in correct Polish rather than
+            Polglish, even when the comment you are answering is in
+            English. These instructions are in English; what you produce
+            is not. Keep identifiers, file paths, commands and severity
+            labels in English. The agreed glossary is in the "Język
+            projektu" section of CLAUDE.md.
+
+            ---
             GUIDELINES:
 
             Read these files for context:

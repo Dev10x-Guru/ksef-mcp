@@ -1,17 +1,20 @@
-"""Shared "human-weighted decision" predicate for ADR-100 provenance tooling.
+"""Współdzielony predykat „decyzji ważonej przez człowieka" dla narzędzi prowenienacji ADR-100.
 
-Two symmetric halves of the ADR-100 provenance procedure consume this module
-and must never disagree on what counts as *human-weighted*:
+Dwie symetryczne połówki procedury prowenienacji ADR-100 korzystają z tego
+modułu i nigdy nie mogą się różnić w tym, co uznają za *ważone przez
+człowieka*:
 
-- the **drift** guard (`check-adr-drift.py`) — warns when a PR modifies
-  a human-weighted ADR;
-- the **re-derivation** sampler (`rederive-sample.py`) — draws
-  a sample of human-weighted decisions to re-derive under current circumstances.
+- strażnik **dryfu** (`check-adr-drift.py`) — ostrzega, gdy PR modyfikuje
+  ADR ważony przez człowieka;
+- próbkownik **ponownej derywacji** (`rederive-sample.py`) — losuje
+  próbkę decyzji ważonych przez człowieka do ponownego wyprowadzenia
+  w bieżących okolicznościach.
 
-The ADR predicate (`human_weight_reason`) is header-only by design: a decision
-is human-weighted when its ADR header carries `Authored-by: human` **or** a
-non-empty `Reviewed-by:`. It never inspects git trailers (`Co-Authored-By:
-Claude` is forbidden by CLAUDE.md and would be noise).
+Predykat ADR (`human_weight_reason`) celowo dotyczy wyłącznie nagłówka:
+decyzja jest ważona przez człowieka, gdy jej nagłówek ADR zawiera
+`Authored-by: human` **albo** niepuste pole `Reviewed-by:`. Nigdy nie
+sprawdza trailerów gita (`Co-Authored-By: Claude` jest zabronione przez
+CLAUDE.md i byłoby szumem).
 """
 
 from __future__ import annotations
@@ -21,18 +24,34 @@ from pathlib import Path
 
 ADR_FILENAME = re.compile(r"^\d{3}-.+\.md$")
 
-# The header is the preamble before the first `## ` section. Restricting the
-# field scan to it avoids matching the same field names quoted in the body
-# (e.g. ADR-100 explains `Authored-by:` in prose).
+# Nagłówek to preambuła przed pierwszą sekcją `## `. Ograniczenie skanowania
+# pól do niego zapobiega dopasowaniu tych samych nazw pól cytowanych w
+# treści (np. ADR-100 objaśnia `Authored-by:` w prozie).
 _HEADER_END = re.compile(r"^## ", re.MULTILINE)
 _AUTHORED_BY = re.compile(r"^-\s*\*\*Authored-by:\*\*\s*(?P<value>.*?)\s*$", re.MULTILINE)
 _REVIEWED_BY = re.compile(r"^-\s*\*\*Reviewed-by:\*\*\s*(?P<value>.*?)\s*$", re.MULTILINE)
 
-# Values that mean "no reviewer" — an empty `Reviewed-by:` field.
-# The three dash variants are deliberate, not a typo: a human filling in
-# `Reviewed-by:` may type a hyphen, an en dash or an em dash, and all three
-# mean "nobody reviewed this". RUF001 flags exactly the ambiguity we need.
-_EMPTY_MARKERS = {"", "—", "-", "–", "none", "n/a", "tbd", "todo"}  # noqa: RUF001
+# Wartości oznaczające „brak recenzenta" — puste pole `Reviewed-by:`.
+# Trzy warianty myślnika są celowe, nie są literówką: człowiek wypełniający
+# `Reviewed-by:` może wpisać dywiz, półpauzę albo pauzę, i wszystkie trzy
+# oznaczają „nikt tego nie zrecenzował". RUF001 zgłasza dokładnie tę
+# niejednoznaczność, której potrzebujemy.
+# Warianty polskie dopisane wraz z przejściem projektu na polski: autor
+# piszący ADR po polsku wpisze „brak" albo „nikt", a bez nich parser wziąłby
+# to za nazwisko recenzenta i uznał decyzję za zrecenzowaną przez człowieka.
+_EMPTY_MARKERS = {
+    "",
+    "—",
+    "-",
+    "–",  # noqa: RUF001 — półpauza to celowy wariant, nie literówka
+    "none",
+    "n/a",
+    "tbd",
+    "todo",
+    "brak",
+    "nikt",
+    "do uzupełnienia",
+}
 
 
 def header_region(*, text: str) -> str:
@@ -51,7 +70,7 @@ def is_reviewed(*, reviewed_by: str | None) -> bool:
     normalized = reviewed_by.strip().lower()
     if normalized in _EMPTY_MARKERS:
         return False
-    # Unfilled template placeholder, e.g. "[named human(s) who read ...]".
+    # Niewypełniony placeholder z szablonu, np. "[named human(s) who read ...]".
     if normalized.startswith("[") and normalized.endswith("]"):
         return False
     return True

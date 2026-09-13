@@ -1,50 +1,51 @@
-# Rule Index & Agent Routing
+# Indeks reguł i kierowanie agentami
 
-Path-aware routing table for `.claude/rules/` and `.claude/agents/`
-in this repository.
+Tablica kierowania zależna od ścieżki dla `.claude/rules/` i
+`.claude/agents/` w tym repozytorium.
 
-## Directory Contract
+## Kontrakt katalogu
 
-- This file is the single source of truth in `.claude/rules/`.
-- Full rule content lives in `references/*.md`.
-- Agent triggers and checklists live in `.claude/agents/*.md`.
+- Ten plik jest jedynym źródłem prawdy w `.claude/rules/`.
+- Pełna treść reguł znajduje się w `references/*.md`.
+- Wyzwalacze i listy kontrolne agentów znajdują się w
+  `.claude/agents/*.md`.
 
-## File Patterns -> Agents -> References
+## Wzorce plików -> Agenty -> Odwołania
 
-| File Pattern | Primary Agent | Required References |
+| Wzorzec pliku | Agent główny | Wymagane odwołania |
 |---|---|---|
 | `src/ksef_mcp/**/*.py` | `reviewer-generic`, `reviewer-security` | `references/review-checks-common.md` |
 | `tests/**/*.py` | `reviewer-test-patterns`, `reviewer-security` | `references/review-checks-common.md` |
 | `.github/workflows/**`, `pyproject.toml`, `bin/**` | `reviewer-infra` | `references/review-checks-common.md` |
 | `docs/**`, `.claude/**/*.md`, `README.md`, `CLAUDE.md` | `reviewer-docs` | `references/review-checks-common.md` |
 
-## Loading Strategy
+## Strategia wczytywania
 
-| Location | When loaded | Content |
+| Lokalizacja | Kiedy wczytywane | Treść |
 |----------|------------|---------|
-| `CLAUDE.md` | Every session | Project conventions and stack summary |
-| `.claude/rules/INDEX.md` | Every session | This routing table |
-| `references/*.md` | On-demand, matched by file pattern above | Detailed git, review, JTBD guides |
+| `CLAUDE.md` | Każda sesja | Konwencje projektu i podsumowanie stosu technologicznego |
+| `.claude/rules/INDEX.md` | Każda sesja | Ta tablica kierowania |
+| `references/*.md` | Na żądanie, dopasowane wg wzorca pliku powyżej | Szczegółowe przewodniki po git, przeglądzie, JTBD |
 
-## Cross-Cutting Checks
+## Kontrole przekrojowe
 
-Always apply `references/review-checks-common.md`, including its
-KSeF-Specific Concerns section (production-call safety, credential
-handling, invoice XML handling, `ksef_live` test isolation).
+Zawsze stosuj `references/review-checks-common.md`, w tym jego sekcję
+Zagadnienia specyficzne dla KSeF (bezpieczeństwo wywołań produkcyjnych,
+obsługa poświadczeń, obsługa XML faktury, izolacja testów `ksef_live`).
 
-## Reference Documents (`references/`)
+## Dokumenty referencyjne (`references/`)
 
-| File | Topic | Scope |
-|------|-------|-------|
-| `git-commits.md` | Commit format, gitmoji, atomic commits | Mandatory for all commits |
-| `git-pr.md` | PR format, grooming, review feedback | Mandatory for all PRs |
-| `git-jtbd.md` | Job Story format, principles, examples | Mandatory for JTBD decisions |
-| `review-guidelines.md` | Review workflow, threads, summaries | Mandatory for PR reviews |
-| `review-checks-common.md` | False positives, verification, KSeF-specific concerns | Mandatory for code review agents |
+| Plik | Temat | Zakres |
+|------|-------|--------|
+| `git-commits.md` | Format commita, gitmoji, atomowe commity | Obowiązkowe dla wszystkich commitów |
+| `git-pr.md` | Format PR-a, porządkowanie, informacje zwrotne z przeglądu | Obowiązkowe dla wszystkich PR-ów |
+| `git-jtbd.md` | Format Job Story, zasady, przykłady | Obowiązkowe dla decyzji JTBD |
+| `review-guidelines.md` | Przepływ przeglądu, wątki, podsumowania | Obowiązkowe dla przeglądów PR-ów |
+| `review-checks-common.md` | Fałszywe alarmy, weryfikacja, zagadnienia specyficzne dla KSeF | Obowiązkowe dla agentów przeglądu kodu |
 
-## Agent Specs (`.claude/agents/`)
+## Specyfikacje agentów (`.claude/agents/`)
 
-| File | Trigger | References |
+| Plik | Wyzwalacz | Odwołania |
 |------|---------|------------|
 | `reviewer-generic.md` | `src/ksef_mcp/**/*.py` | `references/review-checks-common.md` |
 | `reviewer-security.md` | `src/ksef_mcp/**/*.py`, `tests/**/*.py` | `references/review-checks-common.md` |
@@ -52,13 +53,13 @@ handling, invoice XML handling, `ksef_live` test isolation).
 | `reviewer-infra.md` | `.github/workflows/**`, `pyproject.toml`, `bin/**` | `references/review-checks-common.md` |
 | `reviewer-docs.md` | `docs/**`, `.claude/**/*.md`, `README.md`, `CLAUDE.md` | `references/review-checks-common.md` |
 
-## Size Budgets
+## Budżety rozmiaru
 
-| File type | Max lines |
+| Typ pliku | Maks. linii |
 |-----------|-----------|
-| Agent specs | 200 |
-| Reference docs | 300 |
+| Specyfikacje agentów | 200 |
+| Dokumenty referencyjne | 300 |
 | `CLAUDE.md` | 120 |
 
-These are guidelines, not hard gates — split a file when it becomes
-hard to navigate, not purely on line count.
+To wytyczne, nie sztywne bramki — dziel plik, gdy trudno się w nim
+poruszać, nie wyłącznie na podstawie liczby linii.

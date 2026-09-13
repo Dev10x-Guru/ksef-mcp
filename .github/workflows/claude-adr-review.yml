@@ -44,6 +44,16 @@ jobs:
             contains an architectural decision worth recording as an ADR
             (Architecture Decision Record).
 
+            LANGUAGE: write the ADR body in POLISH, in correct Polish
+            rather than Polglish. These instructions are in English; what
+            you produce is not. The header field LABELS
+            (`Date:`, `Status:`, `Deciders:`, `Authored-by:`,
+            `Reviewed-by:`, `Sources:`) MUST stay in English exactly as
+            the template spells them — `bin/decision_provenance.py`
+            matches them with a regex, and a translated label makes the
+            provenance tooling silently stop detecting human-weighted
+            decisions. Their VALUES and all narrative sections are Polish.
+
             ## PR Context
             - **Repository**: ${{ github.repository }}
             - **PR Number**: ${{ github.event.pull_request.number }}
