@@ -117,6 +117,8 @@ uv sync --group dev       # instalacja zależności wraz z narzędziami dev
 uv run pytest             # testy wraz z pokryciem
 uvx ksef-mcp              # uruchomienie spakowanego serwera przez uvx
 uvx ksef-mcp onboarding   # konfiguracja przed pierwszym uruchomieniem
+uvx ksef-mcp doctor       # same warunki wstępne, bez sięgania do KSeF
+uvx ksef-mcp verify       # odpytuje KSeF — wydaje godzinowy budżet
 ```
 
 Próg pokrycia: `pyproject.toml` ustawia `fail_under = 100`. Nowy kod nie

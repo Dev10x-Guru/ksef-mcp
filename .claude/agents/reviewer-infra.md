@@ -57,8 +57,8 @@ Pliki pasujące do: `.github/workflows/**/*.yml`, `pyproject.toml`,
    `main` w tym repozytorium (brak `develop`).
 8. **Poprawność pakowania** — dla zmian dotykających kroki
    budowania/publikacji sprawdź, czy punkt wejścia skryptu konsolowego
-   (`ksef-dev10x-guru = "ksef_mcp.server:main"`) i nazwa dystrybucji
-   (`ksef-dev10x-guru`) pozostają spójne z `pyproject.toml` oraz ze
+   (`ksef-mcp = "ksef_mcp.cli:main"`) i nazwa dystrybucji
+   (`ksef-mcp`) pozostają spójne z `pyproject.toml` oraz ze
    stałą `DISTRIBUTION_NAME` w `src/ksef_mcp/metadata.py`, z której
    `importlib.metadata` odczytuje wersję. Rozjazd tej stałej z nazwą
    dystrybucji wywala serwer przy imporcie.

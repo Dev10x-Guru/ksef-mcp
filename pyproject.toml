@@ -19,14 +19,19 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Topic :: Office/Business :: Financial :: Accounting",
 ]
-dependencies = ["mcp==2.2.0"]
+dependencies = [
+    "mcp==2.2.0",
+    "keyring==25.7.0",
+    "platformdirs==4.11.8",
+    "ksef2==0.19.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/Dev10x-Guru/ksef-mcp"
 Issues = "https://github.com/Dev10x-Guru/ksef-mcp/issues"
 
 [project.scripts]
-ksef-mcp = "ksef_mcp.server:main"
+ksef-mcp = "ksef_mcp.cli:main"
 
 # Stated rather than inferred from the distribution name: a rename that
 # breaks the inference fails the build instead of shipping an empty wheel.
@@ -43,7 +48,11 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--cov=ksef_mcp --cov-report=term-missing"
+# A live test spends the hourly KSeF query budget and the Ministry logs
+# breaches, so the default run must exclude them rather than rely on the
+# caller remembering to.
+addopts = "--cov=ksef_mcp --cov-report=term-missing -m 'not ksef_live'"
+markers = ["ksef_live: reaches a real KSeF endpoint; excluded by default"]
 
 [tool.coverage.run]
 branch = true
