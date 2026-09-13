@@ -4,8 +4,6 @@ description: |
   Przeglądaj zmiany w kodzie pod kątem podatności bezpieczeństwa —
   zaszytych na stałe sekretów, niebezpiecznych wzorców oraz ryzyk
   specyficznych dla KSeF dot. poświadczeń/PII.
-
-  Triggers: files matching src/ksef_mcp/**/*.py, tests/**/*.py
 tools: Glob, Grep, Read
 model: sonnet
 color: red

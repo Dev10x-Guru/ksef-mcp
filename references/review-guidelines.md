@@ -38,9 +38,9 @@ merge, nie kolejny cykl przeglądu.
    nieaktualne podsumowania
 3. Przeanalizuj bieżący diff (`gh pr diff`)
 4. Dla każdego wcześniejszego wątku Claude Code Review:
-   - Poprawiony/usunięty → odpowiedz „Addressed" (NIE rozwiązuj wątku
+   - Poprawiony/usunięty → odpowiedz „Poprawione" (NIE rozwiązuj wątku
      — zostaw to człowiekowi)
-   - Utrzymuje się w niezmienionym kodzie → odpowiedz „Still applies";
+   - Utrzymuje się w niezmienionym kodzie → odpowiedz „Nadal aktualne";
      nie powielaj
    - Zmieniony, ale problem pozostaje → odpowiedz z aktualizacją
 5. Używaj narzędzi komentarzy inline TYLKO dla NOWYCH problemów

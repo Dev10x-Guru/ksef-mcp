@@ -22,7 +22,7 @@
 > narzędzie budujące graf widziało każdą krawędź, nie tylko te z
 > `Supersedes:`. Usuń każde pole relacji, które nie ma zastosowania.
 
-> **Pola prowenienacji.** `Authored-by:` odróżnia decyzje człowieka od
+> **Pola proweniencji.** `Authored-by:` odróżnia decyzje człowieka od
 > decyzji agenta w chwili ich podejmowania; `Reviewed-by:` nazywa
 > człowieka/ludzi, którzy przeczytali cały tekst przed akceptacją —
 > pusta wartość oznacza niezrecenzowane, a ADR niezrecenzowany nie może

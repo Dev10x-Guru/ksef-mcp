@@ -13,7 +13,7 @@ skonsumowania przez agenta ponownej derywacji.
 Jedno źródło kandydatów na dziś: **korpus ADR** (`docs/adr/*.md`) — ADR-y,
 które predykat „ważony przez człowieka" (z `decision_provenance`, wspólnej
 biblioteki) oznacza (`Authored-by: human` albo niepuste `Reviewed-by:`).
-Dziś puste; rośnie wraz z przyrostem znaczników prowenienacji.
+Dziś puste; rośnie wraz z przyrostem znaczników proweniencji.
 
 Wybór, w kolejności priorytetu:
 

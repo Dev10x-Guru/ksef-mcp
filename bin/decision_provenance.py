@@ -1,6 +1,6 @@
-"""Współdzielony predykat „decyzji ważonej przez człowieka" dla narzędzi prowenienacji ADR-100.
+"""Współdzielony predykat „decyzji ważonej przez człowieka" dla narzędzi proweniencji ADR-100.
 
-Dwie symetryczne połówki procedury prowenienacji ADR-100 korzystają z tego
+Dwie symetryczne połówki procedury proweniencji ADR-100 korzystają z tego
 modułu i nigdy nie mogą się różnić w tym, co uznają za *ważone przez
 człowieka*:
 

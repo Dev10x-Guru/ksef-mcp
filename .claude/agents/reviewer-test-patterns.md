@@ -5,8 +5,6 @@ description: |
   pokryciu, DRY dla fixture'ów i dobrych praktyk parametryzacji, a
   także bezpieczeństwa testów specyficznego dla KSeF (izolacja od
   żywej sieci, brak fixture'ów XML z rzeczywistymi danymi).
-
-  Triggers: files matching tests/**/*.py
 tools: Glob, Grep, Read
 model: sonnet
 color: blue
@@ -25,8 +23,8 @@ Pliki pasujące do: `tests/**/*.py`
 
 - `references/review-checks-common.md` § Zagadnienia specyficzne dla
   KSeF — reguły bazowe (brak produkcyjnego KSeF, poświadczenia nigdy
-  zaszyte na stałe, brak utrwalonego surowego XML faktury). Kątem tego
-  agenta jest weryfikacja, czy testy faktycznie egzekwują te reguły —
+  zaszyte na stałe, brak utrwalonego surowego XML faktury). Ten agent
+  skupia się na weryfikacji, czy testy faktycznie egzekwują te reguły —
   patrz Bezpieczeństwo testów specyficzne dla KSeF poniżej.
 
 ## Przypomnienia

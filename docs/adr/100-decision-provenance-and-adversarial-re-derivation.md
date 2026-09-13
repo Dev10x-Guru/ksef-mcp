@@ -34,11 +34,11 @@ człowieka przed cichym odwróceniem przez AI**.
 
 ## Decyzja
 
-Przyjąć procedurę prowenienacji decyzji złożoną z pięciu części.
+Przyjąć procedurę proweniencji decyzji złożoną z pięciu części.
 Autorstwo jest zapisywane w chwili decyzji, a *obydwa* kierunki
 podejmowania decyzji podlegają przeglądowi.
 
-1. **Pola nagłówka prowenienacji** (zob. [TEMPLATE.md](TEMPLATE.md)):
+1. **Pola nagłówka proweniencji** (zob. [TEMPLATE.md](TEMPLATE.md)):
    - `Authored-by:` — `human` albo `agent (<identyfikator modelu>)`.
      Brak oznaczenia oznacza, że decyzję podjęło AI, co jest tu
      wartością domyślną.
@@ -113,7 +113,7 @@ to temu, kto ostatnio dotknął kodu.
 
 ## Powiązane
 
-- [TEMPLATE.md](TEMPLATE.md) — niesie pola nagłówka prowenienacji
+- [TEMPLATE.md](TEMPLATE.md) — niesie pola nagłówka proweniencji
 - `.github/workflows/adr-numbering.yml` — bramka 3a
 - `.github/workflows/adr-provenance-drift.yml` — część 2
 - `.github/workflows/adr-rederivation.yml` — część 4
