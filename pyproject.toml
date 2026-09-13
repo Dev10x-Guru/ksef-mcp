@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "ksef-mcp"
+name = "ksef-dev10x-guru"
 version = "0.1.0"
 description = "Local MCP server for KSeF, Poland's national e-invoicing system"
 readme = "README.md"
@@ -26,7 +26,12 @@ Homepage = "https://github.com/Dev10x-Guru/ksef-mcp"
 Issues = "https://github.com/Dev10x-Guru/ksef-mcp/issues"
 
 [project.scripts]
-ksef-mcp = "ksef_mcp.server:main"
+ksef-dev10x-guru = "ksef_mcp.server:main"
+
+# Hatchling infers the shipped directory from the distribution name, which
+# no longer matches the import package. Without this it refuses to build.
+[tool.hatch.build.targets.wheel]
+packages = ["src/ksef_mcp"]
 
 [dependency-groups]
 dev = [
