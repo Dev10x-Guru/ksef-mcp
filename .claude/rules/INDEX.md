@@ -58,6 +58,7 @@ obsługa poświadczeń, obsługa XML faktury, izolacja testów `ksef_live`).
 
 | Umiejętność | Kiedy | Czego NIE robi |
 |---|---|---|
+| `release` | wydajesz nową wersję | nie redaguje notatek — deleguje do `release-notes` |
 | `release-notes` | sekcja „Bez wydania" w `CHANGELOG.md` jest pusta albo niekompletna przed wydaniem | nie wydaje — podnoszenie wersji, tagowanie i publikacja należą do `bin/release.py` |
 
 ## Budżety rozmiaru

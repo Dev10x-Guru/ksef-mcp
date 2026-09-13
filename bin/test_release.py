@@ -414,15 +414,23 @@ def test_prose_mentioning_the_heading_does_not_satisfy_the_guard(
         release.release(root=repository, kind="fixes", dry_run=True)
 
 
-def test_the_real_changelog_parses_into_a_usable_section() -> None:
+def test_the_real_changelog_splits_on_the_heading_not_the_prose() -> None:
     # Against the repository's own file, not a fixture. The substring bug this
-    # guards was invisible to synthetic cases and only showed when the
-    # function met the real document — whose prose quotes the heading.
+    # guards was invisible to synthetic cases and only showed when the function
+    # met the real document — whose opening prose quotes the heading verbatim.
     body = (SCRIPT.parent.parent / "CHANGELOG.md").read_text(encoding="utf-8")
 
     before, unreleased, _ = release.split_unreleased(body)
 
-    assert before.rstrip().endswith(".") and unreleased.strip().startswith("###")
+    assert "prowadzi człowiek" in before and "prowadzi człowiek" not in unreleased
+
+
+def test_the_real_changelog_carries_entries_to_release() -> None:
+    body = (SCRIPT.parent.parent / "CHANGELOG.md").read_text(encoding="utf-8")
+
+    _, unreleased, _ = release.split_unreleased(body)
+
+    assert "### Dodane" in unreleased and "### Bezpieczeństwo" in unreleased
 
 
 def test_a_changelog_without_the_heading_stops_the_release(repository: Path) -> None:
