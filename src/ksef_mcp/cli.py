@@ -7,10 +7,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
-from ksef_mcp import config, preflight, token_store
+from ksef_mcp import config, preflight, skill, token_store
 from ksef_mcp.config import Configuration, KsefEnvironment
 from ksef_mcp.metadata import SERVER_NAME, VERSION
 from ksef_mcp.server import main as run_mcp_server
+from ksef_mcp.skill import SkillScope
 
 if TYPE_CHECKING:
     from ksef_mcp import ksef_port
@@ -26,6 +27,10 @@ EXIT_NO_TOKEN: Final[int] = 2
 EXIT_NOT_CONFIGURED: Final[int] = 3
 
 EXIT_KSEF_REFUSED: Final[int] = 4
+
+EXIT_SKILL_KEPT: Final[int] = 5
+
+AFFIRMATIVE_ANSWERS: Final[frozenset[str]] = frozenset({"t", "tak"})
 
 
 @dataclass(frozen=True)
@@ -386,6 +391,44 @@ def run_token_status(console: Console, *, nip: str) -> int:
     return EXIT_OK
 
 
+def confirm_overwrite(console: Console) -> bool:
+    answer = ask_with_default(
+        console,
+        prompt="Nadpisać zainstalowany skill? (t/n)",
+        default="n",
+    )
+    return answer.lower() in AFFIRMATIVE_ANSWERS
+
+
+def run_skill_install(
+    console: Console,
+    *,
+    scope: SkillScope,
+    home: Path,
+    working_directory: Path,
+) -> int:
+    comparison = skill.compare_skill(
+        skill.skill_path(scope, home=home, working_directory=working_directory)
+    )
+    console.write(f"Zakres: {scope} — {comparison.path}")
+    if comparison.absent:
+        skill.write_skill(comparison)
+        console.write(f"Skill zainstalowany dla wersji {VERSION}.")
+        return EXIT_OK
+    if comparison.up_to_date:
+        console.write(f"Skill jest aktualny dla wersji {VERSION} — nic nie zmieniam.")
+        return EXIT_OK
+    console.write("Zainstalowany skill różni się od nowego:")
+    for line in skill.describe_difference(comparison):
+        console.write(f"  {line}")
+    if not confirm_overwrite(console):
+        console.write("Zostawiam zainstalowany skill bez zmian.")
+        return EXIT_SKILL_KEPT
+    skill.write_skill(comparison)
+    console.write(f"Skill zaktualizowany do wersji {VERSION}.")
+    return EXIT_OK
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog=SERVER_NAME,
@@ -395,7 +438,13 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--version", action="version", version=f"{SERVER_NAME} {VERSION}")
-    parser.set_defaults(command=None, nip=None, token_command=None)
+    parser.set_defaults(
+        command=None,
+        nip=None,
+        token_command=None,
+        skill_command=None,
+        scope=None,
+    )
     subcommands = parser.add_subparsers(dest="command")
 
     subcommands.add_parser("onboarding", help="Przeprowadza przez konfigurację")
@@ -411,6 +460,20 @@ def build_parser() -> argparse.ArgumentParser:
     ):
         action_parser = token_actions.add_parser(action, help=help_text)
         action_parser.add_argument("--nip", required=True)
+
+    skill_command = subcommands.add_parser("skill", help="Instaluje skill dla agenta")
+    skill_actions = skill_command.add_subparsers(dest="skill_command", required=True)
+    install = skill_actions.add_parser("install", help="Tworzy albo aktualizuje skill")
+    # No default scope on purpose: uvx runs from whatever directory happens to
+    # be current, so a silently assumed scope would write the skill somewhere
+    # the person never meant to look for it.
+    install.add_argument(
+        "--scope",
+        required=True,
+        type=SkillScope,
+        choices=tuple(SkillScope),
+        help="user: ~/.claude/skills, project: ./.claude/skills",
+    )
     return parser
 
 
@@ -420,6 +483,7 @@ def dispatch(
     console: Console,
     working_directory: Path,
     configuration_file: Path | None,
+    home: Path,
 ) -> int:
     if arguments.command == "onboarding":
         return run_onboarding(
@@ -431,6 +495,13 @@ def dispatch(
         return run_doctor(console, working_directory=working_directory)
     if arguments.command == "verify":
         return run_verify(console, configuration_file=configuration_file)
+    if arguments.command == "skill":
+        return run_skill_install(
+            console,
+            scope=arguments.scope,
+            home=home,
+            working_directory=working_directory,
+        )
     if arguments.command == "token":
         handlers = {
             "set": run_token_set,
@@ -448,6 +519,7 @@ def main(
     console: Console | None = None,
     working_directory: Path | None = None,
     configuration_file: Path | None = None,
+    home: Path | None = None,
 ) -> int:
     reporting = default_console() if console is None else console
     try:
@@ -456,6 +528,7 @@ def main(
             console=reporting,
             working_directory=Path.cwd() if working_directory is None else working_directory,
             configuration_file=configuration_file,
+            home=Path.home() if home is None else home,
         )
     # This message was written for exactly this moment; a traceback would bury
     # the one instruction that gets the person unstuck.

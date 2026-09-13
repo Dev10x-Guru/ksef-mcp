@@ -10,6 +10,21 @@ udokumentowane.
 
 ## Bez wydania
 
+### Dodane
+
+- Komenda `ksef-mcp skill install --scope user|project` zapisująca skill dla
+  Claude Code, dzięki czemu agent od razu wie, jak korzystać z serwera:
+  że odpowiada z lokalnego archiwum, że synchronizacja ma własny rytm, że
+  treść faktury nie wchodzi do kontekstu i że każda odpowiedź nazywa
+  środowisko. Zakres podaje się jawnie — `uvx` bywa uruchamiany
+  z przypadkowego katalogu, więc cicho wybrane miejsce byłoby ostatnim,
+  w którym ktokolwiek szukałby pliku ([GH-34]).
+- Aktualizacja skilla pokazuje różnicę wobec zainstalowanego pliku i pyta
+  o zgodę przed nadpisaniem, więc własne zmiany nie znikają niezauważone
+  ([GH-34]).
+
+[GH-34]: https://github.com/Dev10x-Guru/ksef-mcp/issues/34
+
 ## 0.1.1 — 2026-09-13
 
 
