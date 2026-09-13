@@ -2,40 +2,40 @@ SHELL := /bin/bash
 
 default: help
 
-help: ## Show help message
+help: ## Wyświetla tę pomoc
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-install: ## Sync the virtualenv with dev dependencies
+install: ## Synchronizuje środowisko wraz z zależnościami deweloperskimi
 	uv sync --group dev
 
-upgrade-requirements: ## Upgrade and lock requirements
+upgrade-requirements: ## Podnosi wersje zależności i zapisuje blokadę
 	uv lock --upgrade
 
-build-requirements: ## Build the requirements files
+build-requirements: ## Generuje pliki requirements
 	uv export --frozen --no-hashes --no-annotate --no-dev --no-emit-project -o requirements/base.txt
 	uv export --frozen --no-hashes --no-annotate --only-group dev -o requirements/development.txt
 
-hooks: ## Install the pre-commit git hooks
+hooks: ## Instaluje hooki gita obsługiwane przez pre-commit
 	uv run pre-commit install --allow-missing-config
 	uv run pre-commit install --hook-type commit-msg --allow-missing-config
 
-lint: ## Run every pre-commit hook over the whole tree
+lint: ## Uruchamia wszystkie hooki pre-commit na całym drzewie
 	uv run pre-commit run --all-files
 
-test: ## Run the test suite with coverage
+test: ## Uruchamia testy wraz z pokryciem
 	uv run pytest
 
-coverage-report: ## Run tests and open the HTML coverage report
+coverage-report: ## Uruchamia testy i otwiera raport pokrycia w HTML
 	-uv run pytest --cov-report html
 	open .tmp/coverage/index.html
 
-serve: ## Run the MCP server from the working copy over stdio
+serve: ## Uruchamia serwer MCP z kopii roboczej przez stdio
 	uvx --from . ksef-mcp
 
-build: ## Build the sdist and wheel into dist/
+build: ## Buduje sdist i wheel do katalogu dist/
 	uv build
 
-clean: ## Remove build artefacts, caches and coverage output
+clean: ## Usuwa artefakty budowania, pamięci podręczne i wyniki pokrycia
 	rm -rf dist .pytest_cache .ruff_cache .coverage htmlcov .tmp
 
 .PHONY: help install upgrade-requirements build-requirements hooks lint test coverage-report serve build clean

@@ -1,69 +1,70 @@
-# ADR-NNN: [Title]
+# ADR-NNN: [Tytuł]
 
 - **Date:** YYYY-MM-DD
 - **Status:** Proposed | Accepted | Deprecated | Superseded
-- **Deciders:** [names]
-- **Authored-by:** human | agent (<model id>)
-- **Reviewed-by:** [named human(s) who read the full text before acceptance; empty = unreviewed]
-- **Sources:** [inspiration / pattern origins; opaque references allowed]
-- **Supersedes:** [reference to prior ADR this one fully replaces, if applicable]
-- **Superseded-by:** [reference to the ADR that replaces this one, if applicable]
-- **Refines:** [reference to an ADR this one elaborates without replacing, if applicable]
-- **Depends-on:** [reference to an ADR whose mechanism this one builds on, if applicable]
+- **Deciders:** [nazwiska]
+- **Authored-by:** human | agent (<identyfikator modelu>)
+- **Reviewed-by:** [nazwani człowiek/ludzie, którzy przeczytali cały tekst przed akceptacją; puste = niezrecenzowane]
+- **Sources:** [inspiracje / źródła pochodzenia wzorców; nieprzejrzyste odwołania dozwolone]
+- **Supersedes:** [odwołanie do wcześniejszego ADR, który ten w pełni zastępuje, jeśli dotyczy]
+- **Superseded-by:** [odwołanie do ADR, który zastępuje ten dokument, jeśli dotyczy]
+- **Refines:** [odwołanie do ADR, który ten dokument rozwija bez zastępowania, jeśli dotyczy]
+- **Depends-on:** [odwołanie do ADR, na którego mechanizmie ten dokument się opiera, jeśli dotyczy]
 
-> **Relationship & lifecycle fields.** Set `Superseded-by:` together with
-> `Status: Superseded` (or `Deprecated`) when a later ADR fully replaces
-> this decision. When only *part* of a decision changes, keep
-> `Status: Accepted`, record the superseding ADR in `Superseded-by:` with
-> an explicit scope note, and add a dated amendment blockquote directly
-> under this header block, e.g. `> **Amendment (YYYY-MM-DD):** [what
-> changed and why].`
-> `Refines:` and `Depends-on:` capture non-superseding relationships so a
-> graph builder sees every edge, not only `Supersedes:` ones. Drop any
-> relationship field that does not apply.
+> **Pola relacji i cyklu życia.** Ustaw `Superseded-by:` razem ze
+> `Status: Superseded` (albo `Deprecated`), gdy późniejszy ADR w pełni
+> zastępuje tę decyzję. Gdy zmienia się tylko *część* decyzji, zachowaj
+> `Status: Accepted`, zapisz zastępujący ADR w `Superseded-by:` z jawną
+> notatką o zakresie i dodaj bezpośrednio pod tym blokiem nagłówka
+> datowany cytat-poprawkę, np. `> **Amendment (YYYY-MM-DD):** [co się
+> zmieniło i dlaczego].`
+> `Refines:` i `Depends-on:` opisują relacje niebędące supersesją, żeby
+> narzędzie budujące graf widziało każdą krawędź, nie tylko te z
+> `Supersedes:`. Usuń każde pole relacji, które nie ma zastosowania.
 
-> **Provenance fields.** `Authored-by:` distinguishes human from agent
-> decisions at decision time; `Reviewed-by:` names the human(s) who read
-> the full text before acceptance — an empty value means unreviewed, and
-> an unreviewed ADR may not claim `Accepted`. `Sources:` records
-> inspiration/pattern origins (opaque references allowed). See
+> **Pola proweniencji.** `Authored-by:` odróżnia decyzje człowieka od
+> decyzji agenta w chwili ich podejmowania; `Reviewed-by:` nazywa
+> człowieka/ludzi, którzy przeczytali cały tekst przed akceptacją —
+> pusta wartość oznacza niezrecenzowane, a ADR niezrecenzowany nie może
+> rościć sobie statusu `Accepted`. `Sources:` zapisuje inspiracje/źródła
+> pochodzenia wzorców (nieprzejrzyste odwołania dozwolone). Zob.
 > [ADR-100](100-decision-provenance-and-adversarial-re-derivation.md).
 
-## Context
+## Kontekst
 
-[What problem or need motivated this decision? What constraints
-exist? Reference prior ADRs that provide context.]
+[Jaki problem albo potrzeba umotywowały tę decyzję? Jakie istnieją
+ograniczenia? Odwołaj się do wcześniejszych ADR-ów dających kontekst.]
 
-## Decision
+## Decyzja
 
-[What was decided? Include code examples or configuration snippets
-where they clarify the choice.]
+[Co zostało zdecydowane? Dołącz przykłady kodu albo fragmenty
+konfiguracji, jeśli wyjaśniają wybór.]
 
-### Why [chosen option] over alternatives?
+### Dlaczego [wybrana opcja] zamiast alternatyw?
 
-| Tool / Approach | Pros | Cons |
-|-----------------|------|------|
-| **Chosen** | ... | ... |
-| Alternative A | ... | ... |
-| Alternative B | ... | ... |
+| Narzędzie / podejście | Zalety | Wady |
+|-----------------------|--------|------|
+| **Wybrane** | ... | ... |
+| Alternatywa A | ... | ... |
+| Alternatywa B | ... | ... |
 
-[Delete the comparison table if no alternatives were considered.]
+[Usuń tabelę porównawczą, jeśli nie rozważano alternatyw.]
 
-## Rationale
+## Uzasadnienie
 
-[Why this approach? What trade-offs were accepted?]
+[Dlaczego to podejście? Jakie kompromisy zaakceptowano?]
 
-## Consequences
+## Konsekwencje
 
-**Positive:**
-- [benefit 1]
-- [benefit 2]
+**Pozytywne:**
+- [korzyść 1]
+- [korzyść 2]
 
-**Negative:**
-- [trade-off 1]
-- [trade-off 2]
+**Negatywne:**
+- [kompromis 1]
+- [kompromis 2]
 
-## Related
+## Powiązane
 
-- [ADR-NNN](NNN-slug.md) — [relationship description]
-- [PR or issue link] — [context]
+- [ADR-NNN](NNN-slug.md) — [opis relacji]
+- [link do PR-a albo zgłoszenia] — [kontekst]

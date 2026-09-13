@@ -1,114 +1,127 @@
-# Claude Code Review Guidelines
+# Wytyczne przeglądu kodu Claude Code
 
-Review **workflow** rules — how to conduct reviews, manage threads,
-write summaries, and interact with authors. For **what to check**
-in code, see the domain-specific agent specs in `.claude/agents/`.
+Zasady **przebiegu pracy** przy przeglądzie — jak prowadzić przegląd,
+zarządzać wątkami, pisać podsumowania i współpracować z autorem. Co
+sprawdzać **w kodzie** — patrz specyfikacje agentów wyspecjalizowanych
+dziedzinowo w `.claude/agents/`.
 
-## Approval State Guard
+## Kontrola stanu zatwierdzenia
 
-Before requesting review (or re-review) on a PR, check the PR's
-current review state to avoid pinging reviewers on already-approved
-PRs.
+Przed poproszeniem o przegląd (lub ponowny przegląd) PR-a sprawdź jego
+bieżący stan przeglądu, żeby nie niepokoić recenzentów na już
+zatwierdzonych PR-ach.
 
-**Decision rule:**
+**Zasada decyzyjna:**
 
-1. Fetch state via `gh pr view N --json reviewDecision,reviews,headRefOid`.
-2. If `reviewDecision == "APPROVED"` AND the latest review's
-   `commit.oid` matches `headRefOid` → PR is approved on the
-   current HEAD. **Short-circuit** the request and suggest merging
-   instead.
-3. If `reviewDecision == "APPROVED"` but newer commits have
-   invalidated the approval (review SHA != HEAD SHA) →
-   proceed with re-request, but **filter out** any reviewer whose
-   most recent review on the current HEAD is already `APPROVED`.
-4. Otherwise (`CHANGES_REQUESTED`, `REVIEW_REQUIRED`, or `null`) →
-   proceed normally.
+1. Pobierz stan przez `gh pr view N --json reviewDecision,reviews,headRefOid`.
+2. Jeśli `reviewDecision == "APPROVED"` ORAZ `commit.oid` ostatniego
+   przeglądu zgadza się z `headRefOid` → PR jest zatwierdzony na
+   bieżącym HEAD. **Przerwij** prośbę o przegląd i zasugeruj zamiast
+   tego merge.
+3. Jeśli `reviewDecision == "APPROVED"`, ale nowsze commity
+   unieważniły zatwierdzenie (SHA przeglądu != SHA HEAD) → przejdź do
+   ponownej prośby, ale **odfiltruj** każdego recenzenta, którego
+   najnowszy przegląd na bieżącym HEAD jest już `APPROVED`.
+4. W przeciwnym razie (`CHANGES_REQUESTED`, `REVIEW_REQUIRED` lub
+   `null`) → przejdź normalnie.
 
-**Why?** Re-pings on approved PRs create reviewer fatigue and
-churn — the next action is merge, not another review cycle.
+**Dlaczego?** Ponowne powiadomienia na zatwierdzonych PR-ach powodują
+zmęczenie recenzentów i niepotrzebny ruch — kolejnym krokiem jest
+merge, nie kolejny cykl przeglądu.
 
-## Review Workflow
+## Przebieg przeglądu
 
-1. Check existing review comments to avoid duplicating feedback
-2. Check for previous summary comments (`gh pr view {PR_NUMBER} --json comments`)
-   to identify obsolete summaries
-3. Analyze current diff (`gh pr diff`)
-4. For each previous Claude Code Review thread:
-   - Fixed/removed → reply "Addressed" (do NOT resolve — leave for human)
-   - Persists in unchanged code → reply "Still applies"; do NOT duplicate
-   - Changed but issue remains → reply with update
-5. Use inline comment tools ONLY for NEW issues
-6. Hide obsolete review summaries before posting the new one:
-   a. Query review threads via GitHub's review-thread API (never
-      hand-rolled GraphQL string-splicing) — for each thread, check
-      `isResolved` and group by `pullRequestReview.databaseId`
-   b. For each previous Claude review with a non-empty body:
-      - ALL threads `isResolved: true` → minimize as OUTDATED
-      - ANY thread unresolved → leave visible
-      - Review has NO inline threads (summary-only) → minimize
-   c. Minimize: `minimizeComment(input: {subjectId: "<node_id>",
+1. Sprawdź istniejące komentarze przeglądu, żeby nie powielać
+   informacji zwrotnej
+2. Sprawdź wcześniejsze komentarze podsumowujące
+   (`gh pr view {PR_NUMBER} --json comments`), żeby zidentyfikować
+   nieaktualne podsumowania
+3. Przeanalizuj bieżący diff (`gh pr diff`)
+4. Dla każdego wcześniejszego wątku Claude Code Review:
+   - Poprawiony/usunięty → odpowiedz „Poprawione" (NIE rozwiązuj wątku
+     — zostaw to człowiekowi)
+   - Utrzymuje się w niezmienionym kodzie → odpowiedz „Nadal aktualne";
+     nie powielaj
+   - Zmieniony, ale problem pozostaje → odpowiedz z aktualizacją
+5. Używaj narzędzi komentarzy inline TYLKO dla NOWYCH problemów
+6. Ukryj nieaktualne podsumowania przeglądu przed opublikowaniem
+   nowego:
+   a. Odpytaj wątki przeglądu przez API wątków przeglądu GitHuba
+      (nigdy ręcznie sklejanym GraphQL) — dla każdego wątku sprawdź
+      `isResolved` i pogrupuj wg `pullRequestReview.databaseId`
+   b. Dla każdego wcześniejszego przeglądu Claude z niepustą treścią:
+      - WSZYSTKIE wątki `isResolved: true` → zminimalizuj jako OUTDATED
+      - JAKIKOLWIEK wątek nierozwiązany → zostaw widoczny
+      - Przegląd BEZ wątków inline (tylko podsumowanie) → zminimalizuj
+   c. Minimalizacja: `minimizeComment(input: {subjectId: "<node_id>",
       classifier: OUTDATED})`
-   d. Skip the current review cycle's own review
-   e. Thread resolution must come from the human supervisor —
-      the reviewer MUST NOT resolve threads to trigger this gate
-7. Create ONE summary review comment (`gh pr review --comment`) with:
-   - High-level observations and quality assessment
-   - Cross-cutting concerns not tied to specific lines
-   - Acknowledgment of addressed issues
-   - DO NOT repeat inline comment content
-8. Use COMMENT status (not REQUEST_CHANGES or APPROVE)
-9. If inline comments were posted, convert PR to draft:
+   d. Pomiń własny przegląd bieżącego cyklu
+   e. Rozwiązywanie wątków musi pochodzić od nadzorującego człowieka —
+      recenzent NIE MOŻE rozwiązywać wątków, żeby wywołać tę bramkę
+7. Utwórz JEDEN podsumowujący komentarz przeglądu
+   (`gh pr review --comment`) zawierający:
+   - Obserwacje wysokopoziomowe i ocenę jakości
+   - Zagadnienia przekrojowe niezwiązane z konkretnymi liniami
+   - Potwierdzenie rozwiązanych problemów
+   - BEZ powtarzania treści komentarzy inline
+8. Użyj statusu COMMENT (nie REQUEST_CHANGES ani APPROVE)
+9. Jeśli opublikowano komentarze inline, przełącz PR na draft:
    `gh pr ready --undo $PR_NUMBER`
-   - Prevents noisy re-reviews on fixup commits
-   - Author marks "Ready for review" when fixes are complete
-   - Do NOT convert if the review was clean (no inline comments)
+   - Zapobiega to szumowi ponownych przeglądów przy commitach fixup
+   - Autor oznacza „Ready for review", gdy poprawki są gotowe
+   - NIE przełączaj, jeśli przegląd był czysty (brak komentarzy
+     inline)
 
-## Scope & Noise
+## Zakres i szum
 
-- Focus on lines changed in the PR diff
-- Issues in **unchanged** code → "pre-existing, out of scope"
-  (informational, not blocking)
-- NEVER repeat feedback from previous review cycles
-- Group related issues by topic; keep summary brief
-- Each inline comment references file path and line number
-- **Bootstrapping exception** — when a PR introduces a new rule,
-  the PR itself may violate it because the rule wasn't enforced
-  when the PR was submitted. Flag as informational, not blocking.
+- Skup się na liniach zmienionych w diffie PR-a
+- Problemy w **niezmienionym** kodzie → „zastane, poza zakresem"
+  (informacyjne, nie blokujące)
+- NIGDY nie powtarzaj informacji zwrotnej z poprzednich cykli
+  przeglądu
+- Grupuj powiązane problemy tematycznie; podsumowanie zwięzłe
+- Każdy komentarz inline odwołuje się do ścieżki pliku i numeru linii
+- **Wyjątek bootstrappingu** — gdy PR wprowadza nową regułę, sam PR
+  może ją naruszać, bo reguła nie obowiązywała w chwili zgłoszenia.
+  Oznacz jako informacyjne, nie blokujące.
 
-## Context-Aware Review Depth
+## Głębokość przeglądu zależna od kontekstu
 
-| Context        | Focus                                    | Avoid                                |
-|----------------|------------------------------------------|--------------------------------------|
-| Production     | All standards                            | Bikeshedding                         |
-| POC/Test       | Does it work? Security. Broken logic.    | YAGNI, error handling, edge cases    |
-| Refactor       | Behavior preservation                    | New features, scope creep            |
-| Infrastructure | Behavioral changes, help text accuracy   | Questioning stated design intent     |
+| Kontekst        | Skup się na                              | Unikaj                               |
+|----------------|------------------------------------------|---------------------------------------|
+| Produkcja      | Wszystkich standardach                   | Bikeshedding                          |
+| POC/Test       | Czy działa? Bezpieczeństwo. Błędna logika. | YAGNI, obsługa błędów, przypadki brzegowe |
+| Refaktoryzacja | Zachowanie działania                     | Nowe funkcje, rozrost zakresu         |
+| Infrastruktura | Zmiany zachowania, dokładność opisów pomocy | Kwestionowanie deklarowanej intencji projektowej |
 
-### POC Detection
+### Wykrywanie POC
 
-Check PR title (🧪, "POC", "test", "demo"), file paths (`test`,
-`poc`), and description ("temporary", "exploratory"). If POC:
-- Start summary with "Reviewing as POC/test code with relaxed standards"
-- Review only: bugs, security, integration issues
+Sprawdź tytuł PR-a (🧪, „POC", „test", „demo"), ścieżki plików
+(`test`, `poc`) i opis („temporary", „exploratory"). Jeśli to POC:
+- Rozpocznij podsumowanie od „Reviewing as POC/test code with relaxed
+  standards"
+- Sprawdzaj tylko: błędy, bezpieczeństwo, problemy integracji
 
-### Author Design Clarifications
+### Wyjaśnienia projektowe autora
 
-When an author explains flagged behavior is intentional:
-1. Verify PR title/body supports the claim
-2. Acknowledge and close the thread
-3. Never re-raise in subsequent cycles
-4. Never require re-explanation after force-pushes
+Gdy autor wyjaśnia, że zgłoszone zachowanie jest zamierzone:
+1. Zweryfikuj, czy tytuł/treść PR-a potwierdza to twierdzenie
+2. Potwierdź i zamknij wątek
+3. Nigdy nie zgłaszaj ponownie w kolejnych cyklach
+4. Nigdy nie wymagaj ponownego wyjaśnienia po force-pushu
 
-## Summary Comment Strategy
+## Strategia komentarza podsumowującego
 
-- ONE summary per review cycle (not per commit)
-- **Only post if** there are new issues or material changes to review
-- **If there are no new issues, post NO review at all.** An empty-body
-  COMMENTED review adds noise without value.
-- After fixes: post ONE brief acknowledgment, not per-file comments
-- After 3+ summaries saying "looks good": do NOT post another
+- JEDNO podsumowanie na cykl przeglądu (nie na commit)
+- **Publikuj tylko, gdy** są nowe problemy lub istotne zmiany do
+  przejrzenia
+- **Jeśli nie ma nowych problemów, NIE publikuj żadnego przeglądu.**
+  Przegląd COMMENTED z pustą treścią dodaje szum bez wartości.
+- Po poprawkach: opublikuj JEDNO krótkie potwierdzenie, nie komentarze
+  per plik
+- Po 3+ podsumowaniach mówiących „looks good": NIE publikuj kolejnego
 
-### Re-Review Summary Structure
+### Struktura podsumowania ponownego przeglądu
 
 ```markdown
 ## Review Summary (Round N)
@@ -120,69 +133,79 @@ When an author explains flagged behavior is intentional:
 - [only genuinely new or previously unfixed items]
 ```
 
-Round numbering tracks review invocations, not author fix commits.
+Numeracja rund śledzi wywołania przeglądu, nie commity poprawek autora.
 
-## Context Rot Mitigation
+## Ograniczanie rozpadu kontekstu
 
-### Before Each Re-Review
+### Przed każdym ponownym przeglądem
 
-1. Re-read PR description; don't rely on memory
-2. Diff against previous review state; focus on what changed
-3. Verify resolved threads are actually fixed
-4. Read ALL author replies; build a "rejected suggestions" list
+1. Przeczytaj ponownie opis PR-a; nie polegaj na pamięci
+2. Porównaj z poprzednim stanem przeglądu; skup się na tym, co się
+   zmieniło
+3. Zweryfikuj, że rozwiązane wątki są faktycznie poprawione
+4. Przeczytaj WSZYSTKIE odpowiedzi autora; zbuduj listę „odrzuconych
+   sugestii"
 
-### During Re-Review
+### Podczas ponownego przeglądu
 
-5. No zombie comments — don't re-raise intentionally rejected issues
-6. Batch related feedback into ONE comment with all locations
-7. Acknowledge progress explicitly
-8. After 3 rounds: focus on correctness only (bugs, security)
-9. Read actual file at HEAD, not diff context (force-pushes shift lines)
+5. Bez komentarzy-zombie — nie zgłaszaj ponownie świadomie odrzuconych
+   problemów
+6. Grupuj powiązaną informację zwrotną w JEDEN komentarz ze
+   wszystkimi lokalizacjami
+7. Wyraźnie potwierdzaj postęp
+8. Po 3 rundach: skup się wyłącznie na poprawności (błędy,
+   bezpieczeństwo)
+9. Czytaj rzeczywisty plik na HEAD, nie kontekst diffa (force-push
+   przesuwa linie)
 
-## Multi-Commit Review Awareness
+## Świadomość przeglądu wielu commitów
 
-1. First review: flag issues in current code
-2. After new commits: check if previous issues are now fixed
-3. Acknowledge fixes; only flag new or persistent issues
-4. Check existing threads before creating new ones
+1. Pierwszy przegląd: zgłoś problemy w bieżącym kodzie
+2. Po nowych commitach: sprawdź, czy wcześniejsze problemy są już
+   poprawione
+3. Potwierdź poprawki; zgłaszaj tylko nowe lub utrzymujące się
+   problemy
+4. Sprawdź istniejące wątki przed utworzeniem nowych
 
-## Code Suggestions Format
+## Format sugestii kodu
 
-Use GitHub suggestion syntax for committable fixes:
+Użyj składni sugestii GitHuba dla poprawek gotowych do zatwierdzenia:
 
 ```suggestion
 fixed code here
 ```
 
-- Single-line: comment on line N
-- Multi-line: set start_line=N, line=M
-- Add explanation before the suggestion block
-- Use for straightforward fixes; describe approach for complex changes
-- Do NOT use suggestion blocks for non-code changes (permissions,
-  file renames, `git mv`). Use plain text instructions instead.
+- Jedna linia: komentarz w linii N
+- Wiele linii: ustaw start_line=N, line=M
+- Dodaj wyjaśnienie przed blokiem sugestii
+- Używaj do prostych poprawek; dla złożonych zmian opisz podejście
+- NIE używaj bloków sugestii dla zmian niekodowych (uprawnienia, zmiany
+  nazw plików, `git mv`). Zamiast tego użyj zwykłego tekstu z
+  instrukcją.
 
-## Review Comment Format & JTBD Variants
+## Format komentarza przeglądu i warianty JTBD
 
-Structure findings as **[REQUIRED/RECOMMENDED]** — [title], explanation,
-rule reference, fix. For JTBD grammar: name a concrete beneficiary in the
-outcome clause — "**so the integrator can** reconcile invoice status" (per
-`git-jtbd.md`). When the actor and beneficiary are the same role, repeating
-it is fine; a differing beneficiary must be named explicitly. Faceless
-"**so the user can**" or first-person "**so I can**" phrasing is a
-RECOMMENDED fix toward a concrete role.
+Formułuj ustalenia jako **[REQUIRED/RECOMMENDED]** — [tytuł],
+wyjaśnienie, odwołanie do reguły, poprawka. Dla gramatyki JTBD: nazwij
+konkretnego beneficjenta w klauzuli rezultatu — „**żeby integrator
+mógł** uzgodnić status faktury" (wg `git-jtbd.md`). Gdy rola i
+beneficjent to ta sama osoba, powtórzenie jej jest w porządku; różniący
+się beneficjent musi być nazwany wprost. Bezosobowe „**żeby użytkownik
+mógł**" lub pierwszoosobowe „**żebym mógł**" to poprawka RECOMMENDED w
+stronę konkretnej roli.
 
-## Positive Validation
+## Pozytywna walidacja
 
-When a PR demonstrates excellent practices:
-- Call out strengths with file:line references
-- Not every PR needs change requests
-- One positive summary per resolved cycle
+Gdy PR demonstruje doskonałe praktyki:
+- Wskaż mocne strony z odwołaniami plik:linia
+- Nie każdy PR wymaga prośby o zmiany
+- Jedno pozytywne podsumowanie na rozwiązany cykl
 
-## Avoid Valueless Suggestions
+## Unikaj bezwartościowych sugestii
 
-- NEVER suggest code identical to the original
-- NEVER suggest formatting changes (ruff/linters handle this)
-- VERIFY character-by-character before suggesting
-- Only suggest: bugs, security, architecture, performance, logic,
-  naming
-- When in doubt: skip it
+- NIGDY nie sugeruj kodu identycznego z oryginałem
+- NIGDY nie sugeruj zmian formatowania (obsługują to ruff/lintery)
+- ZWERYFIKUJ znak po znaku przed zasugerowaniem
+- Sugeruj tylko: błędy, bezpieczeństwo, architekturę, wydajność,
+  logikę, nazewnictwo
+- W razie wątpliwości: pomiń

@@ -1,158 +1,165 @@
-# Pull Request & Branch Grooming Guidelines
+# Wytyczne dotyczące pull requestów i porządkowania branchy
 
-Standards for pull requests and branch grooming in this repository.
+Standardy pull requestów i porządkowania branchy w tym repozytorium.
 
-## Branch Grooming
+## Porządkowanie brancha
 
-Restructure commit history to create atomic, well-organized commits.
+Przebuduj historię commitów, aby powstały atomowe, dobrze
+zorganizowane commity.
 
-### When Grooming is Acceptable
+### Kiedy porządkowanie jest dopuszczalne
 
-- ✅ Before creating a PR
-- ✅ While PR is in **draft** status
-- ✅ After CI feedback (before human review starts)
-- ✅ When CI blocks merge due to fixup commits
+- ✅ Przed utworzeniem PR-a
+- ✅ Gdy PR jest w statusie **draft**
+- ✅ Po informacji zwrotnej z CI (przed rozpoczęciem przeglądu przez
+  człowieka)
+- ✅ Gdy CI blokuje merge z powodu commitów fixup
 
-### When Grooming is Discouraged
+### Kiedy porządkowanie jest odradzane
 
-- ❌ After a human reviewer has started reviewing
+- ❌ Po tym, jak recenzent-człowiek zaczął przegląd
 
-*Why?* Rewriting history after human review started creates noise and
-confusion. Reviewers lose context, and GitHub shows "force-pushed"
-which hides the diff of what changed.
+*Dlaczego?* Przepisywanie historii po rozpoczęciu przeglądu przez
+człowieka tworzy szum i zamieszanie. Recenzenci tracą kontekst, a
+GitHub pokazuje „force-pushed", co ukrywa diff tego, co się zmieniło.
 
-### Strategies
+### Strategie
 
-**A. Fixup + Autosquash** (small targeted fixes):
+**A. Fixup + Autosquash** (małe, celowane poprawki):
 ```bash
 git commit --fixup=<target-sha>
 git rebase -i --autosquash $(git merge-base main HEAD)
 ```
 
-**B. Soft Reset** (major reorganization):
+**B. Miękki reset** (duża reorganizacja):
 ```bash
 git reset --soft $(git merge-base main HEAD)
 git reset HEAD  # unstage
-git add -p      # selectively stage
+git add -p      # selektywne stage'owanie
 git commit -m "First logical change"
-# repeat for each logical unit
+# powtórz dla każdej logicznej jednostki
 ```
 
-**C. Interactive Rebase** (reorder/edit/split):
+**C. Interaktywny rebase** (zmiana kolejności/edycja/podział):
 ```bash
 git rebase -i $(git merge-base main HEAD)
 ```
 
-### Safety
+### Bezpieczeństwo
 
-- Create backup before complex rewrites: `git branch backup-before-rewrite`
-- Use `--force-with-lease` not `--force` when pushing rewrites
-- Coordinate with teammates before force-pushing shared branches
+- Twórz backup przed złożonym przepisywaniem: `git branch backup-before-rewrite`
+- Przy pushu przepisanej historii używaj `--force-with-lease`, nie `--force`
+- Uzgadniaj z zespołem przed force-pushem wspólnych branchy
 
-## Pull Request Guidelines
+## Wytyczne dotyczące pull requestów
 
-### Before Creating PR
+### Przed utworzeniem PR-a
 
-1. Ensure all commits are atomic and well-organized
-2. Squash any fixup commits
-3. Run quality checks locally (`uv run pytest`, ruff, mypy if configured)
-4. Verify branch is up to date with `main`
-5. Rebase to linearize history — no merge commits before opening
+1. Upewnij się, że wszystkie commity są atomowe i dobrze zorganizowane
+2. Zeskładaj (squash) wszystkie commity fixup
+3. Uruchom kontrole jakości lokalnie (`uv run pytest`, ruff, mypy jeśli skonfigurowane)
+4. Sprawdź, czy branch jest aktualny względem `main`
+5. Zrób rebase, aby zlinearyzować historię — bez commitów merge przed
+   otwarciem PR-a
 
-### PR Title
+### Tytuł PR-a
 
-Use the main commit's title line (gitmoji + issue ref + description).
+Użyj linii tytułu głównego commita (gitmoji + numer zgłoszenia + opis).
 
-**Important**: The gitmoji appears in the **commit message**, not in the
-GitHub PR title field. GitHub's UI shows these separately — your main
-commit's gitmoji will automatically appear in release notes and git log
-regardless of how the PR title field is filled. The critical requirement
-is that your commit contains the gitmoji; GitHub renders it in the PR UI.
+**Ważne**: gitmoji pojawia się w **treści commita**, nie w polu tytułu
+PR-a na GitHubie. Interfejs GitHuba pokazuje je osobno — gitmoji
+głównego commita i tak pojawi się automatycznie w release notes i
+w git logu, niezależnie od tego, jak wypełnione jest pole tytułu PR-a.
+Kluczowy wymóg to obecność gitmoji w commicie; GitHub renderuje je w
+interfejsie PR-a.
 
-### PR Body
+### Treść PR-a
 
-The body should be **compact** to avoid cluttering Slack previews.
+Treść powinna być **zwięzła**, aby nie zaśmiecać podglądów na Slacku.
 
-**Required elements** (in this order):
-1. A JTBD Job Story as the **first paragraph** (1-3 lines, see `git-jtbd.md`)
-2. `Fixes:` link — must be the **absolute last line** of the body:
+**Wymagane elementy** (w tej kolejności):
+1. Job Story JTBD jako **pierwszy akapit** (1-3 linie, patrz `git-jtbd.md`)
+2. Link `Fixes:` — musi być **bezwzględnie ostatnią linią** treści:
    - `Fixes: https://github.com/Dev10x-Guru/ksef-mcp/issues/NUMBER`
-     (for issue-tracked work)
-   - `Fixes: none — self-motivated refactor` (for internal improvements,
-     features, or experiments without a tracking issue)
-   - Do NOT manually add `---`, blank lines, or separators after `Fixes:`
+     (dla pracy powiązanej ze zgłoszeniem)
+   - `Fixes: none — self-motivated refactor` (dla wewnętrznych
+     usprawnień, funkcji lub eksperymentów bez powiązanego zgłoszenia)
+   - NIE dodawaj ręcznie `---`, pustych linii ani separatorów po `Fixes:`
 
-**Optional elements** (keep brief):
-- Compact commit list with links (one line per commit)
-- Critical context that reviewers need immediately
+**Elementy opcjonalne** (zachowaj zwięzłość):
+- Zwięzła lista commitów z linkami (jedna linia na commit)
+- Krytyczny kontekst, który recenzenci muszą poznać od razu
 
-**Do not include in body**:
-- Detailed summaries (put in first comment)
-- Implementation checklists (put in first comment)
-- Known limitations or TODOs (put in first comment)
+**Czego nie umieszczać w treści**:
+- Szczegółowe podsumowania (umieść w pierwszym komentarzu)
+- Listy kontrolne implementacji (umieść w pierwszym komentarzu)
+- Znane ograniczenia lub TODO (umieść w pierwszym komentarzu)
 
-### Examples
+### Przykłady
 
-**VOICE REQUIREMENT**: Third-person domain-actor voice is mandatory — name a
-concrete actor and beneficiary (`**the integrator wants to** … **so the
-accountant can** …`). Never use first-person ("I want to") or a faceless "the
-user wants to". See `references/git-jtbd.md` § Voice Requirement and
-§ Choosing the Actor.
+**WYMÓG GŁOSU**: głos trzecioosobowy, z konkretną rolą dziedzinową,
+jest obowiązkowy — nazwij konkretnego aktora i beneficjenta
+(`**integrator chce** … **żeby księgowa mogła** …`). Nigdy nie używaj
+pierwszej osoby („chcę") ani bezosobowego „użytkownik chce". Patrz
+`references/git-jtbd.md` § Wymóg głosu oraz § Wybór aktora.
 
-**WRONG** — Header before JTBD (breaks release notes parsing):
+**ŹLE** — nagłówek przed Job Story (psuje zbieranie notatek
+wydaniowych):
 ```markdown
-## Summary
+## Podsumowanie
 
-**When** reconciling invoices, **the accountant wants to** see live KSeF
-status, **so the accountant can** catch rejections early.
+**Gdy** uzgadnia faktury, **księgowa chce** widzieć bieżący status
+w KSeF, **żeby księgowa mogła** wcześnie wychwycić odrzucenia.
 
-[Details...]
+[Szczegóły...]
 
 Fixes: ...
 ```
 
-**CORRECT** — JTBD as absolute first element:
+**DOBRZE** — Job Story jako bezwzględnie pierwszy element:
 ```markdown
-**When** reconciling invoices, **the accountant wants to** see live KSeF
-status, **so the accountant can** catch rejections early.
+**Gdy** uzgadnia faktury, **księgowa chce** widzieć bieżący status
+w KSeF, **żeby księgowa mogła** wcześnie wychwycić odrzucenia.
 
-[Details or commit list — optional...]
+[Szczegóły albo lista commitów — opcjonalnie...]
 
 Fixes: ...
 ```
 
-### Proper Format
+### Właściwy format
 
 ```markdown
-**When** an MCP client needs to check invoice status without a browser,
-**the integrator wants to** query KSeF through a tool call, **so the
-accountant can** confirm submission without leaving their chat client.
+**Gdy** klient MCP musi sprawdzić status faktury bez przeglądarki,
+**integrator chce** odpytać KSeF wywołaniem narzędzia, **żeby księgowa
+mogła** potwierdzić wysyłkę bez opuszczania okna rozmowy.
 
-[`b3a015a`](REPO_URL/commit/HASH) ✨ 42 Enable invoice status lookup
-[`fec4999`](REPO_URL/commit/HASH) 📝 42 Document the new tool
+[`b3a015a`](REPO_URL/commit/HASH) ✨ 42 Umożliwia sprawdzenie statusu faktury
+[`fec4999`](REPO_URL/commit/HASH) 📝 42 Opisuje nowe narzędzie
 
 Fixes: https://github.com/Dev10x-Guru/ksef-mcp/issues/42
 ```
 
-*Why?* The JTBD Job Story must be the first paragraph because the
-release notes process parses PR descriptions by position.
+*Dlaczego?* Job Story JTBD musi być pierwszym akapitem, ponieważ
+proces tworzenia release notes parsuje opisy PR-ów po pozycji.
 
-*Bootstrapping exception:* A PR that introduces a new PR body
-requirement may not follow that requirement itself — the rule
-wasn't enforced when the PR was submitted.
+*Wyjątek bootstrappingu:* PR wprowadzający nowy wymóg dotyczący
+treści PR-a może sam go nie spełniać — reguła nie obowiązywała jeszcze
+w chwili zgłoszenia tego PR-a.
 
-### If Review Issues Are Found
+### Jeśli przegląd wykryje problemy
 
-If Claude finds code or metadata issues during review, your PR will be
-automatically converted to **draft** status. This prevents the merge button
-from becoming available while issues remain unfixed.
+Jeśli Claude znajdzie problemy z kodem lub metadanymi podczas
+przeglądu, Twój PR zostanie automatycznie przełączony na status
+**draft**. Zapobiega to udostępnieniu przycisku merge, dopóki
+zgłoszone problemy pozostają nierozwiązane.
 
-After fixing all flagged issues, click **"Ready for review"** on the
-PR page to re-trigger the review workflows and allow merge once checks pass.
+Po poprawieniu wszystkich zgłoszonych problemów kliknij **„Ready for
+review"** na stronie PR-a, aby ponownie uruchomić workflow przeglądu i
+umożliwić merge po przejściu kontroli.
 
-### PR First Comment (Summary + Checklist)
+### Pierwszy komentarz w PR-ze (podsumowanie + lista kontrolna)
 
-Detailed context for reviewers without bloating the Slack preview.
+Szczegółowy kontekst dla recenzentów bez zaśmiecania podglądu na Slacku.
 
 ```markdown
 ### Summary
@@ -161,21 +168,21 @@ Detailed context for reviewers without bloating the Slack preview.
 - Wired it to the KSeF test-environment client
 ```
 
-### PR Checklist
+### Lista kontrolna PR-a
 
-- [ ] Self-reviewed the diff
-- [ ] Updated documentation if needed
-- [ ] No fixup commits remaining
+- [ ] Diff przejrzany samodzielnie
+- [ ] Dokumentacja zaktualizowana, jeśli potrzeba
+- [ ] Nie zostały żadne commity fixup
 
-## Handling Review Feedback
+## Obsługa informacji zwrotnej z przeglądu
 
-1. Create fixup commits for each review comment
-2. Reference the comment in fixup commit body
-3. Reply to comment with commit SHA
-4. Before final push, squash all fixups:
+1. Twórz commity fixup dla każdego komentarza z przeglądu
+2. Odwołaj się do komentarza w treści commita fixup
+3. Odpowiedz na komentarz z SHA commita
+4. Przed ostatecznym pushem zeskładaj wszystkie fixupy:
    ```bash
    git rebase -i --autosquash $(git merge-base main HEAD)
    git push --force-with-lease
    ```
 
-For commit format and branch naming, see `git-commits.md`.
+Format commitów i konwencja nazywania branchy — patrz `git-commits.md`.

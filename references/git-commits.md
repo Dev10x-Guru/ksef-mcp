@@ -1,29 +1,30 @@
-# Git Commit & Branch Guidelines
+# Wytyczne dotyczące commitów i branchy w git
 
-Standards for commits and branches in this repository.
+Standardy commitów i branchy w tym repozytorium.
 
-## Branch Targeting Policy
+## Zasady kierowania branchy
 
-- **All PRs**: Always target `main` — this project has no `develop`
-  branch; `main` is the single trunk.
-- **CLI rule**: Always pass `--base main` to `gh pr create`.
+- **Wszystkie PR-y**: zawsze kieruj na `main` — ten projekt nie ma
+  brancha `develop`; `main` jest jedynym pniem.
+- **Zasada CLI**: zawsze przekazuj `--base main` do `gh pr create`.
 
-*Why?* All work targets `main` so quality gates (CI, code review) run
-against the same branch that ships.
+*Dlaczego?* Cała praca kierowana jest na `main`, dzięki czemu bramki
+jakości (CI, przegląd kodu) działają na tym samym branchu, który
+trafia na produkcję.
 
-## Branch Naming Convention
+## Konwencja nazywania branchy
 
-Format: `username/ISSUE-NUMBER/short-description`
-Worktree: `username/ISSUE-NUMBER/worktree-name/short-description`
+Format: `username/NUMER-ZGŁOSZENIA/krótki-opis`
+Worktree: `username/NUMER-ZGŁOSZENIA/nazwa-worktree/krótki-opis`
 
-Examples:
+Przykłady:
 - `janusz/42/add-invoice-status-tool`
 - `maria/57/fix-token-refresh`
 - `janusz/63/ksef-mcp-3/port-github-actions-ci` (worktree)
 
-## Commit Message Format
+## Format treści commita
 
-### Structure
+### Struktura
 
 ```
 <gitmoji> <ISSUE-NUMBER> <short description>
@@ -37,43 +38,44 @@ Solution:
 Fixes: <ISSUE-NUMBER>
 ```
 
-### Title Writing Principle
+### Zasada pisania tytułu
 
-Focus on what the change **enables**, not what it changes in code.
-See `git-jtbd.md` for comprehensive Job Story format and examples.
+Skup się na tym, co zmiana **umożliwia**, a nie na tym, co zmienia w
+kodzie. Pełny format Job Story i przykłady — patrz `git-jtbd.md`.
 
-**User-facing features** (required):
-- Bad: `Add get_invoice_status MCP tool` (implementation)
-- Good: `Enable checking invoice status from an MCP client` (outcome)
+**Funkcje widoczne dla użytkownika** (wymagane):
+- Źle: `Add get_invoice_status MCP tool` (implementacja)
+- Dobrze: `Enable checking invoice status from an MCP client` (rezultat)
 
-**Meta-work** (docs, tooling — preferred but not required):
-- Acceptable: `Add missing ruff workflow`
-- Also good: `Prevent lint regressions in CI`
+**Praca porządkowa** (dokumentacja, narzędzia — preferowane, ale nie
+wymagane):
+- Dopuszczalne: `Add missing ruff workflow`
+- Też dobrze: `Prevent lint regressions in CI`
 
-### Rules
+### Zasady
 
-1. **Title line**: Max 72 characters (gitmoji + space + issue ref + space + description)
-2. **Body lines**: Max 72 characters each
-3. **Gitmoji**: Use emoji character, not `:code:` format
-4. **No co-authoring**: Never add "Co-Authored-By: Claude" footer
+1. **Linia tytułu**: maks. 72 znaki (gitmoji + spacja + numer zgłoszenia + spacja + opis)
+2. **Linie treści**: maks. 72 znaki każda
+3. **Gitmoji**: użyj znaku emoji, nie formatu `:code:`
+4. **Bez współautorstwa**: nigdy nie dodawaj stopki „Co-Authored-By: Claude"
 
-### Gitmoji Reference
+### Tabela gitmoji
 
-| Emoji | Code | Use for |
+| Emoji | Kod | Do czego |
 |-------|------|---------|
-| ✅ | `:white_check_mark:` | Adding/fixing tests |
-| 🐛 | `:bug:` | Bug fixes |
-| ♻️ | `:recycle:` | Refactoring |
-| ✨ | `:sparkles:` | New features |
-| 📝 | `:memo:` | Documentation |
-| 🔒 | `:lock:` | Security fixes |
-| ⚡ | `:zap:` | Performance |
-| 🔧 | `:wrench:` | Configuration |
-| 🔖 | `:bookmark:` | Version bumps |
-| 🩹 | `:adhesive_bandage:` | Simple/minor fixes |
-| 🔥 | `:fire:` | Removing code/files |
+| ✅ | `:white_check_mark:` | Dodawanie/poprawianie testów |
+| 🐛 | `:bug:` | Poprawki błędów |
+| ♻️ | `:recycle:` | Refaktoryzacja |
+| ✨ | `:sparkles:` | Nowe funkcje |
+| 📝 | `:memo:` | Dokumentacja |
+| 🔒 | `:lock:` | Poprawki bezpieczeństwa |
+| ⚡ | `:zap:` | Wydajność |
+| 🔧 | `:wrench:` | Konfiguracja |
+| 🔖 | `:bookmark:` | Podbicie wersji |
+| 🩹 | `:adhesive_bandage:` | Drobne poprawki |
+| 🔥 | `:fire:` | Usuwanie kodu/plików |
 
-### Example Commit
+### Przykładowy commit
 
 ```
 🐛 42 Fix token refresh race under concurrent MCP calls
@@ -88,24 +90,24 @@ Solution:
 Fixes: 42
 ```
 
-## Atomic Commits
+## Commity atomowe
 
-Each commit should represent **one logical change**:
+Każdy commit powinien odzwierciedlać **jedną logiczną zmianę**:
 
-- ✅ One feature, one commit
-- ✅ One bug fix, one commit
-- ✅ One refactoring, one commit
-- ❌ Multiple unrelated changes in one commit
-- ❌ Half-finished work in a commit
+- ✅ Jedna funkcja, jeden commit
+- ✅ Jedna poprawka błędu, jeden commit
+- ✅ Jedna refaktoryzacja, jeden commit
+- ❌ Wiele niezwiązanych zmian w jednym commicie
+- ❌ Niedokończona praca w commicie
 
-### Commit Ordering
+### Kolejność commitów
 
-When a feature touches multiple layers, commit in dependency order:
+Gdy funkcja dotyka wielu warstw, twórz commity w kolejności zależności:
 
-1. Utilities/helpers (no dependencies)
-2. Configuration and infrastructure
-3. Core implementation
-4. Documentation and rules
-5. Tests
+1. Narzędzia pomocnicze (bez zależności)
+2. Konfiguracja i infrastruktura
+3. Główna implementacja
+4. Dokumentacja i reguły
+5. Testy
 
-For PR and branch grooming guidelines, see `git-pr.md`.
+Wytyczne dotyczące PR-ów i porządkowania branchy — patrz `git-pr.md`.

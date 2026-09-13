@@ -1,99 +1,187 @@
 # ksef-mcp
 
-A Model Context Protocol (MCP) server for the Polish KSeF (Krajowy
-System e-Faktur, the national e-invoicing system). Public repo,
-licensed AGPL-3.0.
+Serwer Model Context Protocol (MCP) dla polskiego KSeF — Krajowego
+Systemu e-Faktur. Repozytorium publiczne, licencja AGPL-3.0.
 
-## Directory Layout
+## Język projektu (obowiązuje zawsze)
 
-| Directory        | Purpose                                    |
-|------------------|--------------------------------------------|
-| `src/ksef_mcp/`  | Python package: MCP server, KSeF client, tools |
-| `tests/`         | Test suite (mirrors `src/ksef_mcp/`)       |
-| `bin/`           | Helper/CI scripts                          |
-| `docs/`          | Project documentation, ADRs                |
-| `references/`    | Shared docs (git, review, JTBD guides)      |
-| `.claude/rules/` | Path-aware rule routing (`INDEX.md`)       |
-| `.claude/agents/`| Domain-specific reviewer agents            |
+**Dokumentacja, rozmowa i wyniki pracy — po polsku. Kod — po
+angielsku.**
 
-## Stack
+Zasada dotyczy każdej odpowiedzi, nie tylko plików w repozytorium:
 
-- Python, pinned to an exact version in `.python-version` and
-  `requires-python`. CI names no version of its own — `uv` reads the
-  pin, so there is one source of truth.
-- Dependency management via `uv`; dev dependencies are a PEP 735
-  `[dependency-groups] dev` group, not an extra.
-- src-layout package: `src/ksef_mcp/`.
-- Packaged to PyPI as `ksef-mcp`, console script
-  `ksef-mcp = "ksef_mcp.server:main"` — so `uvx ksef-mcp` works.
-- No Django, no GraphQL, no Celery, no frontend framework, no
-  database/migrations, no monorepo `apps/` layout. Keep it that way;
-  flag any PR that introduces one of these without discussion.
+- **Odpowiadaj po polsku nawet wtedy, gdy polecenie było po
+  angielsku.** Język polecenia nie zmienia języka odpowiedzi.
+- **Poprawną polszczyzną, nie polglishem.** Człowiek może sobie
+  pozwolić na skróty i kalki; agent nie. Jeśli w poleceniu padnie
+  angielski albo spolszczony potworek, zmapuj go na poprawne polskie
+  sformułowanie (patrz słownik niżej).
+- **Wyniki zapisujemy po polsku, nawet gdy instrukcja narzędzia jest
+  po angielsku.** Instrukcje umiejętności Dev10x są angielskie — to nie
+  zmienia języka tego, co powstaje: Job Story, treści commitów, opisy
+  PR-ów, komentarze przeglądu, dokumentacja.
 
-## MCP Server Notes
+**Po angielsku zostaje kod i wszystko, co odczytuje maszyna:** nazwy
+identyfikatorów, docstringi (trafiają do klientów MCP jako opis
+narzędzia), komunikaty logów, nazwy plików i ścieżki, klucze JSON,
+nazwy zmiennych środowiskowych, etykiety nagłówków ADR oraz nazwy
+agentów przeglądu.
 
-- `mcp` >= 2.2.0 **removed `FastMCP`**. Use
-  `from mcp.server import MCPServer` — do not add or copy `FastMCP`
-  examples into code, docs, or rules files.
+### Słownik
 
-## Development
+Źródło rozstrzygające: [polski-w-it](https://github.com/nurkiewicz/polski-w-it).
+Zasada autora: *jeśli musisz się zastanawiać, jakie jest polskie
+tłumaczenie danego pojęcia, to prawdopodobnie ono nie istnieje*.
+
+| angielski | polski | odradzane |
+|---|---|---|
+| code review | przegląd kodu | rewiu |
+| review (czasownik) | przejrzeć | rewiułować |
+| deploy | wdrożyć, wdrożenie | zdiplojować |
+| build | zbudować | zbildować |
+| release | wydanie, wersja | rilisować |
+| bug | błąd | bug |
+| fix | poprawka, poprawić | fiks, fiksnąć |
+| feature | funkcja | ficzer, funkcjonalność |
+| dependency | zależność | dependencja |
+| default | domyślnie | difoltowo |
+| issue (GitHub) | zgłoszenie | isiu |
+| ticket | zadanie | tiket |
+| plugin | wtyczka | plugin |
+| template | szablon | templatka |
+| agents | agenty | agenci |
+| roadmap | plan prac | mapa drogowa |
+| metric | miara | metryka |
+| estimate | oszacowanie | estymata |
+| scope | zakres | skoup |
+| workaround | obejście | workaround |
+| draft | szkic, wersja robocza | draft |
+| permission | uprawnienie | permisja |
+| credentials | poświadczenia | kredencjały |
+
+**Zostają po angielsku**, bo nie mają dobrego polskiego odpowiednika:
+*branch*, *commit*, *merge*, *push*, *pull*, *pull request*,
+*pipeline*, *framework*. Odmieniaj je po polsku (*commita*, *po
+merge'u*, *na branchu*), ale nie wymyślaj tłumaczeń ani nie twórz
+polglishowych czasowników w rodzaju „zmergować" czy „zapushować" —
+przeformułuj zdanie.
+
+Dwa wpisy powyżej to decyzje projektu, nie cytat ze źródła:
+*zgłoszenie* dla GitHub issue (słownik proponuje „problem", co w tym
+kontekście myli) oraz *merge* jako rzeczownik, bo słownik odrzuca
+„scalanie", a polglishowy czasownik wyklucza zasada powyżej.
+
+## Układ katalogów
+
+| Katalog          | Przeznaczenie                                   |
+|------------------|-------------------------------------------------|
+| `src/ksef_mcp/`  | Pakiet: serwer MCP, klient KSeF, narzędzia       |
+| `tests/`         | Testy (odzwierciedlają `src/ksef_mcp/`)          |
+| `bin/`           | Skrypty pomocnicze i skrypty CI                  |
+| `docs/`          | Dokumentacja projektu, ADR-y                     |
+| `references/`    | Wspólne opracowania (git, przegląd, JTBD)        |
+| `.claude/rules/` | Kierowanie regułami wg ścieżek (`INDEX.md`)      |
+| `.claude/agents/`| Agenty przeglądu wyspecjalizowane dziedzinowo    |
+
+## Stos technologiczny
+
+- Python przypięty do dokładnej wersji w `.python-version` oraz
+  `requires-python`. CI nie nazywa żadnej wersji samodzielnie — `uv`
+  czyta przypięcie, dzięki czemu istnieje jedno źródło prawdy.
+- Zależności przez `uv`; zależności deweloperskie to grupa PEP 735
+  `[dependency-groups] dev`, nie extra.
+- Układ src: `src/ksef_mcp/`.
+- Publikacja na PyPI jako `ksef-mcp`, skrypt konsolowy
+  `ksef-mcp = "ksef_mcp.server:main"`, dzięki czemu działa
+  `uvx ksef-mcp`.
+- Bez Django, bez GraphQL, bez Celery, bez frameworka frontendowego,
+  bez bazy i migracji, bez układu monorepo `apps/`. Ma tak zostać —
+  zgłoś każdy PR, który wprowadza którąś z tych rzeczy bez uzgodnienia.
+
+## Uwagi o serwerze MCP
+
+- `mcp` >= 2.2.0 **usunął `FastMCP`**. Używaj
+  `from mcp.server import MCPServer`. Nie dodawaj ani nie kopiuj
+  przykładów z `FastMCP` do kodu, dokumentacji ani plików reguł.
+
+## Praca z projektem
 
 ```bash
-uv sync --group dev       # install dependencies incl. dev tools
-uv run pytest             # run the test suite with coverage
-uvx ksef-mcp              # run the packaged server via uvx
+uv sync --group dev       # instalacja zależności wraz z narzędziami dev
+uv run pytest             # testy wraz z pokryciem
+uvx ksef-mcp              # uruchomienie spakowanego serwera przez uvx
 ```
 
-Coverage gate: `pyproject.toml` sets `fail_under = 100`. New code must
-not lower it; legacy code touched must leave coverage no worse.
+Próg pokrycia: `pyproject.toml` ustawia `fail_under = 100`. Nowy kod nie
+może go obniżyć; dotknięty kod zastany ma zostać z pokryciem nie
+gorszym niż zastane.
 
-## KSeF Safety Rules (non-negotiable)
+## Zasady bezpieczeństwa KSeF (nienegocjowalne)
 
-- **Never call production KSeF** from tests, examples, or default
-  configuration. `KSEF_ENV` must default to the test/demo environment.
-- **Credentials are secrets.** `KSEF_TOKEN`, `KSEF_NIP`, and `KSEF_ENV`
-  must never be hardcoded, logged, or written to any file committed to
-  the repo or produced as a CI artifact.
-- **Never log or persist invoice XML.** Invoice payloads (FA(2)/FA(3))
-  contain taxpayer PII. Use synthetic fixtures in tests; redact invoice
-  content from logs and error messages.
-- **Network-touching tests carry `@pytest.mark.ksef_live`** and must be
-  deselected from the default `uv run pytest` invocation (see the
-  marker config in `pyproject.toml` / CI). A test that reaches a real
-  KSeF endpoint without this marker is a bug, not a convenience.
+- **Nigdy nie wołaj produkcyjnego KSeF** z testów, przykładów ani
+  domyślnej konfiguracji. `KSEF_ENV` musi domyślnie wskazywać
+  środowisko testowe lub demonstracyjne.
+- **Poświadczenia są sekretami.** `KSEF_TOKEN`, `KSEF_NIP` i
+  `KSEF_ENV` nie mogą trafić do kodu na sztywno, do logów ani do
+  żadnego pliku wersjonowanego w repozytorium lub wytwarzanego przez
+  CI.
+- **Nigdy nie loguj ani nie zapisuj XML-a faktury.** Dokumenty
+  FA(2)/FA(3) zawierają dane osobowe podatnika. W testach używaj
+  danych syntetycznych; treść faktury usuwaj z logów i komunikatów
+  błędów.
+- **Testy dotykające sieci noszą `@pytest.mark.ksef_live`** i muszą być
+  odfiltrowane z domyślnego `uv run pytest` (patrz konfiguracja markera
+  w `pyproject.toml` i w CI). Test sięgający do prawdziwego punktu
+  końcowego KSeF bez tego markera jest błędem, nie udogodnieniem.
 
-## Code Style
+Osobne ostrzeżenie o limitach. Środowisko testowe KSeF ma limity
+dziesięciokrotnie wyższe niż produkcja, a środowisko demonstracyjne
+odpowiada produkcji. Zielony pipeline na środowisku testowym nie
+dowodzi więc niczego o zachowaniu na produkcji — ten sam kod trafi tam
+na limit dziesięciokrotnie niższy. Osobnym zagrożeniem jest ponawianie
+żądań bez odczekania: Ministerstwo Finansów rejestruje przekroczenia
+limitów, analizuje wzorce wskazujące na próby ich obchodzenia i może
+zablokować podmiot lub zakres adresów IP, a czas blokady rośnie przy
+powtórzeniach. Szkodę robi tu sama wytrwałość klienta, nie pojedyncza
+operacja.
 
-- Type annotations on every definition; multi-line the signature when
-  it has 3+ parameters.
-- Named/keyword arguments in calls, not positional, once a call has
-  more than a couple of arguments.
-- Comments are a last resort — rename or restructure until the code
-  explains itself; document *why*, never *what*.
-- Raise custom exceptions close to the source with descriptive
-  messages; validate input early and fail loud with context.
+## Styl kodu
 
-## Git & PR Conventions
+- Adnotacje typów przy każdej definicji; sygnaturę z trzema lub więcej
+  parametrami rozpisz na wiele linii.
+- Argumenty nazwane zamiast pozycyjnych, gdy wywołanie ma ich więcej
+  niż kilka.
+- Komentarz to ostateczność — zmieniaj nazwy i strukturę, aż kod
+  wyjaśni się sam; dokumentuj *dlaczego*, nigdy *co*.
+- Wyjątki własne podnoś blisko źródła i z opisowym komunikatem; dane
+  wejściowe sprawdzaj wcześnie i przerywaj głośno, z kontekstem.
 
-- **Base branch**: `main` — there is no `develop` branch in this repo.
-- **Branch naming**: `username/ISSUE-NUMBER/short-description`
-  (worktree: `username/ISSUE-NUMBER/worktree-name/short-description`).
-- **Commit format**: `<gitmoji> <ISSUE-NUMBER> <JTBD outcome>` —
-  outcome-focused ("Enable X"), not implementation-focused ("Add X").
-- **Job Story voice** (REQUIRED): third-person domain actor —
-  "**[actor] wants to** ... **so [beneficiary] can** ..." with a
-  concrete role (accountant, integrator, taxpayer) — never
-  first-person ("I want to") or a faceless "the user wants to". See
+## Konwencje gita i PR-ów
+
+- **Branch bazowy**: `main` — w tym repozytorium nie ma `develop`.
+- **Nazwa brancha**: `użytkownik/NUMER-ZGŁOSZENIA/krótki-opis`
+  (w worktree: `użytkownik/NUMER-ZGŁOSZENIA/nazwa-worktree/krótki-opis`).
+- **Format commita**: `<gitmoji> <NUMER-ZGŁOSZENIA> <rezultat JTBD>` —
+  nastawiony na rezultat („Umożliwia X"), nie na wykonanie („Dodaje X").
+  Treść po polsku; oba wyrażenia regularne gitlinta wymagają jedynie
+  emoji na początku, więc język treści jest dowolny.
+- **Głos Job Story** (WYMAGANE): trzecia osoba i konkretna rola
+  dziedzinowa — księgowa, integrator, podatnik. Nigdy pierwsza osoba
+  ani bezosobowy „użytkownik". Szczegóły w `references/git-jtbd.md`.
+- Każdy PR musi linkować zgłoszenie w
+  `https://github.com/Dev10x-Guru/ksef-mcp/issues`. Gdy takiego nie ma,
+  wpisz `Fixes: none — self-motivated refactor`.
+- Pełne omówienie: `references/git-commits.md`, `references/git-pr.md`,
   `references/git-jtbd.md`.
-- Every PR must link a GitHub issue at
-  `https://github.com/Dev10x-Guru/ksef-mcp/issues`. If none exists,
-  use `Fixes: none — self-motivated refactor`.
-- See `references/git-commits.md`, `references/git-pr.md`,
-  `references/git-jtbd.md` for full detail.
 
-## Code Review
+## Przegląd kodu
 
-Domain-routed reviewer agents live in `.claude/agents/`. See
-`.claude/rules/INDEX.md` for the file-pattern routing table and
-`references/review-guidelines.md` / `references/review-checks-common.md`
-for workflow and cross-cutting checks.
+Agenty przeglądu wyspecjalizowane dziedzinowo znajdują się w
+`.claude/agents/`. Tablicę kierowania wg wzorców ścieżek zawiera
+`.claude/rules/INDEX.md`, a przebieg pracy i kontrole przekrojowe —
+`references/review-guidelines.md` oraz
+`references/review-checks-common.md`.
+
+Komentarze przeglądu pisz po polsku, zgodnie z zasadą na początku tego
+pliku — również wtedy, gdy prompt uruchamiający przegląd jest po
+angielsku.
