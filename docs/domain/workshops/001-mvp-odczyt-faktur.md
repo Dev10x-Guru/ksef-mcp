@@ -39,22 +39,45 @@ było sagą w przebraniu, pięć kontekstów ograniczonych w jednoprocesowym
 narzędziu stdio było przerostem, a warstwa antykorupcyjna projektowana
 przed wyborem klienta chroniła przed wyobrażonym API.
 
+**Ministerstwo Finansów publikuje kanoniczny wzorzec synchronizacji, dla
+którego zaprojektowaliśmy własne, gorsze odpowiedniki.** Ustalone dopiero
+pod koniec sesji, przy weryfikacji limitów. Eksport paczek jest ścieżką
+zalecaną, okna wyznacza High Water Mark, kompletność wymaga iteracji po
+typach podmiotu. Do tego przeoczono limit `GET /invoices/ksef/{nr}` =
+**64 żądania/h**, przez co sufit wolumenu był szacowany ~80× za wysoko.
+Zarzut adwokata, że model powstał przed kontaktem z API, okazał się
+trafniejszy, niż go wtedy przyjęto.
+
+**Teza o wartości produktu została poddana falsyfikacji i przetrwała.**
+Na rzeczywistym archiwum: 61% faktur docierało później niż tydzień po
+wystawieniu (mediana 10 dni), 32 z 57 plików miało już `.ksef.` w
+nazwie — czyli robota była wykonywana ręcznie. Odpytanie produkcji KSeF
+wykazało **jedną fakturę kosztową, która nie trafiła do ewidencji
+wcale**, mimo że okres był już zarchiwizowany.
+
 ## Decisions Made
 
-D-001 … D-025 — pełna treść w `decisions.md`. Najważniejsze:
+D-001 … D-034 — pełna treść w `decisions.md`. Najważniejsze:
 
 | ID | Skrót |
 |---|---|
 | D-001 | MVP = odczyt za miesiąc; mapa drogowa trzech etapów |
 | D-006 | `PobranieOkresu` nie jest agregatem; jedyny agregat to `WpisArchiwum` |
 | D-009 | Kontekst podmiotu należy do poświadczenia, nie do zapytania |
-| D-016 | Serwer MF nie renderuje PDF; renderowanie należy do klienta |
 | D-017 | Klientem jest `ksef2`; retry i walidacje należą do portu |
 | D-018 | `MCPServer`, nie `FastMCP` |
 | D-020 | Paginacja nie jest sterowana przez model; budżet jest liczony |
-| D-025 | Osią produktu jest automat, archiwum i delta — nie prezentacja |
+| D-025 | Osią produktu jest automat, archiwum i delta — **zwalidowane** |
+| D-027 | PDF z oficjalnego generatora MF pod Node, ze zwendorowanego bundla |
+| D-028 | Odbiorcą etapu 1 jest użytkownik techniczny |
+| D-031 | Synchronizacja wg kanonicznego wzorca MF: eksport + HWM |
+| D-032 | Magazyn rozdzielony wg XDG: cache osobno od trwałego stanu |
+| D-033 | Klucz eksportu ma własny cykl życia, poza keyringiem |
+| D-034 | Archiwum bezterminowe, czyszczone jawną komendą |
 
-Superseded: D-003 przez D-016, D-002 przez D-017, D-005 przez D-022.
+Zastąpione: D-003 przez D-016, D-002 przez D-017, D-016 przez D-027,
+D-024 przez D-031. `D-005`, `D-008` i `D-022` obowiązują z korektami
+opisanymi w `D-031`.
 
 ## Model Changes
 
@@ -65,24 +88,34 @@ Superseded: D-003 przez D-016, D-002 przez D-017, D-005 przez D-022.
 - `Okres` zyskał drugą składową — `DateType`. Bez niej „sierpień" ma trzy
   różne znaczenia.
 - Cykl życia procesu wszedł do modelu jako pełnoprawny element.
+- **Synchronizacja przeszła z własnego pomysłu na kanoniczny wzorzec MF**
+  — eksport paczek zamiast pojedynczych pobrań, High Water Mark zamiast
+  własnego znacznika, iteracja po typach podmiotu. `DateType` przestał
+  być wyborem użytkownika i jest przybity do `PermanentStorage`.
+- Magazyn lokalny rozdzielony na cache i trwały stan; szyfrowanie
+  AES-256 wróciło do etapu 1 razem z eksportem.
 
 ## Open Questions
 
-1. **`renderers/` i extra `pdf` w `ksef2`** — czy renderuje FA(2)/FA(3) w
-   czystym Pythonie, czy `weasyprint` ciągnie cairo/pango jako twardą
-   zależność systemową, i jak daleko wynik odbiega od wizualizacji
-   urzędowej. Może unieważnić całą gałąź z Node. *W trakcie weryfikacji.*
-2. **Zachowanie `keyring` bez sesji D-Bus** — czy da się wykryć brak
-   backendu **bez** wywołania promptu. Od tego zależy, czy [D-004]
-   przeżyje pierwszego użytkownika. ST-3.
-3. **Limity zapytań** (8/s, 16/min, 20/h) — potwierdzić w `open-api.json`.
-   Cały [D-020] na nich stoi.
-4. **Maksymalne okno zapytania po stronie API MF** — `ksef-client` wymusza
-   100 dni po stronie klienta; czy to odbicie limitu serwera, czy własna
-   ostrożność autora.
-5. **Próg listy w czacie** [D-023] — konkretna wartość i forma skrótu.
-6. **Czy przewaga nad Aplikacją Podatnika jest wystarczająca** — zarzut
-   z pre-mortem. [D-025] deklaruje oś, ale nie dowodzi jej.
+Zamknięte w trakcie sesji: renderowanie PDF (`D-027`), zachowanie
+`keyring` bez D-Bus (ST-3), limity zapytań (`D-031`), maksymalne okno
+zapytania — pytanie zniknęło, bo okna wyznacza KSeF — oraz falsyfikacja
+tezy o wartości (`D-025`).
+
+Pozostają otwarte:
+
+1. **`keyring` z backendem obecnym, lecz zablokowanym** (kwallet,
+   gnome-keyring wymagający odblokowania). Brak backendu umiemy wykryć
+   bez promptu; stan zablokowania — nie. ST-3.
+2. **Próg listy w czacie** [D-023] — konkretna wartość i forma skrótu.
+3. **Polityka aktualizacji zwendorowanego bundla MF** — nazwa pliku
+   niesie wersję, więc zmiana jest wykrywalna; brak ustalenia kto i kiedy.
+4. **Format `.mcpb`/DXT** — oznaczony `[Verify]` w [D-028], oparty na
+   pamięci, niesprawdzony u źródła. Nie blokuje etapu 1.
+5. **Zakres komendy czyszczącej** — per podmiot, per okres, czy po obu
+   wymiarach [D-034].
+6. **Czy wartość utrzymuje się dla biur rachunkowych** — test [D-025]
+   objął jeden podmiot i nie uogólnia się na etap 3.
 
 ## Artifacts Produced
 
@@ -94,10 +127,24 @@ Superseded: D-003 przez D-016, D-002 przez D-017, D-005 przez D-022.
 
 ## Uwagi procesowe
 
-Dwa razy w trakcie sesji wyciągnięto błędny wniosek o zachowaniu cudzego
-systemu na podstawie dokumentacji, i raz na podstawie streszczenia cudzego
-raportu. Za każdym razem rozstrzygnął dopiero kontakt z artefaktem
-źródłowym — surowa odpowiedź HTTP, treść faktury, linia kodu. To
-potwierdza zarzut adwokata diabła, że modelowanie przed pierwszym realnym
-wywołaniem API produkuje kształt fikcyjny; obie korekty kształtu modelu
-przyszły właśnie z takiego kontaktu.
+**Wniosek oparty na niepełnej lekturze okazał się błędny sześciokrotnie.**
+Kolejno: że portal weryfikacyjny oddaje wyłącznie XML; że serwuje gotowy
+PDF; że `ksef2` jest lepszą drogą renderowania; że mapper `ksef2` odwraca
+semantykę `Subject2`; że MF deduplikuje za nas i `D-005` dubluje ich
+mechanizm; oraz — już w skrypcie porównującym — dwie pomyłki dające 10 i
+7 fałszywych braków zamiast czterech rzeczywistych.
+
+Za każdym razem rozstrzygnął dopiero kontakt z artefaktem źródłowym:
+wygenerowany plik, surowa odpowiedź HTTP, treść faktury, linia kodu,
+oficjalny dokument MF. **Żadnej z tych pomyłek nie wychwyciło czytanie
+dokumentacji ani weryfikacja cudzym streszczeniem.**
+
+Najbardziej pouczająca była trzecia — nie wynikała z braku danych.
+Wiedziano, że WeasyPrint wymaga bibliotek systemowych, i że Node to jeden
+plik binarny. Te dwa fakty po prostu nie zostały zestawione, bo „czysty
+Python" brzmiało jak oczywista wygrana. Obalił ją dopiero użytkownik,
+patrząc na wygenerowany PDF.
+
+To potwierdza zarzut adwokata diabła, że modelowanie przed realnym
+wywołaniem API produkuje kształt fikcyjny. Wszystkie korekty modelu
+przyszły z kontaktu z artefaktem, żadna z rozumowania.

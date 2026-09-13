@@ -117,6 +117,23 @@
   w konfiguracji tylko nazwa konta, sam sekret z keyringu.
 - **Alternatywa:** zmienna środowiskowa jako ścieżka podstawowa — odrzucona
   jako domyślna, przyjęta jako awaryjna.
+- **Backend wybiera użytkownik, nie priorytet biblioteki.** CLI wylicza
+  dostępne magazyny (`keyring.backend.get_all_keyring()` — wykrycie bez
+  odczytu, zapisu i interakcji), pokazuje, który byłby domyślny, i
+  utrwala **jawny wybór** w konfiguracji. Powód: backend wybierany
+  automatycznie zmienia się, gdy w systemie pojawi się inny pakiet
+  keyringu — token zapisany wcześniej przestaje być widoczny, choć nadal
+  istnieje w starym magazynie. Objaw („token zniknął") byłby oddalony od
+  przyczyny (instalacja niezwiązanego pakietu). Ten sam wzorzec awarii,
+  przed którym chroni rozdział cache od trwałego stanu [D-032].
+- **Zapis sekretu jest komendą CLI**, wywoływalną niezależnie od
+  onboardingu (rotacja tokenu, drugi podmiot, naprawa wpisu) i używaną
+  przez onboarding jako krok — jedna implementacja, nie dwie. Odczyt
+  wartości ze stdin **bez echa**; weryfikacja po zapisie potwierdza
+  odczyt **nie pokazując wartości**. Komenda kasująca domyka rotację.
+  Uzasadnienie z przebiegu na sucho: bez CLI zapis wymagał ręcznego
+  odtworzenia wewnętrznego schematu atrybutów biblioteki przez
+  `secret-tool` — czego żaden użytkownik nie zrobi. Patrz GH-4.
 
 ## D-005 — Idempotencja pobierania od pierwszego dnia; indeks deduplikacji odrębny od treści
 
@@ -508,9 +525,111 @@
   wynik, nasza wartość jest zerowa.
 - **Konsekwencja:** każda funkcja etapu 1 musi dać się obronić pytaniem
   „czy Aplikacja Podatnika robi to samo jednym kliknięciem?".
-- **Status: NIEUDOWODNIONE.** To jest twierdzenie o wartości, a każde
-  takie twierdzenie jest falsyfikowalne. Nasze nie zostało
-  sfalsyfikowane, bo nikt nie próbował. Potwierdzono natomiast
+- **Status: PRZESZŁO TEST FALSYFIKUJĄCY (2026-09-13).** Twierdzenie o
+  wartości jest falsyfikowalne i zostało poddane próbie na rzeczywistym
+  archiwum faktur zakupowych właściciela produktu.
+
+### Wynik testu
+
+Zmierzono opóźnienie między datą wystawienia faktury (z nazwy pliku) a
+momentem jej zarchiwizowania (czas modyfikacji pliku) dla okna
+2026-06-15…2026-09-13.
+
+| Miara | Wartość |
+|---|---|
+| Faktur w oknie | **57** |
+| Z nazwą zawierającą `ksef` | **32 (56%)** |
+| Opóźnienie > 7 dni | **35 (61%)** |
+| Opóźnienie > 14 dni | 23 (40%) |
+| Opóźnienie > 30 dni | 8 (14%) |
+| Mediana | **10 dni** |
+| Średnia | 17,6 dnia |
+| Maksimum | **146 dni** |
+
+Odpowiedź na pytanie „ile faktur automat pokazałby wcześniej" brzmi
+więc: **nie zero**. Przy medianie 10 dni i 61% faktur docierających
+później niż tydzień po wystawieniu, przestrzeń na wyprzedzenie jest
+realna.
+
+### Mocniejszy dowód niż same opóźnienia
+
+**32 z 57 plików ma już `.ksef.` w nazwie.** To nie jest hipoteza o
+wartości — to obserwacja, że robota, którą narzędzie ma automatyzować,
+jest **już wykonywana ręcznie**, 32 razy w trzy miesiące.
+
+Archiwizacja odbywa się **partiami**: 16 dni roboczych w trzy miesiące,
+z wyraźnymi skupiskami (7, 10, 11, 8 i 10 faktur jednego dnia). To jest
+kształt pracy wsadowej, którą automat usuwa.
+
+### Odpowiedź na test kontrolny „co konsumuje deltę"
+
+Delta konsumuje się **do lokalnego archiwum plików**, utrzymywanego
+ręcznie i nazywanego wg konwencji `data.kontrahent.kategoria.numer`.
+Nie jest to „człowiek patrzący na listę" — jest to zasilanie
+istniejącego już procesu.
+
+### Granice tego dowodu — nazwane wprost
+
+- Czas modyfikacji pliku mierzy **moment archiwizacji**, nie moment
+  dowiedzenia się. Faktura mogła dotrzeć mailem wcześniej i czekać na
+  opracowanie. Zmierzone opóźnienie jest więc **górnym oszacowaniem**
+  zysku, nie jego miarą.
+- Data wystawienia ≠ data nadania numeru KSeF, a to ta druga wyznacza
+  moment dostępności [D-031]. Rzeczywiste wyprzedzenie jest o tyle
+  mniejsze.
+- Synchronizacja katalogu w chmurze mogła zmodyfikować część znaczników
+  czasu.
+- Próba obejmuje **jeden podmiot**. Wynik nie uogólnia się na biura
+  rachunkowe bez osobnego sprawdzenia.
+
+### Druga połowa testu — odpytanie produkcji KSeF
+
+Wykonano tego samego dnia. Uwierzytelnienie tokenem na środowisku
+produkcyjnym, `InvoicesFilter.for_buyer`, zakres 90 dni, operacja
+wyłącznie odczytowa.
+
+| Miara | Wartość |
+|---|---|
+| Faktur zakupowych w KSeF | **38** |
+| Odnalezionych w archiwum lokalnym | 34 |
+| **Brak w archiwum** | **4** |
+| Suma brutto brakujących | 840,10 PLN |
+| **Suma VAT brakujących** | **157,09 PLN** |
+
+Brakujące dzielą się na dwie kategorie o różnym znaczeniu:
+
+- **Trzy z września** (03, 08, 10) — bieżąca zaległość. Archiwum nie ma
+  jeszcze katalogu na wrzesień; ostatnia sesja wsadowa objęła sierpień.
+  To normalny rytm pracy, nie strata.
+- **Jedna z 7 lipca** — `PGE Energetyka Kolejowa`, 215,80 PLN, VAT
+  40,35 PLN. **To jest realne przeoczenie**: lipiec i sierpień zostały
+  już zarchiwizowane w sesjach 4–5 sierpnia, a ta faktura tam nie
+  trafiła. Archiwum zawiera faktury PGE z 31 maja, 30 czerwca i 31
+  lipca — ta z 7 lipca wypada poza regularny rytm dostawcy i właśnie
+  dlatego umknęła.
+
+### Wniosek
+
+Odpowiedź na pytanie adwokata diabła nie brzmi „zero". Narzędzie
+wykryłoby **jedną fakturę kosztową, która nie dotarła do ewidencji
+wcale**, oraz pokazałoby trzy bieżące, zanim zdążyłyby się zestarzeć.
+Przy nieodliczonym VAT-cie 40,35 PLN z jednej przeoczonej faktury
+kwartalnie, wartość nie leży w kwocie — leży w tym, że **przeoczenie
+jest niewykrywalne bez porównania z rejestrem**. Ręczna archiwizacja
+nie ma mechanizmu, który powiedziałby „czegoś brakuje".
+
+### Granice tego wyniku
+
+- Dopasowanie jest **heurystyczne**, oparte na nazwach plików: data
+  ±3 dni plus słowo z nazwy sprzedawcy albo numer faktury. Nie ma
+  pewnego klucza, bo archiwum lokalne nie przechowuje numerów KSeF.
+- W trakcie analizy **dwukrotnie poprawiano błędy w samym skrypcie
+  porównującym** — kolejne wersje raportowały 10, 7 i wreszcie 4 braki.
+  Przyczyny: zły sposób wycinania nazwy sprzedawcy oraz skanowanie
+  archiwum tylko na jednym poziomie zagnieżdżenia. Każdą z czterech
+  pozycji potwierdzono następnie ręcznym wyszukaniem.
+- **To jest argument za tym, żeby deduplikację oprzeć na numerze KSeF**
+  [D-005], a nie na nazwie pliku ani numerze sprzedawcy. Potwierdzono natomiast
   obserwacją, że wizualizacja PDF jest **parytetem, nie przewagą**
   [D-027] — więc cały ciężar dowodu spoczywa na automacie, archiwum i
   delcie.
