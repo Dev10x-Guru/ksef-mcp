@@ -1,0 +1,217 @@
+name: ADR re-derivation
+
+# The *staleness* half of ADR-100 provenance, symmetric to the
+# PR-triggered drift guard (adr-provenance-drift.yml). A capable model
+# re-derives a rotating sample of human-weighted decisions under current
+# circumstances and files confirm / amend / supersede / drift recommendations
+# into one advisory review-bundle issue.
+#
+# Cron-only + manual dispatch, mirroring prod-synthetic.yml: a re-derivation
+# result is advisory and can never block a feature PR.
+
+on:
+  schedule:
+    - cron: "0 7 1 */3 *" # quarterly: 07:00 UTC on the 1st of Jan/Apr/Jul/Oct
+  workflow_dispatch:
+    inputs:
+      decision_ids:
+        description: "Optional override list, e.g. 'ADR-100' (default: rotation)"
+        required: false
+        default: ""
+
+concurrency:
+  group: adr-rederivation
+  cancel-in-progress: false
+
+jobs:
+  rederive:
+    name: Re-derive a sample of human-weighted decisions
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history so the agent can read how decisions realized
+
+      - uses: astral-sh/setup-uv@v5
+
+      # pytest-cov is needed only so the root pyproject's --cov addopts
+      # parse; --no-cov then turns measurement off, since bin/ sits
+      # outside the package's coverage scope.
+      - name: Unit-test the sampler and shared predicate
+        run: >-
+          uv run --no-project --with pytest --with pytest-cov pytest --no-cov
+          bin/test_rederive_sample.py bin/test_decision_provenance.py
+
+      # Cross-run rotation cursor. Cache is best-effort: it may be evicted
+      # between quarterly runs, in which case rotation resets — the pin list
+      # still guarantees the named decisions are always re-derived.
+      # A durable cursor (state branch) is a documented follow-up.
+      - name: Restore rotation cursor
+        uses: actions/cache@v4
+        with:
+          path: .rederivation-cursor.json
+          key: rederivation-cursor-${{ github.run_id }}
+          restore-keys: rederivation-cursor-
+
+      - name: Prepare output directory
+        run: mkdir -p "${{ github.workspace }}/.claude-output"
+
+      - name: Sample decisions for re-derivation
+        env:
+          DECISION_IDS: ${{ github.event.inputs.decision_ids }}
+        run: >-
+          uv run --script bin/rederive-sample.py
+          --override "$DECISION_IDS"
+          --out "${{ github.workspace }}/.claude-output/rederivation-sample.json"
+
+      - name: Re-derive each sampled decision
+        uses: anthropics/claude-code-action@f87768c6d25f92ae6efa7175e223ef77d4cbf97f # v1.0.166
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            # ADR-100 Adversarial Re-Derivation
+
+            You are re-deriving a sample of *human-weighted* decisions under
+            the codebase's current circumstances (ADR-100 point 4). The goal
+            is to catch a human decision an agent has silently reversed,
+            narrowed, or let go stale, with file-level evidence, not vibes.
+
+            ## Step 1: Read the sample
+            Read `${{ github.workspace }}/.claude-output/rederivation-sample.json`.
+            It has a `decisions` array; each entry has `id`, `title`, and
+            `reference` (the ADR path plus the human-weight reason).
+
+            ## Step 2: Re-derive each decision
+            For every decision in the sample:
+            1. Understand the decision. ADR decisions live in `docs/adr/`.
+               Some may be written in **Polish** — reason across Polish and
+               English; do not skip one because it is terse or Polish.
+            2. Establish the original circumstances from the ADR's
+               `Sources:` / `Deciders:` headers.
+            3. **Check the current realization in code** (the load-bearing
+               step). Use Read/Glob/Grep to find how the decision is enforced
+               today and cite specific `path:line` evidence.
+            4. Assign exactly one verdict:
+               - **CONFIRM** — still holds; code matches it. Keep it terse.
+               - **AMEND** — broadly right, a detail shifted. Propose a dated
+                 amendment in the ADR itself (dated-amendment style).
+               - **SUPERSEDE** — circumstances invalidate it. Propose a
+                 replacement ADR that supersedes this one, with a backlink.
+               - **DRIFT** — the decision is fine but the implementation
+                 betrays it. Recommend filing a bug.
+
+            ## Step 3: Write the review bundle
+            Write ONE markdown document to
+            `${{ github.workspace }}/.claude-output/rederivation-bundle.md`:
+            - One `##` section per decision: `<id> — <verdict>`, a
+              one-paragraph rationale, `path:line` evidence, and the concrete
+              follow-up (amendment text, supersession draft, or bug summary).
+            - Keep CONFIRM entries to a few lines.
+            - Even if every verdict is CONFIRM, still write the full document —
+              an all-CONFIRM run is an auditable "checked, found nothing", not
+              a silent skip.
+
+            Be evidence-bound: a CONFIRM carries no more weight than the code
+            it cites. Do not commit any change or open any PR — this run is
+            advisory; a human triages the bundle issue.
+
+          # sonnet, not haiku: re-derivation is
+          # multi-turn code reading, the sonnet workload from
+          # claude-adr-review.yml. Pinned (not default) so an action bump
+          # can't silently raise the tier.
+          claude_args: '--model sonnet --allowed-tools "Read,Write,Glob,Grep,Bash(git log:*),Bash(git blame:*)"'
+
+      - name: Persist rotation cursor
+        run: cp -f .rederivation-cursor.json "${{ github.workspace }}/.claude-output/" || true
+
+      - name: Upload re-derivation artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rederivation-output
+          path: .claude-output/
+          retention-days: 30
+
+  notify:
+    name: File the review-bundle issue
+    needs: rederive
+    if: ${{ always() && needs.rederive.result != 'cancelled' }}
+    runs-on: ubuntu-latest
+    permissions:
+      # No contents: read — this job downloads artifacts and files an
+      # issue; it never checks out or reads repository code.
+      issues: write
+    env:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_CLAUDE_REVIEW_WEBHOOK_URL }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Download re-derivation artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: rederivation-output
+          path: .claude-output
+
+      - name: Ensure rederivation label exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh label create rederivation \
+            --color 1d76db \
+            --description "ADR-100 adversarial re-derivation bundle" \
+            --force || true
+
+      - name: Compose and file the review-bundle issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          SAMPLE=".claude-output/rederivation-sample.json"
+          BUNDLE=".claude-output/rederivation-bundle.md"
+
+          if [ -f "$SAMPLE" ]; then
+            count=$(jq '.decisions | length' "$SAMPLE")
+          else
+            count=0
+          fi
+
+          year=$(date -u +%Y)
+          month=$(date -u +%m)
+          quarter=$(( (10#$month - 1) / 3 + 1 ))
+          title="♻️ Re-derivation bundle ${year}-Q${quarter} — ${count} decisions reviewed"
+
+          {
+            echo "Adversarial re-derivation of human-weighted decisions"
+            echo "(ADR-100 point 4). Advisory — triage each verdict and accept"
+            echo "the amendments/supersessions worth recording."
+            echo ""
+            echo "Run: ${RUN_URL}"
+            echo ""
+            if [ -f "$BUNDLE" ]; then
+              cat "$BUNDLE"
+            else
+              echo "## No verdict output"
+              echo ""
+              echo "The re-derivation step produced no bundle document."
+              echo "Inspect the run log and the uploaded artifacts."
+            fi
+          } > issue-body.md
+
+          gh issue create \
+            --title "$title" \
+            --body-file issue-body.md \
+            --label adr \
+            --label architecture \
+            --label rederivation
+
+      - name: Announce on Slack (optional)
+        if: ${{ env.SLACK_WEBHOOK_URL != '' }}
+        run: |
+          payload=$(jq -n \
+            --arg text "♻️ ADR re-derivation bundle filed — ${RUN_URL}" \
+            '{text: $text}')
+          curl -sf -X POST -H 'Content-type: application/json' \
+            --data "$payload" "$SLACK_WEBHOOK_URL"

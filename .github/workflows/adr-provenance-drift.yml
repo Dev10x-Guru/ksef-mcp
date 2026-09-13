@@ -1,0 +1,54 @@
+name: ADR provenance drift
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
+    paths:
+      - "docs/adr/**"
+      - "bin/check-adr-drift.py"
+      - "bin/decision_provenance.py"
+      - "bin/rederive-sample.py"
+      - "bin/test_check_adr_drift.py"
+      - "bin/test_decision_provenance.py"
+      - "bin/test_rederive_sample.py"
+      - ".github/workflows/adr-provenance-drift.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  human-weighted-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Unit-test the provenance tooling (drift, predicate, sampler)
+        # pytest-cov is needed only so the root pyproject's --cov addopts
+        # parse; --no-cov then turns measurement off, since bin/ sits
+        # outside the package's coverage scope.
+        run: >-
+          uv run --no-project --with pytest --with pytest-cov pytest --no-cov
+          bin/test_check_adr_drift.py bin/test_decision_provenance.py
+          bin/test_rederive_sample.py
+
+      - name: Warn on modified human-weighted ADRs
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          mapfile -t adrs < <(git diff --name-only --diff-filter=MR "$BASE_SHA...$HEAD_SHA" -- docs/adr/)
+          if [ ${#adrs[@]} -eq 0 ]; then
+            echo "No modified ADRs in this PR."
+            exit 0
+          fi
+          uv run --script bin/check-adr-drift.py "${adrs[@]}"

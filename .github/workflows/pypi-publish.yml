@@ -1,0 +1,76 @@
+name: Publish to PyPI
+
+on:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Build distributions
+        run: uv build
+
+      # The tag is the only thing a human types during a release, and
+      # nothing else cross-checks it against the packaged metadata. A
+      # mismatch would publish the pyproject version under an unrelated
+      # tag, which cannot be undone on PyPI.
+      - name: Verify tag matches packaged version
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          sdist=$(find dist -maxdepth 1 -name '*.tar.gz' -print -quit)
+          if [ -z "$sdist" ]; then
+            echo "No sdist in dist/ — the build produced nothing to check" >&2
+            exit 1
+          fi
+          version=$(basename "$sdist" | sed -E 's/.*-([0-9][^-]*)\.tar\.gz/\1/')
+          if [ "v$version" != "$TAG" ]; then
+            echo "Tag $TAG does not match built version v$version" >&2
+            exit 1
+          fi
+          echo "Tag $TAG matches built version v$version"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pypi-dists
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: pypi
+      url: https://pypi.org/project/ksef-mcp/
+    permissions:
+      id-token: write
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: pypi-dists
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

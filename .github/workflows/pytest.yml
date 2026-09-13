@@ -1,0 +1,99 @@
+name: Tests
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize, ready_for_review]
+    paths:
+      - "src/**/*.py"
+      - "tests/**/*.py"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/pytest.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      # The coverage gate lives in pyproject ([tool.coverage.report]
+      # fail_under = 100) so a local run and CI agree. Do not add a
+      # --cov-fail-under flag here — it would silently shadow it.
+      - name: Run tests
+        run: uv run pytest
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Format
+        run: uv run ruff format --check .
+
+  # The ADR provenance tooling in bin/ carries its own pytest suite and is
+  # deliberately excluded from the package's testpaths and coverage, so it
+  # needs a separate invocation or it would never run.
+  tooling-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # --no-project keeps these standalone scripts runnable without the
+      # package installed, but pytest still reads the root pyproject's
+      # addopts, which ask for coverage of ksef_mcp. So pytest-cov has to
+      # be present to parse those flags, and --no-cov then turns the
+      # measurement off: bin/ is deliberately outside the package's
+      # coverage scope and must not dilute its 100% gate.
+      - name: Test the bin/ tooling
+        run: uv run --no-project --with pytest --with pytest-cov pytest bin/ --no-cov
+
+  # Single required status check to point branch protection at, so the
+  # protection rule does not have to list every job by name.
+  # `failure()` and `cancelled()` already evaluate across `needs`, so this
+  # job runs only when something upstream went wrong — and then fails.
+  all-checks:
+    needs: [test, lint, tooling-tests]
+    if: failure() || cancelled()
+    runs-on: ubuntu-latest
+    steps:
+      - run: exit 1

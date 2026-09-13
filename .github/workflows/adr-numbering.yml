@@ -1,0 +1,28 @@
+name: ADR numbering
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
+    paths:
+      - "docs/adr/**"
+      - "bin/check-adr-numbers.py"
+      - ".github/workflows/adr-numbering.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  collision-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Check for duplicate ADR numbers
+        run: uv run --script bin/check-adr-numbers.py

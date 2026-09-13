@@ -1,0 +1,30 @@
+name: Git Checks
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  git-history-linting:
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Block fixup commit merge
+        uses: 13rac1/block-fixup-merge-action@v2.0.0
+
+      - name: GitLint commit messages
+        uses: aschbacd/gitlint-action@v1.2.0
+        with:
+          commit-message-subject-max-length: 72
+          re-commit-message-subject: ^([A-Z]|[\u2300-\u2B07]|[\uD83C-\uD83F][\uDC00-\uDFFF]).*((?!\.).)$
+          re-pull-request-title: ^([A-Z]|[\u2300-\u2B07]|[\uD83C-\uD83F][\uDC00-\uDFFF]).*((?!\.).)$

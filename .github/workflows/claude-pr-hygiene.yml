@@ -1,0 +1,157 @@
+name: PR Hygiene Review
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+    types: [opened, ready_for_review]
+
+jobs:
+  hygiene-review:
+    # GitHub refuses OIDC minting for a pull_request run from a
+    # fork, so claude-code-action cannot authenticate and this job fails
+    # at token minting every time — reporting a red check that says
+    # `id-token: write` is missing when it is declared right below. Skip
+    # instead, so a fork PR reads as not-reviewed rather than broken.
+    # Both checks are non-required, so nothing that gated a merge is
+    # lost. Getting actual review coverage on fork PRs needs a
+    # workflow_run split or pull_request_target, neither of which is a
+    # trigger swap — see the issue.
+    if: >-
+      !github.event.pull_request.draft
+      && !github.event.pull_request.head.repo.fork
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+
+    steps:
+      - name: Skip if duplicate SHA run exists
+        id: dedup
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PEER_RUN=$(gh api \
+            "repos/${{ github.repository }}/actions/runs?head_sha=${{ github.sha }}&per_page=10" \
+            --jq "[.workflow_runs[] | select(.name == \"${{ github.workflow }}\" and .id != ${{ github.run_id }} and .conclusion != \"cancelled\" and .conclusion != \"skipped\" and .status != \"queued\")] | first | .id // empty" \
+            2>/dev/null || true)
+          if [ -n "$PEER_RUN" ]; then
+            echo "::notice::Skipping duplicate run — SHA ${{ github.sha }} already handled by run $PEER_RUN"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip if PR already merged or closed
+        if: steps.dedup.outputs.skip != 'true'
+        id: pr-state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          STATE=$(gh pr view ${{ github.event.pull_request.number }} \
+            --repo ${{ github.repository }} --json state -q '.state')
+          if [ "$STATE" != "OPEN" ]; then
+            echo "::notice::Skipping — PR #${{ github.event.pull_request.number }} is $STATE"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout repository
+        if: steps.dedup.outputs.skip != 'true' && steps.pr-state.outputs.skip != 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run PR Hygiene Review
+        if: steps.dedup.outputs.skip != 'true' && steps.pr-state.outputs.skip != 'true'
+        uses: anthropics/claude-code-action@f87768c6d25f92ae6efa7175e223ef77d4cbf97f # v1.0.166
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            You are reviewing PR #${{ github.event.pull_request.number }} in
+            ${{ github.repository }} for metadata hygiene — title, description,
+            and commit history quality. This is NOT a code review.
+
+            REQUIRED FIRST STEP:
+            Read these files:
+            1. references/git-commits.md — conventions for commit messages,
+               PR titles, and branch naming
+            2. references/git-pr.md — PR body format, grooming, review feedback
+            3. references/git-jtbd.md — Job Story format, principles,
+               anti-patterns, and examples for outcome-focused titles
+
+            GATHER PR DATA:
+            Run these commands to collect metadata:
+            - `gh pr view ${{ github.event.pull_request.number }} --json title,body,headRefName,commits`
+            - `git log --oneline origin/${{ github.event.pull_request.base.ref }}..HEAD`
+
+            ANALYZE THREE AREAS:
+
+            1. **PR Title**
+               - Must follow: `<gitmoji> <TICKET-ID> <JTBD-inspired description>`
+               - Max 72 characters
+               - Ticket ID must be present (extract expected ID from branch name)
+               - Description SHOULD be outcome-focused (JTBD) for user-facing features
+               - For meta-work (docs, tooling, refactoring), implementation-focused
+                 titles are acceptable if the PR body explains the "why" using JTBD
+               - Bad: "Add X to Y" without context — Good: "Enable Z" (outcome)
+
+            2. **PR Description (body)**
+               - Must start with a JTBD Job Story as the **first paragraph** (1-3 lines)
+                 Format: `**When** [situation], **I want to** [motivation], **so I can** [outcome]`
+                 The release notes process collects Job Stories by position — it must
+                 come before the commit list and any other content
+               - May optionally include a compact commit list with links
+               - Must end with `Fixes: https://github.com/Dev10x-Guru/ksef-mcp/issues/NUMBER`
+               - Should NOT contain summaries or checklists (those go in the first comment)
+
+            3. **Commits**
+               - Each commit title: `<gitmoji> <TICKET-ID> <description>`
+               - Atomic: one logical change per commit
+               - No fixup! or squash! commits remaining
+               - Titles should be outcome-focused where possible
+
+            SEVERITY LABELS:
+            Classify each issue as REQUIRED or RECOMMENDED:
+            - **REQUIRED**: Violations that break tooling or integration
+              - Missing gitmoji (breaks changelog generation)
+              - No `Fixes:` link (breaks GitHub issue integration)
+              - Fixup commits remaining (blocks merge)
+              - Missing JTBD Job Story as first paragraph (breaks release
+                notes collection)
+              - JTBD not the first paragraph (commit list or other content
+                appears before the Job Story)
+            - **RECOMMENDED**: Style preferences that improve consistency
+              - Compact commit list format
+              - Ticket ID in title (helps tracking, omit for meta-work)
+              - JTBD-style title wording (preferred, not enforced for
+                infrastructure/tooling PRs)
+
+            TICKET ID VALIDATION:
+            Before suggesting a ticket ID from the branch name:
+            - Skip placeholder-looking IDs (e.g., `1234`, `0000`, `9999`)
+            - Skip IDs from auto-generated branch names (random suffix
+              patterns like `-knDH7`, `-7n0Qz`)
+            - Only suggest ticket IDs that look intentional
+
+            OUTPUT RULES:
+            - If ALL checks pass: do nothing. Do not post a comment. Exit silently.
+            - If ANY issues found: post exactly ONE comment via
+              `gh pr comment ${{ github.event.pull_request.number }}` with:
+              - No header — keep the comment compact and scannable
+              - A flat list of issues, each on its own line as a bullet point
+              - Each bullet prefixed with **REQUIRED** or **RECOMMENDED** label
+              - Each bullet includes a concrete fix (alternative wording, example)
+              - When flagging non-outcome-focused titles, append:
+                "📖 See `references/git-jtbd.md`"
+              - Keep tone constructive — this is a helpful nudge, not a gate
+
+            IMPORTANT:
+            - Do NOT review code quality, architecture, or tests — that's handled
+              by the code review workflow
+            - Do NOT approve or request changes — only comment
+            - Be concise — the goal is a quick, actionable checklist
+
+          claude_args: '--model haiku --allowed-tools "Read,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh api:*),Bash(gh pr comment:*),Bash(git log:*)"'

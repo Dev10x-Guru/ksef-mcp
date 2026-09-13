@@ -1,0 +1,353 @@
+name: Claude ADR Review - Distill Architectural Decisions
+
+on:
+  pull_request:
+    types: [closed]
+    paths-ignore:
+      - '.claude/**'
+      - '.github/workflows/claude-adr-review.yml'
+      - '.github/workflows/claude-code-review.yml'
+      - '.github/workflows/claude-memory-review.yml'
+      - '.github/workflows/claude-pr-hygiene.yml'
+      - 'CLAUDE.md'
+      - 'docs/adr/**'
+
+jobs:
+  adr-distillation:
+    if: >-
+      github.event.pull_request.merged == true
+      && github.event.pull_request.draft == false
+      && !startsWith(github.event.pull_request.title, 'Revert ')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prepare output directory
+        run: mkdir -p "${{ github.workspace }}/.claude-output"
+
+      - name: Analyze PR for architectural decisions
+        uses: anthropics/claude-code-action@f87768c6d25f92ae6efa7175e223ef77d4cbf97f # v1.0.166
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            # ADR Distillation — Architectural Decision Detection
+
+            You are analyzing a merged Pull Request to determine whether it
+            contains an architectural decision worth recording as an ADR
+            (Architecture Decision Record).
+
+            ## PR Context
+            - **Repository**: ${{ github.repository }}
+            - **PR Number**: ${{ github.event.pull_request.number }}
+            - **PR Title**: ${{ github.event.pull_request.title }}
+            - **PR Author**: ${{ github.event.pull_request.user.login }}
+            - **PR URL**: ${{ github.event.pull_request.html_url }}
+
+            ## Step 1: Gather Data
+
+            1. Run `gh pr view ${{ github.event.pull_request.number }} --json body,comments,reviews,files,additions,deletions` to get PR details
+            2. Run `gh pr diff ${{ github.event.pull_request.number }}` to see the code changes
+            3. Read `docs/adr/TEMPLATE.md` to understand the ADR format
+            4. List existing ADRs with `ls docs/adr/` to understand what has already been decided
+
+            ## Step 2: Detect Architectural Decisions
+
+            An architectural decision is a choice that:
+            - Constrains future development (hard to reverse)
+            - Introduces a new technology, framework, or library
+            - Establishes a new pattern or convention
+            - Changes deployment, infrastructure, or integration approach
+            - Defines a boundary between modules or services
+
+            **ADR-worthy signals** (one or more present):
+            - New dependency in pyproject.toml or package.json (library, framework)
+            - New Dockerfile, docker-compose service, or deployment config
+            - New `.github/workflows/*.yml` introducing an automation pattern
+            - New module or package structure establishing a convention
+            - Celery task patterns, event bus wiring, DI container changes
+            - Database schema patterns (new model inheritance, polymorphism)
+            - API contract changes (new GraphQL schema pattern, REST versioning)
+            - New testing infrastructure (VCR cassettes, E2E framework)
+
+            **NOT ADR-worthy** (skip these):
+            - Bug fixes within existing patterns
+            - Feature implementation using established patterns
+            - Refactoring that preserves existing patterns
+            - Documentation-only changes
+            - Dependency version bumps (patch/minor)
+            - Test additions for existing code
+            - Configuration tweaks
+
+            ## Step 3: Make the Decision
+
+            If no architectural decision is detected:
+            - Write the text "none" to `${{ github.workspace }}/.claude-output/adr_proposal.md`
+            - Stop here — do NOT create an ADR
+
+            If an architectural decision IS detected, proceed to Step 4.
+
+            ## Step 4: Draft the ADR
+
+            Read existing ADRs in `docs/adr/` to match the established style
+            and identify cross-references. Then write a complete ADR proposal
+            to `${{ github.workspace }}/.claude-output/adr_proposal.md`.
+
+            The proposal must follow the template from `docs/adr/TEMPLATE.md`:
+
+            ```markdown
+            # ADR-NNN: [Title]
+
+            - **Date:** YYYY-MM-DD
+            - **Status:** Proposed
+            - **Deciders:** [PR author]
+
+            ## Context
+            [What problem or need motivated this decision?
+            Reference the PR and any prior ADRs that provide context.]
+
+            ## Decision
+            [What was decided? Include code examples or configuration
+            snippets where they clarify the choice.]
+
+            ## Rationale
+            [Why this approach over alternatives? Include a comparison
+            table if multiple options were considered.]
+
+            ## Consequences
+            **Positive:**
+            - [benefit 1]
+
+            **Negative:**
+            - [trade-off 1]
+
+            ## Related
+            - [Links to related ADRs, PRs, or documentation]
+            ```
+
+            **Important rules for the draft:**
+            - Use **Proposed** status (not Accepted) — a human must review
+            - Set NNN to the next sequential number after the highest existing ADR
+            - The PR author is the decider
+            - Cross-reference related existing ADRs in the Related section
+            - Keep the tone factual and concise
+            - Include the alternatives-considered comparison if the PR
+              discussion or body mentions them
+
+            IMPORTANT:
+            - Be conservative — when in doubt, write "none" and skip
+            - One ADR per PR maximum
+            - The ADR captures the decision, not the implementation details
+            - Write the complete proposal to the output file using the Write tool
+
+          # haiku: this step is a conservative "is there an architectural
+          # decision worth recording?" classification that outputs "none" for
+          # most merges. It runs on every merged PR, so the cheapest model that
+          # can read a diff and apply the ADR-worthy heuristics keeps per-merge
+          # spend down. Pinned (not default) so an action upgrade can't silently
+          # raise the model tier.
+          claude_args: '--model haiku --allowed-tools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh api:*),Bash(ls:*),Read,Write,Glob,Grep"'
+
+      - name: Check if ADR was proposed
+        id: check-proposal
+        run: |
+          PROPOSAL_FILE="${{ github.workspace }}/.claude-output/adr_proposal.md"
+          if [ ! -f "$PROPOSAL_FILE" ]; then
+            echo "No proposal file found"
+            echo "has_proposal=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          CONTENT=$(cat "$PROPOSAL_FILE")
+          if [ "$CONTENT" = "none" ]; then
+            echo "No architectural decision detected — skipping"
+            echo "has_proposal=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ADR proposal found"
+            echo "has_proposal=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create ADR draft PR
+        if: steps.check-proposal.outputs.has_proposal == 'true'
+        uses: anthropics/claude-code-action@f87768c6d25f92ae6efa7175e223ef77d4cbf97f # v1.0.166
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GITHUB_WORKSPACE: ${{ github.workspace }}
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            # Create ADR Draft PR
+
+            An ADR proposal has been written to:
+            ${{ github.workspace }}/.claude-output/adr_proposal.md
+
+            Your task: create the ADR file in the repository and open a
+            draft PR for human review.
+
+            ## Steps
+
+            1. Read the proposal from `.claude-output/adr_proposal.md`
+
+            2. Determine the next ADR number:
+               List `docs/adr/` and find the highest numbered file.
+               The new ADR gets that number + 1, zero-padded to 3 digits.
+
+            3. Generate a filename slug from the ADR title:
+               `docs/adr/NNN-slug-from-title.md`
+               Example: `docs/adr/101-stdio-transport-for-the-mcp-server.md`
+
+            4. Write the ADR file using the Write tool
+
+            5. Configure git identity:
+               ```
+               git config user.email "github-actions[bot]@users.noreply.github.com"
+               git config user.name "github-actions[bot]"
+               ```
+
+            6. Create branch from the PR's base branch:
+               ```
+               git checkout ${{ github.event.pull_request.base.ref }}
+               git pull origin ${{ github.event.pull_request.base.ref }}
+               git checkout -B "claude/adr-pr-$PR_NUMBER"
+               ```
+
+            7. Stage and commit:
+               ```
+               git add docs/adr/
+               git commit -m "🤖 Propose ADR-NNN: <title>"
+               ```
+
+            8. Push and create draft PR:
+               ```
+               git push origin "claude/adr-pr-$PR_NUMBER"
+               ```
+
+               Create the PR with:
+               - Title: `🤖 Propose ADR-NNN: <title>`
+               - Draft status
+               - Target: ${{ github.event.pull_request.base.ref }}
+               - Body: JTBD Job Story as first paragraph, then the
+                 ADR content for easy review, then link to source PR
+
+               Use `gh pr create` with `--draft --base ${{ github.event.pull_request.base.ref }}`.
+
+            9. Write the PR URL to:
+               `${{ github.workspace }}/.claude-output/adr_pr_url.txt`
+
+          # sonnet, not haiku: this step runs multi-turn agentic git ops
+          # (checkout/add/commit/push + gh pr create). haiku silently exits
+          # mid-task without committing (see claude-memory-review.yml). Pinned
+          # so the default tier can't drift upward on an action bump.
+          claude_args: '--model sonnet --allowed-tools "Read,Write,Glob,Grep,Bash(git config:*),Bash(git checkout:*),Bash(git pull:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(gh pr create:*),Bash(ls:*)"'
+
+      - name: Read ADR PR URL
+        if: always()
+        id: adr-pr
+        run: |
+          ADR_PR_FILE="${{ github.workspace }}/.claude-output/adr_pr_url.txt"
+          if [ -f "$ADR_PR_FILE" ]; then
+            ADR_PR_URL=$(cat "$ADR_PR_FILE")
+            echo "ADR PR: $ADR_PR_URL"
+            echo "url=$ADR_PR_URL" >> "$GITHUB_OUTPUT"
+          else
+            echo "No ADR PR created"
+            echo "url=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Notify Slack
+        if: >-
+          always()
+          && steps.adr-pr.outputs.url != ''
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_CLAUDE_REVIEW_WEBHOOK_URL }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          ADR_PR_URL: ${{ steps.adr-pr.outputs.url }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "SLACK_CLAUDE_REVIEW_WEBHOOK_URL not set, skipping"
+            exit 0
+          fi
+
+          SLACK_MESSAGE=$(jq -n \
+            --arg pr_number "$PR_NUMBER" \
+            --arg pr_title "$PR_TITLE" \
+            --arg pr_author "$PR_AUTHOR" \
+            --arg pr_url "$PR_URL" \
+            --arg adr_pr_url "$ADR_PR_URL" \
+            '{
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "Claude ADR Review - New Decision Detected",
+                    "emoji": true
+                  }
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": ":memo: *PR #\($pr_number)* contains an architectural decision\n\n*\($pr_title)*\nAuthor: <https://github.com/\($pr_author)|@\($pr_author)>"
+                  }
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "A draft ADR has been proposed for human review."
+                  }
+                },
+                {
+                  "type": "actions",
+                  "elements": [
+                    {
+                      "type": "button",
+                      "text": {
+                        "type": "plain_text",
+                        "text": "Review ADR Proposal",
+                        "emoji": true
+                      },
+                      "url": $adr_pr_url,
+                      "style": "primary"
+                    },
+                    {
+                      "type": "button",
+                      "text": {
+                        "type": "plain_text",
+                        "text": "View Source PR",
+                        "emoji": true
+                      },
+                      "url": $pr_url
+                    }
+                  ]
+                },
+                {
+                  "type": "context",
+                  "elements": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "Review the proposed ADR and merge if the decision should be recorded."
+                    }
+                  ]
+                }
+              ]
+            }')
+
+          curl -X POST \
+            -H 'Content-type: application/json' \
+            --data "$SLACK_MESSAGE" \
+            "$SLACK_WEBHOOK_URL"
+
+          echo "Slack notification sent"
