@@ -174,6 +174,21 @@ Szczegółowy kontekst dla recenzentów bez zaśmiecania podglądu na Slacku.
 - [ ] Dokumentacja zaktualizowana, jeśli potrzeba
 - [ ] Nie zostały żadne commity fixup
 
+## Walidacja metadanych PR-a
+
+Wymagane pola (`Fixes:`, format Job Story) mogą być wymuszane
+automatycznie **przed push'em** za pomocą:
+
+- **Pre-commit hook** — `commitlint` lub niestandardowy skrypt, aby
+  przechwycić brakujące `Fixes:` na etapie commita
+- **GitHub Actions** — workflow `claude-pr-hygiene.yml` wykonuje drugą
+  linię obrony, sprawdzając tytuł i treść PR-a
+- **Husky + lint-staged** — dla zespołów preferujących Git hooks z
+  konfiguracją Node.js
+
+Brak automatycznej walidacji zwiększa ryzyko pominięcia wymagań podczas
+przeglądu. Zainstaluj w projekcie narzędzie, które jest dostępne lokalnie.
+
 ## Obsługa informacji zwrotnej z przeglądu
 
 1. Twórz commity fixup dla każdego komentarza z przeglądu
