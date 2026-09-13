@@ -9,6 +9,7 @@ Tablica kierowania zależna od ścieżki dla `.claude/rules/` i
 - Pełna treść reguł znajduje się w `references/*.md`.
 - Wyzwalacze i listy kontrolne agentów znajdują się w
   `.claude/agents/*.md`.
+- Umiejętności własne projektu znajdują się w `.claude/skills/*/SKILL.md`.
 
 ## Wzorce plików -> Agenty -> Odwołania
 
@@ -52,6 +53,12 @@ obsługa poświadczeń, obsługa XML faktury, izolacja testów `ksef_live`).
 | `reviewer-test-patterns.md` | `tests/**/*.py` | `references/review-checks-common.md` |
 | `reviewer-infra.md` | `.github/workflows/**`, `pyproject.toml`, `bin/**` | `references/review-checks-common.md` |
 | `reviewer-docs.md` | `docs/**`, `.claude/**/*.md`, `README.md`, `CLAUDE.md` | `references/review-checks-common.md` |
+
+## Umiejętności własne (`.claude/skills/`)
+
+| Umiejętność | Kiedy | Czego NIE robi |
+|---|---|---|
+| `release-notes` | sekcja „Bez wydania" w `CHANGELOG.md` jest pusta albo niekompletna przed wydaniem | nie wydaje — podnoszenie wersji, tagowanie i publikacja należą do `bin/release.py` |
 
 ## Budżety rozmiaru
 
