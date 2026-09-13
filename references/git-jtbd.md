@@ -161,7 +161,7 @@ współtwórcy mogli** je stosować bez czytania każdego wcześniejszego PR-a.
 ### Wydanie
 **Gdy** paczka poprawek jest gotowa, **osoba utrzymująca projekt chce**
 opublikować wydanie semver na PyPI, **żeby integratorzy mogli**
-przypiąć `ksef-mcp` do stabilnej wersji przez `uvx`.
+przypiąć `ksef-dev10x-guru` do stabilnej wersji przez `uvx`.
 
 ## Zobacz też
 

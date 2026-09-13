@@ -91,9 +91,12 @@ kontekście myli) oraz *merge* jako rzeczownik, bo słownik odrzuca
 - Zależności przez `uv`; zależności deweloperskie to grupa PEP 735
   `[dependency-groups] dev`, nie extra.
 - Układ src: `src/ksef_mcp/`.
-- Publikacja na PyPI jako `ksef-mcp`, skrypt konsolowy
-  `ksef-mcp = "ksef_mcp.server:main"`, dzięki czemu działa
-  `uvx ksef-mcp`.
+- Publikacja na PyPI jako `ksef-dev10x-guru`, skrypt konsolowy
+  `ksef-dev10x-guru = "ksef_mcp.server:main"`, dzięki czemu działa
+  `uvx ksef-dev10x-guru` bez przełącznika `--from`. Nazwa pakietu
+  importu zostaje `ksef_mcp`, a nazwa serwera MCP (`SERVER_NAME`) —
+  `ksef-mcp`: to tożsamość protokołu, na której opierają się
+  konfiguracje klientów, nie nazwa dystrybucji.
 - Bez Django, bez GraphQL, bez Celery, bez frameworka frontendowego,
   bez bazy i migracji, bez układu monorepo `apps/`. Ma tak zostać —
   zgłoś każdy PR, który wprowadza którąś z tych rzeczy bez uzgodnienia.
@@ -109,7 +112,7 @@ kontekście myli) oraz *merge* jako rzeczownik, bo słownik odrzuca
 ```bash
 uv sync --group dev       # instalacja zależności wraz z narzędziami dev
 uv run pytest             # testy wraz z pokryciem
-uvx ksef-mcp              # uruchomienie spakowanego serwera przez uvx
+uvx ksef-dev10x-guru      # uruchomienie spakowanego serwera przez uvx
 ```
 
 Próg pokrycia: `pyproject.toml` ustawia `fail_under = 100`. Nowy kod nie
