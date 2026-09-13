@@ -48,6 +48,9 @@ source = ["src/ksef_mcp"]
 fail_under = 100
 exclude_also = ["if TYPE_CHECKING:"]
 
+[tool.coverage.html]
+directory = ".tmp/coverage"
+
 [tool.ruff]
 line-length = 100
 src = ["src", "tests", "bin"]
