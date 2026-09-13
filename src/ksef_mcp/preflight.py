@@ -1,7 +1,10 @@
+import importlib
 import shutil
 import subprocess
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
+from types import ModuleType
 from typing import Final
 
 import keyring.backend
@@ -23,6 +26,17 @@ NODE_QUERY_TIMEOUT_SECONDS: Final[float] = 10.0
 UNSELECTABLE_BACKEND_MODULES: Final[frozenset[str]] = frozenset(
     {"keyring.backends.fail", "keyring.backends.chainer"}
 )
+
+SECRET_SERVICE_MODULE: Final[str] = "secretstorage"
+
+
+class CollectionLock(StrEnum):
+    UNLOCKED = "unlocked"
+    LOCKED = "locked"
+    # No Secret Service to ask: macOS, Windows, or Linux without D-Bus. The
+    # missing-backend case is ST-3's first failure mode and `inspect_keyring`
+    # already answers it; here it only means this probe has nothing to say.
+    ABSENT = "absent"
 
 
 @dataclass(frozen=True)
@@ -123,6 +137,34 @@ def inspect_node(*, working_directory: Path) -> NodeReport:
         pinned=pinned,
         pinned_by=pinned_by,
     )
+
+
+def load_secret_service() -> ModuleType | None:
+    # Imported by name rather than at module scope: `secretstorage` is a
+    # dependency only where D-Bus exists, and this package also runs on macOS
+    # and Windows. One function to stand in for the machine in tests, too.
+    try:
+        return importlib.import_module(SECRET_SERVICE_MODULE)
+    except ImportError:
+        return None
+
+
+def inspect_collection_lock() -> CollectionLock:
+    """Read whether the secret collection is locked, without asking to unlock it.
+
+    `keyring.get_password()` on a locked collection calls `unlock()` itself, so
+    the prompt opens inside a call that reads like a read — and on stdio that
+    hangs the MCP transport (D-004, ST-3). Reading the D-Bus property directly
+    is the only way to learn this for free, so it bypasses the keyring API.
+    """
+    secret_service = load_secret_service()
+    if secret_service is None:
+        return CollectionLock.ABSENT
+    try:
+        collection = secret_service.get_default_collection(secret_service.dbus_init())
+    except secret_service.SecretStorageException:
+        return CollectionLock.ABSENT
+    return CollectionLock.LOCKED if collection.is_locked() else CollectionLock.UNLOCKED
 
 
 def inspect_keyring() -> KeyringReport:

@@ -117,6 +117,20 @@ def describe_keyring(report: preflight.KeyringReport) -> tuple[str, ...]:
     return tuple(lines)
 
 
+def describe_collection_lock(state: preflight.CollectionLock) -> tuple[str, ...]:
+    if state is preflight.CollectionLock.LOCKED:
+        return (
+            "  Kolekcja: zablokowana — odblokuj ją w sesji graficznej.",
+            "  O hasło nie pytam: prompt zawiesiłby transport MCP, więc do",
+            f"  tokenu nie sięgam wcale. Awaryjnie: {token_store.FALLBACK_ENVIRONMENT_VARIABLE}.",
+        )
+    if state is preflight.CollectionLock.UNLOCKED:
+        return ("  Kolekcja: odblokowana.",)
+    # ABSENT says nothing about health — macOS and Windows have no Secret
+    # Service at all — and a line about it would read like a fault.
+    return ()
+
+
 def preferred_backend_index(report: preflight.KeyringReport) -> int:
     return next(
         index
@@ -203,6 +217,8 @@ def report_preflight(console: Console, *, working_directory: Path) -> preflight.
         console.write(line)
     keyring_report = preflight.inspect_keyring()
     for line in describe_keyring(keyring_report):
+        console.write(line)
+    for line in describe_collection_lock(preflight.inspect_collection_lock()):
         console.write(line)
     return keyring_report
 
@@ -301,13 +317,23 @@ def run_verify(console: Console, *, configuration_file: Path | None) -> int:
             token=stored.value,
         )
     except ksef_port.KsefRateLimited as refusal:
-        console.write(str(refusal))
+        console.write(describe_failure(configuration, refusal))
         console.write(describe_retry_after(refusal.retry_after))
         return EXIT_KSEF_REFUSED
     except ksef_port.KsefPortError as failure:
-        console.write(str(failure))
+        console.write(describe_failure(configuration, failure))
         return EXIT_KSEF_REFUSED
     return report_connection(console, checked)
+
+
+def describe_failure(configuration: Configuration, failure: Exception) -> str:
+    # Which subject and in which environment, on the same line as the reason:
+    # with two NIP-y configured, "KSeF odrzucił token" alone leaves the person
+    # guessing whose token was rejected and against which registry.
+    return (
+        f"Nie potwierdziłem połączenia dla {configuration.nip} "
+        f"({configuration.environment}): {failure}"
+    )
 
 
 def describe_retry_after(retry_after: int | None) -> str:

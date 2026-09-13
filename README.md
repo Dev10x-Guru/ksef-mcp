@@ -120,6 +120,13 @@ ma pierwszeństwo przed keyringiem, a `ksef-mcp token status` powie, z którego
 źródła token pochodzi. Pierwszeństwo jest celowe: kto ją eksportuje, robi to
 świadomie, a ciche preferowanie keyringu wyglądałoby na zignorowanie eksportu.
 
+Osobnym przypadkiem jest magazyn obecny, ale **zablokowany** — po uśpieniu
+maszyny albo po upływie własnego czasu magazynu. Każda komenda dotykająca
+tokenu sprawdza wtedy stan blokady i przerywa z instrukcją zamiast otwierać
+okno z prośbą o hasło. Takie okno otwiera się w środku czynności wyglądającej
+na zwykły odczyt i zawiesza rozmowę z agentem, bo serwer MCP na stdio nie ma
+gdzie go pokazać. Stan blokady pokazuje też `ksef-mcp doctor`.
+
 `verify` jest osobną komendą, a nie ostatnim krokiem onboardingu, celowo.
 Onboarding uruchamia się wielokrotnie przy poprawianiu konfiguracji, a każde
 zapytanie do KSeF zjada godzinowy budżet, którego przekroczenia Ministerstwo

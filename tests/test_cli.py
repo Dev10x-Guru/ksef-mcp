@@ -724,6 +724,106 @@ def test_verify_reports_a_rejected_token(
     assert (code, "odrzucił token" in recorder.transcript) == (cli.EXIT_KSEF_REFUSED, True)
 
 
+def test_verify_names_the_subject_and_the_environment_when_ksef_refuses(
+    configured: Path,
+    stored_token: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        ksef_port,
+        "check_connection",
+        raiser(ksef_port.KsefAuthenticationFailed("token nie pasuje do podmiotu")),
+    )
+    recorder = Recorder()
+
+    cli.main(["verify"], console=recorder.console, configuration_file=configured)
+
+    assert f"Nie potwierdziłem połączenia dla {NIP} (test)" in recorder.transcript
+
+
+def test_verify_names_the_subject_when_the_limit_refuses_too(
+    configured: Path,
+    stored_token: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        ksef_port,
+        "check_connection",
+        raiser(ksef_port.KsefRateLimited("limit wyczerpany", retry_after=60)),
+    )
+    recorder = Recorder()
+
+    cli.main(["verify"], console=recorder.console, configuration_file=configured)
+
+    assert NIP in recorder.transcript
+
+
+def test_verify_refuses_before_touching_a_locked_keyring(
+    configured: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The token is never read and KSeF is never called: reaching the keyring
+    # would open an unlock prompt and hang the transport (D-004, ST-3).
+    monkeypatch.setattr(
+        preflight,
+        "inspect_collection_lock",
+        lambda: preflight.CollectionLock.LOCKED,
+    )
+    monkeypatch.setattr(ksef_port, "check_connection", raiser(AssertionError("sięgnięto do KSeF")))
+    recorder = Recorder()
+
+    code = cli.main(["verify"], console=recorder.console, configuration_file=configured)
+
+    assert (code, "locked" in recorder.transcript) == (cli.EXIT_UNUSABLE_KEYRING, True)
+
+
+def test_doctor_reports_a_locked_collection(
+    monkeypatch: pytest.MonkeyPatch,
+    usable_keyring: preflight.KeyringReport,
+    healthy_node: None,
+) -> None:
+    monkeypatch.setattr(
+        preflight,
+        "inspect_collection_lock",
+        lambda: preflight.CollectionLock.LOCKED,
+    )
+    recorder = Recorder()
+
+    cli.main(["doctor"], console=recorder.console, working_directory=Path.cwd())
+
+    assert "Kolekcja: zablokowana" in recorder.transcript
+
+
+def test_doctor_reports_an_unlocked_collection(
+    monkeypatch: pytest.MonkeyPatch,
+    usable_keyring: preflight.KeyringReport,
+    healthy_node: None,
+) -> None:
+    monkeypatch.setattr(
+        preflight,
+        "inspect_collection_lock",
+        lambda: preflight.CollectionLock.UNLOCKED,
+    )
+    recorder = Recorder()
+
+    cli.main(["doctor"], console=recorder.console, working_directory=Path.cwd())
+
+    assert "Kolekcja: odblokowana" in recorder.transcript
+
+
+def test_doctor_says_nothing_about_a_platform_without_a_collection(
+    usable_keyring: preflight.KeyringReport,
+    healthy_node: None,
+) -> None:
+    # macOS and Windows have no Secret Service at all, and a line about it
+    # would read like a fault where there is none.
+    recorder = Recorder()
+
+    cli.main(["doctor"], console=recorder.console, working_directory=Path.cwd())
+
+    assert "Kolekcja" not in recorder.transcript
+
+
 def test_onboarding_points_at_the_verify_command(
     completed_onboarding: tuple[int, Recorder],
 ) -> None:

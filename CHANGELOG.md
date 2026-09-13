@@ -32,8 +32,18 @@ udokumentowane.
   Ministerstwo podniosło limit, dostaje tyle, ile mu przyznano
   ([GH-35]).
 
+- Zanim narzędzie sięgnie po token, sprawdza, czy magazyn haseł jest
+  odblokowany — i gdy nie jest, mówi to wprost zamiast otwierać okno
+  z prośbą o hasło. Takie okno zawieszało całą rozmowę z agentem, bo
+  pojawiało się w środku czynności wyglądającej na zwykły odczyt
+  ([GH-33]).
+
 ### Zmienione
 
+- Gdy KSeF odmówi, `verify` podaje w jednym zdaniu, **którego podmiotu**
+  i **którego środowiska** dotyczy odmowa oraz z jakiego powodu. Przy
+  dwóch skonfigurowanych NIP-ach samo „token odrzucony" kazało zgadywać
+  ([GH-33]).
 - Po odmowie z powodu wyczerpanego limitu serwer czeka dokładnie tyle,
   ile podał KSeF, i tylko wtedy, gdy KSeF to podał — a domyślnie nie
   ponawia wcale i oddaje decyzję człowiekowi. Ministerstwo odnotowuje
@@ -47,6 +57,7 @@ udokumentowane.
   archiwum z ewidencją nie pokaże już różnicy o grosz, której nie ma
   ([GH-35]).
 
+[GH-33]: https://github.com/Dev10x-Guru/ksef-mcp/issues/33
 [GH-34]: https://github.com/Dev10x-Guru/ksef-mcp/issues/34
 [GH-35]: https://github.com/Dev10x-Guru/ksef-mcp/issues/35
 
