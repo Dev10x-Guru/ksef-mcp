@@ -425,12 +425,24 @@ def test_the_real_changelog_splits_on_the_heading_not_the_prose() -> None:
     assert "prowadzi człowiek" in before and "prowadzi człowiek" not in unreleased
 
 
-def test_the_real_changelog_carries_entries_to_release() -> None:
-    body = (SCRIPT.parent.parent / "CHANGELOG.md").read_text(encoding="utf-8")
+def test_subsections_travel_with_the_unreleased_section() -> None:
+    # Wycinek kończy się dopiero na `## `, więc wszystkie `### ` podsekcje
+    # jadą do wydania. Sprawdzane na dokumencie syntetycznym o kształcie
+    # prawdziwego dziennika: odpytywanie żywego CHANGELOG.md wiązałoby wynik
+    # ze stanem wydania — po każdej publikacji sekcja jest pusta z założenia.
+    body = (
+        "# Dziennik zmian\n\n"
+        "Sekcję `## Bez wydania` prowadzi człowiek, a skrypt ją przenosi.\n\n"
+        "## Bez wydania\n\n"
+        "### Dodane\n\n- Nowa komenda.\n\n"
+        "### Bezpieczeństwo\n\n- Ograniczone ponawianie żądań.\n\n"
+        "## 0.0.9 — 2026-01-01\n\n- Stare.\n"
+    )
 
-    _, unreleased, _ = release.split_unreleased(body)
+    _, unreleased, after = release.split_unreleased(body)
 
     assert "### Dodane" in unreleased and "### Bezpieczeństwo" in unreleased
+    assert "Stare." in after and "Stare." not in unreleased
 
 
 def test_a_changelog_without_the_heading_stops_the_release(repository: Path) -> None:
