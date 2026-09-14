@@ -1378,3 +1378,48 @@ Odwołania do `olegtyshcneko/ksef-mcp` w [D-030] dotyczą cudzego projektu.
   dniu co [D-035] i opisywała to samo rozróżnienie. Bez rozstrzygnięcia
   zakresów oba rejestry zaczęłyby rosnąć równolegle, a czytelnik nie
   wiedziałby, który jest wiążący.
+
+## D-037 — Rejestr rozjazdów: gdzie wykonanie rozminęło się z decyzją
+
+- **Status:** Aktywna
+- **Decyzja:** Rozjazd między decyzją a tym, co pokazał kod albo SDK,
+  **zostaje odnotowany tutaj**, a nie tylko w komentarzu pod zgłoszeniem.
+  Decyzja sama nie jest przepisywana — czytelnik ma widzieć, co
+  postanowiono, oraz co z tego wyszło w zderzeniu z rzeczywistością.
+- **Powód:** ustalenia z nocnej zmiany 2026-09-13/14 miały trwały zapis
+  rozsiany po sześciu zgłoszeniach i czterech ADR-ach. Osoba wracająca do
+  modelu odkrywała te same rozjazdy po raz drugi, bo nie było miejsca,
+  w którym są razem [#70].
+
+### Rozjazdy wobec decyzji
+
+| Decyzja | Co pokazało wykonanie | Zapis |
+|---|---|---|
+| [D-031] §8 wskazuje `GET /limits/context` jako źródło limitów | Ten endpoint zwraca rozmiary sesji; limity tempa są pod `GET /rate-limits`. Port czyta oba. | ADR-102, #35 |
+| [D-031] §8 zakłada, że odpowiedź o limitach da się sparsować | Produkcja zwraca `/v2/rate-limits` bez pola `collectiveIdentifier`, którego model `ksef2` wymaga. Port degraduje się do wartości zachowawczych zamiast przerywać operację. | #76 |
+| [D-031] §4 zaleca pomijać `DateRange.To` | `ksef2` nie pozwala; port wysyła „teraz" z `restrict_to_permanent_storage_hwm_date=True` | ADR-102 |
+| [D-006] `temp → rename` jako jedyny wzorzec zapisu | Dziennik audytu jest tylko-dopisywany (`O_APPEND` + `fsync`) — świadome odstępstwo | docstring `audit.py`, PR #66 |
+| [D-012] zabrania odsyłaczy weryfikacyjnych poza maszynę; #41 prosi o „link weryfikacyjny KOD I" | Zaimplementowany sam kod, bez adresu portalu | #41, PR #62 |
+| [D-027] nazywa pakiet `@akmf/ksef-fe-invoice-converter` | Nazwa modułu w bundlu, nie współrzędna w npm. Źródłem jest portal MF: `/client-app/pdf-lib/ksef-fe-invoice-converter.<wersja>.js`. Wcześniejszy zapis o „404 w npm" opierał się na złej przesłance. | #42 |
+| #57 zakłada liczenie pobrań części w budżecie | Nie liczone w żadnej rodzinie — adresy presigned nie niosą poświadczenia KSeF | #57, ADR-104 |
+
+### [Verify] Do potwierdzenia na środowisku testowym
+
+- Zapis skrótów części paczki: base64 czy hex — kod akceptuje oba [#37].
+- Schema `_metadata.json`: nazwy kluczy — kod czyta kilka pisowni [#38].
+- M2–M4 mają przebieg end-to-end wyłącznie na atrapach. Pierwszy przebieg
+  produkcyjny (2026-09-14) wywrócił się na odczycie limitów [#76], czego
+  żaden test na atrapach nie mógł pokazać — atrapy zwracały payload
+  zgodny ze schematem SDK, a produkcja zwraca inny.
+- `verify` **nie** przechodzi przez odczyt limitów, więc jego zielony wynik
+  nigdy nie dowodził, że narzędzia MCP działają. Osobna luka w pokryciu,
+  nie pojedynczy błąd [#76].
+
+### Do rozstrzygnięcia przez właściciela produktu
+
+- ~~#63 — waluta w CSV~~ — rozstrzygnięte 2026-09-14: kolumna „Waluta"
+  obok kwot, które opisuje.
+- ~~#75 — konflikt nazwy z `ksef-mcp.pl`~~ — rozstrzygnięte 2026-09-14:
+  nazwa zostaje, odróżnienie idzie do dokumentacji [D-035].
+- „Przejrzana" w #43 = zwrócona agentowi, nie zobaczona przez człowieka.
+  Nadal otwarte.
