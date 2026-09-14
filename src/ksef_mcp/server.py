@@ -1,12 +1,15 @@
 from decimal import Decimal
+from pathlib import Path
 
 from mcp.server import MCPServer
 from pydantic import BaseModel
 
 from ksef_mcp import config, token_store
+from ksef_mcp.archive import InvoiceArchive
 from ksef_mcp.listing import DirectionListing, InvoiceLister, InvoiceListing
 from ksef_mcp.metadata import SERVER_NAME, VERSION
 from ksef_mcp.period_cache import PeriodCache
+from ksef_mcp.statement import AccountingPeriod, Statement, StatementComposer
 from ksef_mcp.sync_store import SyncStore
 from ksef_mcp.synchronisation import SynchronisationReport, Synchroniser
 
@@ -246,6 +249,104 @@ def list_recent_invoices() -> InvoiceListingResult:
     is third-party input; it never enters this answer.
     """
     return list_invoices()
+
+
+class StatementResult(BaseModel):
+    """Where the file is and what has to be known before its sum is trusted."""
+
+    nip: str
+    environment: str
+    period: str
+    path: str
+    row_count: int
+    gross_totals: list[GrossTotal]
+    complete: bool
+    from_cache: bool
+    queried_at: str
+    message: str
+    warnings: list[str]
+
+
+def describe_statement(statement: Statement) -> StatementResult:
+    return StatementResult(
+        nip=statement.nip,
+        environment=str(statement.environment),
+        period=str(statement.period),
+        path=statement.path,
+        row_count=statement.row_count,
+        gross_totals=[
+            GrossTotal(currency=total.currency, gross=total.gross)
+            for total in statement.gross_totals
+        ],
+        complete=statement.complete,
+        from_cache=statement.from_cache,
+        queried_at=statement.queried_at.isoformat(),
+        message=statement.message,
+        warnings=list(statement.warnings),
+    )
+
+
+def export_statement(*, period: str, working_directory: str | None) -> StatementResult:
+    from ksef_mcp.ksef_port.adapter import Ksef2Port
+
+    configuration, token = authenticated_subject()
+    directory = (
+        configuration.invoice_directory
+        if working_directory is None
+        else Path(working_directory).expanduser()
+    )
+    composer = StatementComposer(
+        port=Ksef2Port(environment=configuration.environment),
+        cache=PeriodCache(nip=configuration.nip, environment=configuration.environment),
+        archive=InvoiceArchive(
+            nip=configuration.nip,
+            environment=configuration.environment,
+        ),
+    )
+    return describe_statement(
+        composer.run(
+            nip=configuration.nip,
+            token=token,
+            period=AccountingPeriod.parsed(period),
+            directory=directory,
+        )
+    )
+
+
+@server.tool()
+def export_period_statement(
+    period: str,
+    working_directory: str | None = None,
+) -> StatementResult:
+    """Write one month of purchase invoices as a CSV an accountant can forward.
+
+    `period` is a calendar month spelled `YYYY-MM`. The month is the unit a
+    period is closed in, and both ends being fixed is what lets the same request
+    be answered from disk instead of spending one of twenty metadata queries an
+    hour a second time.
+
+    `working_directory` overrides the directory declared during onboarding for
+    this one call. Whichever is used is created `0700` if it is new, is refused
+    outright if it lies inside the cache or data root — those are internal
+    storage and deleting statements must never reach the archive — and is
+    reported in `warnings` when its path looks like a cloud sync folder.
+
+    The file holds nine columns: the eight reconciliation columns (KSeF number,
+    the seller's own invoice number, issue date, seller NIP, seller name, gross,
+    net, VAT) and a KOD I verification code per row, composed from the seller
+    NIP, the issue date and the SHA-256 of the archived invoice body. Rows whose
+    body is not in the archive yet say so instead of carrying a blank code.
+
+    Addresses, bank accounts, invoice lines and local paths are absent on
+    purpose: this file is written to be attached to an e-mail. The paths are in
+    this answer instead.
+
+    Amounts are written exactly as KSeF stated them — no rounding, no float
+    anywhere on the path — with a comma as the decimal separator and a semicolon
+    between fields, which is what a Polish spreadsheet expects. Sums are in this
+    answer, per currency, and never one figure across several of them.
+    """
+    return export_statement(period=period, working_directory=working_directory)
 
 
 def main() -> None:

@@ -12,6 +12,26 @@ udokumentowane.
 
 ### Dodane
 
+- Miesiąc da się przekazać księgowej jednym załącznikiem: nowe
+  narzędzie zapisuje zestawienie faktur zakupowych za wskazany miesiąc
+  jako plik CSV w zadeklarowanym katalogu roboczym. Nazwa pliku mówi,
+  czym on jest — `zestawienie-2026-08-1234567890.csv` — więc nie trzeba
+  jej rozszyfrowywać po odebraniu poczty ([GH-41]).
+- Zestawienie niesie dokładnie to, czego potrzeba do uzgodnienia okresu:
+  numer KSeF, numer faktury sprzedawcy, datę wystawienia, NIP i nazwę
+  sprzedawcy oraz brutto, netto i VAT. Adresów, numerów rachunków,
+  pozycji faktury ani ścieżek lokalnych w pliku nie ma — CSV jest z
+  założenia przesyłany dalej, a te dane nie są tam do niczego
+  potrzebne ([GH-41]).
+- Każda pozycja ma kod weryfikacyjny KOD I złożony z NIP-u sprzedawcy,
+  daty wystawienia i skrótu SHA-256 faktury leżącej w archiwum. Kwoty
+  przechodzą z KSeF-u do pliku bez zaokrąglenia, więc suma brutto
+  uzgadnia się z Aplikacją Podatnika co do grosza ([GH-41]).
+- Katalog roboczy jest produktem, nie magazynem: powstaje z
+  uprawnieniami 0700, ścieżka wyglądająca na synchronizowaną do chmury
+  jest nazwana wprost w odpowiedzi, a katalog wskazany wewnątrz
+  archiwum albo cache'u zostaje odrzucony — dzięki temu skasowanie
+  zestawień nigdy nie zabiera pobranych faktur ([GH-41]).
 - Po pobraniu widać w rozmowie, co przyszło, bez otwierania katalogu:
   narzędzie wypisuje metadane faktur z ostatnich trzydziestu dni osobno
   dla każdej roli podmiotu — numer KSeF, numer faktury sprzedawcy, datę
@@ -152,6 +172,7 @@ udokumentowane.
 [GH-38]: https://github.com/Dev10x-Guru/ksef-mcp/issues/38
 [GH-39]: https://github.com/Dev10x-Guru/ksef-mcp/issues/39
 [GH-40]: https://github.com/Dev10x-Guru/ksef-mcp/issues/40
+[GH-41]: https://github.com/Dev10x-Guru/ksef-mcp/issues/41
 [GH-57]: https://github.com/Dev10x-Guru/ksef-mcp/issues/57
 
 ## 0.1.1 — 2026-09-13

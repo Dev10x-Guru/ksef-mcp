@@ -2,6 +2,7 @@ import sys
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 from mcp import Client
@@ -10,19 +11,28 @@ from mcp.types import CallToolResult, ListToolsResult
 from ksef_mcp import config, token_store
 from ksef_mcp.config import Configuration, KsefEnvironment
 from ksef_mcp.ksef_port import DateType, InvoiceDirection, MetadataPage, Period
-from ksef_mcp.listing import LISTING_THRESHOLD, InvoiceListing, Question, summarise
+from ksef_mcp.listing import (
+    LISTING_THRESHOLD,
+    CurrencyTotal,
+    InvoiceListing,
+    Question,
+    summarise,
+)
 from ksef_mcp.metadata import SERVER_NAME, VERSION
 from ksef_mcp.server import (
     InvoiceListingResult,
     NotConfigured,
+    StatementResult,
     SynchronisationResult,
     describe,
     describe_listing,
+    export_statement,
     list_invoices,
     main,
     server,
     synchronise,
 )
+from ksef_mcp.statement import AccountingPeriod, Statement
 from ksef_mcp.synchronisation import DirectionReport, SynchronisationReport, SyncOutcome
 from synthetic import synthetic_metadata
 
@@ -131,6 +141,7 @@ async def test_every_tool_is_registered(listed_tools: ListToolsResult) -> None:
         "server_info",
         "synchronise_invoices",
         "list_recent_invoices",
+        "export_period_statement",
     ]
 
 
@@ -445,3 +456,121 @@ async def test_the_listing_tool_asks_for_no_confirmation(
         called = await client.call_tool("list_recent_invoices")
 
     assert called.is_error is not True
+
+
+STATEMENT_PATH = "/robocze/1234567890/zestawienie-2026-08-1234567890.csv"
+
+
+class StubComposer:
+    """Stands in for composing the month: this module's job is the tool surface."""
+
+    directories: ClassVar[list[Path]] = []
+
+    def __init__(self, *, port: object, cache: object, archive: object) -> None:
+        self.port = port
+        self.cache = cache
+        self.archive = archive
+
+    def run(
+        self,
+        *,
+        nip: str,
+        token: str,
+        period: AccountingPeriod,
+        directory: Path,
+    ) -> Statement:
+        type(self).directories.append(directory)
+        return Statement(
+            nip=nip,
+            environment=KsefEnvironment.TEST,
+            period=period,
+            path=STATEMENT_PATH,
+            row_count=1,
+            gross_totals=(CurrencyTotal(currency="PLN", gross=Decimal("1230.00")),),
+            complete=True,
+            from_cache=False,
+            queried_at=REACHED,
+            warnings=("Katalog roboczy wygląda na synchronizowany do chmury (onedrive).",),
+        )
+
+
+@pytest.fixture
+def composing(monkeypatch: pytest.MonkeyPatch, with_a_token: None) -> None:
+    StubComposer.directories = []
+    monkeypatch.setattr(server_module, "StatementComposer", StubComposer)
+    monkeypatch.setattr(server_module, "PeriodCache", lambda **kwargs: kwargs)
+    monkeypatch.setattr(server_module, "InvoiceArchive", lambda **kwargs: kwargs)
+
+
+@pytest.fixture
+def exported(composing: None) -> StatementResult:
+    return export_statement(period="2026-08", working_directory=None)
+
+
+def test_the_statement_refuses_before_onboarding(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(config, "load_configuration", lambda: None)
+
+    with pytest.raises(NotConfigured, match="ksef-mcp onboarding"):
+        export_statement(period="2026-08", working_directory=None)
+
+
+def test_the_statement_lands_in_the_configured_working_directory(
+    exported: StatementResult, configured: Configuration
+) -> None:
+    assert StubComposer.directories == [configured.invoice_directory]
+
+
+def test_a_caller_may_declare_the_directory_for_one_call(composing: None, tmp_path: Path) -> None:
+    export_statement(period="2026-08", working_directory=str(tmp_path / "gdzie indziej"))
+
+    assert StubComposer.directories == [tmp_path / "gdzie indziej"]
+
+
+def test_the_answer_points_at_the_file_it_wrote(exported: StatementResult) -> None:
+    assert exported.path == STATEMENT_PATH
+
+
+def test_the_answer_states_the_period_it_closed(exported: StatementResult) -> None:
+    assert exported.period == "2026-08"
+
+
+def test_the_answer_carries_the_sum_per_currency(exported: StatementResult) -> None:
+    assert (exported.gross_totals[0].currency, exported.gross_totals[0].gross) == (
+        "PLN",
+        Decimal("1230.00"),
+    )
+
+
+def test_the_answer_repeats_the_directory_warning(exported: StatementResult) -> None:
+    assert "onedrive" in exported.warnings[0]
+
+
+def test_the_answer_says_when_it_was_asked(exported: StatementResult) -> None:
+    assert exported.queried_at == REACHED.isoformat()
+
+
+def test_the_answer_says_whether_disk_answered(exported: StatementResult) -> None:
+    assert (exported.from_cache, exported.complete) == (False, True)
+
+
+def test_the_answer_names_the_subject_it_acted_as(exported: StatementResult) -> None:
+    assert (exported.nip, exported.environment, exported.row_count) == (NIP, "test", 1)
+
+
+@pytest.mark.anyio
+async def test_the_statement_tool_takes_the_period_it_is_told(
+    listed_tools: ListToolsResult,
+) -> None:
+    # Unlike the listing, a statement is about a month the person names — and a
+    # closed month is answered from disk, so naming it spends nothing.
+    tool = next(tool for tool in listed_tools.tools if tool.name == "export_period_statement")
+
+    assert sorted(tool.input_schema.get("properties", {})) == ["period", "working_directory"]
+
+
+@pytest.mark.anyio
+async def test_the_statement_tool_answers_with_a_path_but_no_invoice(composing: None) -> None:
+    async with Client(server, raise_exceptions=True) as client:
+        called = await client.call_tool("export_period_statement", {"period": "2026-08"})
+
+    assert called.structured_content["path"] == STATEMENT_PATH
