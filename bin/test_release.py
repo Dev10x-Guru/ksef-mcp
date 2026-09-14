@@ -74,6 +74,23 @@ def repository(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
+def reopened(repository: Path) -> Path:
+    """Drzewo między wydaniami: 0.1.0 wydane, prace otwarte na 0.1.1.
+
+    Fixture `repository` zostaje na numerze czystym, bo to on odwzorowuje
+    wydanie w toku — stan, którego potrzebują testy wznawiania, taga tylko
+    lokalnego i rekoncyliacji. Świeże wydanie zaczyna się natomiast wyłącznie
+    z drzewa z sufiksem, więc testy, które je zaczynają, dostają to drzewo
+    tutaj, zamiast polegać na numerze sprzed wprowadzenia niezmiennika.
+    """
+    (repository / "pyproject.toml").write_text(
+        PYPROJECT.replace('version = "0.1.0"', 'version = "0.1.1.dev0"'), encoding="utf-8"
+    )
+    git(repository, "commit", "-am", "otwiera prace nad 0.1.1")
+    return repository
+
+
+@pytest.fixture
 def unpublished(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(release, "published_versions", lambda name: set())
 
@@ -130,63 +147,63 @@ def test_releasing_off_main_stops_the_release(
 
 
 def test_an_already_published_version_stops_the_release(
-    repository: Path,
+    reopened: Path,
     offline: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(release, "published_versions", lambda name: {"0.1.1"})
 
     with pytest.raises(release.ReleaseRefused, match="nie da się użyć ponownie"):
-        release.release(root=repository, kind="fixes", dry_run=True)
+        release.release(root=reopened, kind="fixes", dry_run=True)
 
 
 def test_an_empty_unreleased_section_stops_the_release(
-    repository: Path,
+    reopened: Path,
     unpublished: None,
     offline: None,
 ) -> None:
-    (repository / "CHANGELOG.md").write_text(
+    (reopened / "CHANGELOG.md").write_text(
         "# Dziennik zmian\n\n## Bez wydania\n\n## 0.0.9 — 2026-01-01\n\n- Stare.\n",
         encoding="utf-8",
     )
-    git(repository, "commit", "-am", "pusty dziennik")
+    git(reopened, "commit", "-am", "pusty dziennik")
 
     with pytest.raises(release.ReleaseRefused, match="pusta"):
-        release.release(root=repository, kind="fixes", dry_run=True)
+        release.release(root=reopened, kind="fixes", dry_run=True)
 
 
 def test_a_missing_changelog_stops_the_release(
-    repository: Path,
+    reopened: Path,
     unpublished: None,
     offline: None,
 ) -> None:
-    (repository / "CHANGELOG.md").unlink()
-    git(repository, "commit", "-am", "bez dziennika")
+    (reopened / "CHANGELOG.md").unlink()
+    git(reopened, "commit", "-am", "bez dziennika")
 
     with pytest.raises(release.ReleaseRefused, match="Brak CHANGELOG"):
-        release.release(root=repository, kind="fixes", dry_run=True)
+        release.release(root=reopened, kind="fixes", dry_run=True)
 
 
 def test_a_dry_run_changes_nothing(
-    repository: Path,
+    reopened: Path,
     unpublished: None,
     offline: None,
 ) -> None:
-    before = (repository / "pyproject.toml").read_text(encoding="utf-8")
+    before = (reopened / "pyproject.toml").read_text(encoding="utf-8")
 
-    release.release(root=repository, kind="features", dry_run=True)
+    release.release(root=reopened, kind="features", dry_run=True)
 
-    assert (repository / "pyproject.toml").read_text(encoding="utf-8") == before
+    assert (reopened / "pyproject.toml").read_text(encoding="utf-8") == before
 
 
 def test_a_dry_run_names_the_next_version(
-    repository: Path,
+    reopened: Path,
     unpublished: None,
     offline: None,
 ) -> None:
-    reported = release.release(root=repository, kind="features", dry_run=True)
+    reported = release.release(root=reopened, kind="features", dry_run=True)
 
-    assert "0.1.0 → 0.2.0" in reported and "v0.2.0" in reported
+    assert "0.1.1.dev0 → 0.2.0" in reported and "v0.2.0" in reported
 
 
 def published_tag(monkeypatch: pytest.MonkeyPatch, *, with_release: bool) -> None:
@@ -209,16 +226,31 @@ def test_an_interrupted_release_resumes_instead_of_starting_a_new_one(
     assert "wznowienie" in reported and "v0.1.0" in reported
 
 
-def test_a_completed_release_starts_the_next_one(
+def test_an_unreconciled_reopening_is_settled_instead_of_refused(
     repository: Path,
     unpublished: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Czysty numer z dokończonym wydaniem to stan „wydanie poszło, podbicie
+    # nie", a nie zgubiony sufiks. Domyka się sam, więc bramka odmawiająca
+    # wydania bez sufiksu nie może go dotknąć — inaczej zerwana sieć po
+    # utworzeniu wydania GitHub blokowałaby każde następne wydanie.
     published_tag(monkeypatch, with_release=True)
 
     reported = release.release(root=repository, kind="fixes", dry_run=True)
 
-    assert "0.1.0 → 0.1.1" in reported
+    assert "domknięcie" in reported and "0.1.1.dev0" in reported
+
+
+def test_a_tree_that_lost_the_suffix_stops_the_release(
+    repository: Path,
+    unpublished: None,
+    offline: None,
+) -> None:
+    # Bez taga — lokalnego czy zdalnego — czysty numer nie opisuje żadnego
+    # wydania w toku, więc został po nim tylko brak sufiksu.
+    with pytest.raises(release.ReleaseRefused, match="bez sufiksu"):
+        release.release(root=repository, kind="fixes", dry_run=True)
 
 
 def test_resuming_skips_the_pypi_novelty_check(
@@ -355,7 +387,7 @@ def test_a_missing_local_tag_reads_as_absent(repository: Path) -> None:
 
 
 def test_a_missing_pypi_answer_stops_the_release(
-    repository: Path,
+    reopened: Path,
     offline: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -365,7 +397,7 @@ def test_a_missing_pypi_answer_stops_the_release(
     monkeypatch.setattr(release, "published_versions", refuse)
 
     with pytest.raises(release.ReleaseRefused, match="PyPI"):
-        release.release(root=repository, kind="fixes", dry_run=True)
+        release.release(root=reopened, kind="fixes", dry_run=True)
 
 
 def test_an_unknown_project_on_pypi_reads_as_no_releases(
@@ -400,18 +432,18 @@ def test_the_heading_is_matched_as_a_line_not_a_substring(repository: Path) -> N
 
 
 def test_prose_mentioning_the_heading_does_not_satisfy_the_guard(
-    repository: Path,
+    reopened: Path,
     unpublished: None,
     offline: None,
 ) -> None:
-    (repository / "CHANGELOG.md").write_text(
+    (reopened / "CHANGELOG.md").write_text(
         "# Dziennik zmian\n\nSekcję `## Bez wydania` prowadzi człowiek.\n\n## Bez wydania\n\n",
         encoding="utf-8",
     )
-    git(repository, "commit", "-am", "sam akapit objaśniający")
+    git(reopened, "commit", "-am", "sam akapit objaśniający")
 
     with pytest.raises(release.ReleaseRefused, match="pusta"):
-        release.release(root=repository, kind="fixes", dry_run=True)
+        release.release(root=reopened, kind="fixes", dry_run=True)
 
 
 def test_the_real_changelog_splits_on_the_heading_not_the_prose() -> None:
@@ -562,11 +594,11 @@ def test_the_command_line_reports_a_refusal_on_stderr(
 
 
 def test_the_command_line_succeeds_on_a_dry_run(
-    repository: Path,
+    reopened: Path,
     unpublished: None,
     offline: None,
 ) -> None:
-    assert release.main(["fixes", "--dry-run", "--root", str(repository)]) == 0
+    assert release.main(["fixes", "--dry-run", "--root", str(reopened)]) == 0
 
 
 def test_the_script_rejects_an_unknown_bump_kind() -> None:

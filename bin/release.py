@@ -237,7 +237,8 @@ def resolve_plan(project: Project, *, kind: str) -> Plan:
     # więc traktowanie go jako wznowienia pomijałoby kontrolę obecności na
     # PyPI i kontrolę dziennika — i wypychało numer, którego nikt nie
     # zamierzał wydać. Tag zdalny bez lokalnego też się zdarza: świeży klon
-    # po awarii. Stąd trzy stany, nie dwa.
+    # po awarii. Stąd trzy stany, nie dwa — a czwartym, bez żadnego taga, jest
+    # drzewo, które zgubiło sufiks, i tego nie da się wydać (#78).
     current = parse_version(project.version)
     if current.development:
         # Between releases: nothing is half-finished, because a release always
@@ -259,8 +260,23 @@ def resolve_plan(project: Project, *, kind: str) -> Plan:
             f"    Usuń go, jeśli był próbą:  git tag -d {in_flight}\n"
             f"    Wypchnij, jeśli to wydanie: git push origin {in_flight}"
         )
-    version = next_version(project, kind=BUMP_KINDS[kind])
-    return Plan(project=project, version=version, tag=f"v{version}", resuming=False)
+    # Czwarty stan, bez śladu po jakimkolwiek wydaniu tego numeru: drzewo
+    # zgubiło sufiks. Pas bezpieczeństwa na wypadek, gdyby zawiodły oba kroki,
+    # które go pilnują — `ensure_development_bump` po wydaniu i rekoncyliacja
+    # w `outstanding_development_bump` — albo gdyby ktoś zdjął go ręcznie.
+    raise ReleaseRefused(
+        f"`pyproject.toml` niesie `{project.version}` bez sufiksu `{DEVELOPMENT_SUFFIX}`, "
+        f"a wydania {project.version} nikt nie zaczął — nie ma taga {in_flight} ani "
+        "lokalnie, ani na zdalnym repozytorium. Między wydaniami numer nosi sufiks, "
+        "więc bez niego wheel zbudowany z `main` jest nieodróżnialny od tego, co leży "
+        "na PyPI, a ja nie wiem, czy wydanie już poszło.\n"
+        f"    Jeśli {project.version} nigdy nie wyszło, otwórz prace nad tym numerem:\n"
+        f"        uv run bump-my-version bump --new-version "
+        f"{project.version}{DEVELOPMENT_SUFFIX}\n"
+        f"    Jeśli wyszło, a tag zniknął, otwórz prace nad następnym:\n"
+        f"        uv run bump-my-version bump --new-version "
+        f"{next_development_version(project.version)}"
+    )
 
 
 def require_clean_tree(project: Project) -> None:
