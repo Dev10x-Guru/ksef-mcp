@@ -1,5 +1,6 @@
 import sys
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -8,17 +9,22 @@ from mcp.types import CallToolResult, ListToolsResult
 
 from ksef_mcp import config, token_store
 from ksef_mcp.config import Configuration, KsefEnvironment
-from ksef_mcp.ksef_port import InvoiceDirection
+from ksef_mcp.ksef_port import DateType, InvoiceDirection, MetadataPage, Period
+from ksef_mcp.listing import LISTING_THRESHOLD, InvoiceListing, Question, summarise
 from ksef_mcp.metadata import SERVER_NAME, VERSION
 from ksef_mcp.server import (
+    InvoiceListingResult,
     NotConfigured,
     SynchronisationResult,
     describe,
+    describe_listing,
+    list_invoices,
     main,
     server,
     synchronise,
 )
 from ksef_mcp.synchronisation import DirectionReport, SynchronisationReport, SyncOutcome
+from synthetic import synthetic_metadata
 
 
 @pytest.fixture
@@ -120,10 +126,11 @@ def synchronised(with_a_token: None) -> SynchronisationResult:
 
 
 @pytest.mark.anyio
-async def test_both_tools_are_registered(listed_tools: ListToolsResult) -> None:
+async def test_every_tool_is_registered(listed_tools: ListToolsResult) -> None:
     assert [tool.name for tool in listed_tools.tools] == [
         "server_info",
         "synchronise_invoices",
+        "list_recent_invoices",
     ]
 
 
@@ -268,3 +275,173 @@ async def test_server_info_call_succeeds(server_info_result: CallToolResult) -> 
 
 def test_main_starts_the_server(recorded_run_calls: list[str]) -> None:
     assert recorded_run_calls == ["run"]
+
+
+LISTING_PERIOD = Period(
+    date_from=datetime(2026, 8, 15, 7, tzinfo=UTC),
+    date_to=datetime(2026, 9, 14, 7, tzinfo=UTC),
+    date_type=DateType.ISSUE,
+)
+
+
+def listed_question(direction: InvoiceDirection) -> Question:
+    return Question(
+        nip=NIP,
+        environment=KsefEnvironment.TEST,
+        direction=direction,
+        period=LISTING_PERIOD,
+    )
+
+
+class StubLister:
+    """Stands in for the pass over the subject types: this module's job is the surface."""
+
+    def __init__(self, *, port: object, cache: object) -> None:
+        self.port = port
+        self.cache = cache
+
+    def run(self, *, nip: str, token: str) -> InvoiceListing:
+        return InvoiceListing(
+            nip=nip,
+            environment=KsefEnvironment.TEST,
+            threshold=LISTING_THRESHOLD,
+            period=LISTING_PERIOD,
+            directions=(
+                summarise(
+                    question=listed_question(InvoiceDirection.BUYER),
+                    page=MetadataPage(
+                        invoices=(synthetic_metadata(1),),
+                        has_more=False,
+                        truncated=False,
+                        hwm_date=None,
+                    ),
+                    queried_at=REACHED,
+                    from_cache=True,
+                ),
+                summarise(
+                    question=listed_question(InvoiceDirection.SELLER),
+                    page=MetadataPage(invoices=(), has_more=False, truncated=False, hwm_date=None),
+                    queried_at=REACHED,
+                ),
+            ),
+        )
+
+
+@pytest.fixture
+def listing(monkeypatch: pytest.MonkeyPatch, with_a_token: None) -> InvoiceListingResult:
+    monkeypatch.setattr(server_module, "InvoiceLister", StubLister)
+    monkeypatch.setattr(server_module, "PeriodCache", lambda **kwargs: kwargs)
+    return list_invoices()
+
+
+def test_the_listing_refuses_before_onboarding(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(config, "load_configuration", lambda: None)
+
+    with pytest.raises(NotConfigured, match="ksef-mcp onboarding"):
+        list_invoices()
+
+
+def test_the_listing_names_the_subject_it_acted_as(listing: InvoiceListingResult) -> None:
+    assert (listing.nip, listing.environment) == (NIP, "test")
+
+
+def test_the_listing_states_the_window_once(listing: InvoiceListingResult) -> None:
+    assert (listing.period_from, listing.period_to) == (
+        LISTING_PERIOD.date_from.isoformat(),
+        LISTING_PERIOD.date_to.isoformat(),
+    )
+
+
+def test_the_listing_states_the_threshold_it_applied(listing: InvoiceListingResult) -> None:
+    assert listing.threshold == 50
+
+
+def test_the_listing_reports_every_subject_type_it_asked_about(
+    listing: InvoiceListingResult,
+) -> None:
+    assert [one.subject_type for one in listing.subject_types] == ["buyer", "seller"]
+
+
+def test_a_listed_subject_type_carries_the_eight_columns(listing: InvoiceListingResult) -> None:
+    row = listing.subject_types[0].invoices[0]
+
+    assert (row.ksef_number, row.seller_invoice_number, row.currency) == (
+        str(synthetic_metadata(1).ksef_number),
+        "FV/2026/09/001",
+        "PLN",
+    )
+
+
+def test_a_listed_subject_type_reports_its_gross_total(listing: InvoiceListingResult) -> None:
+    assert listing.subject_types[0].gross_totals[0].gross == Decimal("1230.00")
+
+
+def test_a_listed_subject_type_says_whether_disk_answered(
+    listing: InvoiceListingResult,
+) -> None:
+    assert listing.subject_types[0].from_cache is True
+
+
+def test_a_listed_subject_type_says_when_it_was_asked(listing: InvoiceListingResult) -> None:
+    assert listing.subject_types[0].queried_at == REACHED.isoformat()
+
+
+def test_an_empty_subject_type_is_reported_as_such(listing: InvoiceListingResult) -> None:
+    assert (listing.subject_types[1].outcome, listing.subject_types[1].invoices) == ("empty", [])
+
+
+def test_an_empty_subject_type_restates_the_question(listing: InvoiceListingResult) -> None:
+    assert f"NIP {NIP}" in listing.subject_types[1].message
+
+
+def test_an_open_window_is_described_without_an_end() -> None:
+    described = describe_listing(
+        InvoiceListing(
+            nip=NIP,
+            environment=KsefEnvironment.TEST,
+            threshold=LISTING_THRESHOLD,
+            period=Period.for_synchronisation(since=datetime(2026, 9, 1, tzinfo=UTC)),
+            directions=(),
+        )
+    )
+
+    assert described.period_to is None
+
+
+@pytest.mark.anyio
+async def test_the_listing_tool_takes_no_arguments_from_the_caller(
+    listed_tools: ListToolsResult,
+) -> None:
+    # D-020 again: a window driven by an agent empties a twenty-per-hour
+    # allowance in minutes.
+    tool = next(tool for tool in listed_tools.tools if tool.name == "list_recent_invoices")
+
+    assert tool.input_schema.get("properties", {}) == {}
+
+
+@pytest.mark.anyio
+async def test_the_listing_tool_answers_with_metadata_but_no_invoice(
+    monkeypatch: pytest.MonkeyPatch, with_a_token: None
+) -> None:
+    monkeypatch.setattr(server_module, "InvoiceLister", StubLister)
+    monkeypatch.setattr(server_module, "PeriodCache", lambda **kwargs: kwargs)
+
+    async with Client(server, raise_exceptions=True) as client:
+        called = await client.call_tool("list_recent_invoices")
+
+    assert "<Faktura" not in str(called.structured_content)
+
+
+@pytest.mark.anyio
+async def test_the_listing_tool_asks_for_no_confirmation(
+    monkeypatch: pytest.MonkeyPatch, with_a_token: None
+) -> None:
+    # Bramka zgody przy odczycie uczy klikać „tak" bez patrzenia i psuje moment,
+    # w którym pytanie naprawdę coś znaczy (D-011).
+    monkeypatch.setattr(server_module, "InvoiceLister", StubLister)
+    monkeypatch.setattr(server_module, "PeriodCache", lambda **kwargs: kwargs)
+
+    async with Client(server, raise_exceptions=True) as client:
+        called = await client.call_tool("list_recent_invoices")
+
+    assert called.is_error is not True

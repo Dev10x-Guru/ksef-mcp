@@ -12,6 +12,24 @@ udokumentowane.
 
 ### Dodane
 
+- Po pobraniu widać w rozmowie, co przyszło, bez otwierania katalogu:
+  narzędzie wypisuje metadane faktur z ostatnich trzydziestu dni osobno
+  dla każdej roli podmiotu — numer KSeF, numer faktury sprzedawcy, datę
+  wystawienia, NIP i nazwę sprzedawcy oraz kwoty. Treść faktury nie
+  wchodzi do rozmowy i odczyt nie pyta o zgodę ([GH-40]).
+- Lista dłuższa niż pięćdziesiąt pozycji nie jest po cichu ucinana:
+  zamiast pozycji wraca liczba faktur i suma brutto — osobno dla każdej
+  waluty — a odpowiedź mówi wprost, że progu nie da się przekroczyć.
+  Gdy to sam KSeF nie zmieścił okna w jednej odpowiedzi, też jest to
+  napisane ([GH-40]).
+- Pusty wynik jest osobnym komunikatem i powtarza pytanie, które go
+  wywołało: NIP, środowisko, rolę podmiotu i oba końce okresu. Dzięki
+  temu „nic nie przyszło" da się odróżnić od „zapytałeś o zły
+  miesiąc" ([GH-40]).
+- Powtórzone pytanie o ten sam okres w tej samej godzinie odpowiada
+  z dysku i nie wydaje ani jednego z dwudziestu zapytań na
+  godzinę ([GH-40]).
+
 - Gotowa paczka eksportu jest odczytywana do końca: części pobierane
   z osobnych adresów, odszyfrowane kluczem AES-256 z inicjalizacji,
   złożone i rozpakowane. Podatnik dostaje faktury, a nie zaszyfrowany
@@ -133,6 +151,7 @@ udokumentowane.
 [GH-37]: https://github.com/Dev10x-Guru/ksef-mcp/issues/37
 [GH-38]: https://github.com/Dev10x-Guru/ksef-mcp/issues/38
 [GH-39]: https://github.com/Dev10x-Guru/ksef-mcp/issues/39
+[GH-40]: https://github.com/Dev10x-Guru/ksef-mcp/issues/40
 [GH-57]: https://github.com/Dev10x-Guru/ksef-mcp/issues/57
 
 ## 0.1.1 — 2026-09-13
