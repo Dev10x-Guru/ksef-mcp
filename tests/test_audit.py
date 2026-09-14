@@ -1,0 +1,203 @@
+import json
+import stat
+from datetime import UTC, datetime
+from pathlib import Path
+
+import pytest
+
+from ksef_mcp.audit import (
+    AUDIT_FILE,
+    XML_FORMAT,
+    AuditEntry,
+    AuditTrail,
+    AuditTrailUnreadable,
+    Authorisation,
+    Disclosure,
+    now_utc,
+    token_basis,
+)
+from ksef_mcp.config import KsefEnvironment
+from ksef_mcp.token_store import TokenSource
+
+NIP = "1234567890"
+
+MOMENT = datetime(2026, 9, 14, 8, 30, tzinfo=UTC)
+
+FIRST_NUMBER = "1234567890-20260901-0100AB12CD01-56"
+
+SECOND_NUMBER = "1234567890-20260901-0100AB12CD02-56"
+
+
+@pytest.fixture
+def authorisation() -> Authorisation:
+    return Authorisation(
+        nip=NIP,
+        environment=KsefEnvironment.TEST,
+        basis=token_basis(TokenSource.KEYRING),
+    )
+
+
+def written_entry(
+    authorisation: Authorisation,
+    *,
+    disclosure: Disclosure = Disclosure.DISK,
+    numbers: tuple[str, ...] = (FIRST_NUMBER,),
+) -> AuditEntry:
+    return AuditEntry(
+        recorded_at=MOMENT,
+        operation="synchronise_invoices",
+        authorisation=authorisation,
+        disclosure=disclosure,
+        subject_role="buyer",
+        criteria="export packages up to 2026-09-10T00:00:00+00:00",
+        document_count=len(numbers),
+        ksef_numbers=numbers,
+        output_path="/dane/subjects/1234567890/test/invoices",
+        formats=(XML_FORMAT,),
+    )
+
+
+@pytest.fixture
+def trail(tmp_path: Path) -> AuditTrail:
+    return AuditTrail(nip=NIP, environment=KsefEnvironment.TEST, root=tmp_path)
+
+
+@pytest.fixture
+def recorded(trail: AuditTrail, authorisation: Authorisation) -> Path:
+    return trail.record((written_entry(authorisation),))
+
+
+def first_line(path: Path) -> dict[str, object]:
+    return json.loads(path.read_text(encoding="utf-8").splitlines()[0])
+
+
+def test_the_trail_sits_beside_the_archive_it_describes(trail: AuditTrail, tmp_path: Path) -> None:
+    # Per subject and per environment, exactly as the archive and the review
+    # ledger are, so one office's clients never share a trail.
+    assert trail.path == tmp_path / "subjects" / NIP / "test" / AUDIT_FILE
+
+
+def test_the_trail_lives_in_the_data_root_by_default() -> None:
+    # The cache root is a place a disk cleaner is entitled to empty (D-032), and
+    # evidence that a cleaner may delete is not evidence.
+    default = AuditTrail(nip=NIP, environment=KsefEnvironment.TEST)
+
+    assert default.path.parts[-4:] == ("subjects", NIP, "test", AUDIT_FILE)
+
+
+def test_a_recorded_read_names_the_moment_it_happened(recorded: Path) -> None:
+    assert first_line(recorded)["recorded_at"] == MOMENT.isoformat()
+
+
+def test_a_recorded_read_names_the_subject_it_acted_under(recorded: Path) -> None:
+    assert (first_line(recorded)["nip"], first_line(recorded)["environment"]) == (NIP, "test")
+
+
+def test_a_recorded_read_names_the_footing_and_never_the_secret(recorded: Path) -> None:
+    assert first_line(recorded)["authorisation_basis"] == "ksef_token:keyring"
+
+
+def test_no_token_value_reaches_the_file(recorded: Path) -> None:
+    assert "tajny-token" not in recorded.read_text(encoding="utf-8")
+
+
+def test_a_recorded_read_names_the_criteria_it_asked_under(recorded: Path) -> None:
+    assert first_line(recorded)["criteria"].startswith("export packages up to")  # type: ignore[union-attr]
+
+
+def test_a_recorded_read_counts_the_documents(recorded: Path) -> None:
+    assert first_line(recorded)["document_count"] == 1
+
+
+def test_a_recorded_read_names_the_numbers_it_touched(recorded: Path) -> None:
+    assert first_line(recorded)["ksef_numbers"] == [FIRST_NUMBER]
+
+
+def test_a_recorded_read_names_the_file_it_wrote_and_in_what_format(recorded: Path) -> None:
+    assert (first_line(recorded)["output_path"], first_line(recorded)["formats"]) == (
+        "/dane/subjects/1234567890/test/invoices",
+        ["xml"],
+    )
+
+
+def test_a_recorded_read_states_the_schema_it_was_written_under(recorded: Path) -> None:
+    assert first_line(recorded)["schema_version"] == 1
+
+
+def test_the_file_is_readable_only_by_its_owner(recorded: Path) -> None:
+    assert stat.S_IMODE(recorded.stat().st_mode) == 0o600
+
+
+def test_the_directory_is_reachable_only_by_its_owner(recorded: Path) -> None:
+    assert stat.S_IMODE(recorded.parent.stat().st_mode) == 0o700
+
+
+def test_a_second_read_is_appended_rather_than_replacing_the_first(
+    trail: AuditTrail, authorisation: Authorisation, recorded: Path
+) -> None:
+    # The whole point of the divergence from D-006: the trail only grows, and no
+    # append ever puts the accumulated record at risk.
+    trail.record((written_entry(authorisation, numbers=(SECOND_NUMBER,)),))
+
+    assert len(recorded.read_text(encoding="utf-8").splitlines()) == 2
+
+
+def test_a_pass_with_nothing_to_record_leaves_no_file(trail: AuditTrail) -> None:
+    trail.record(())
+
+    assert not trail.path.exists()
+
+
+def test_an_unwritten_trail_reads_back_as_empty(trail: AuditTrail) -> None:
+    assert trail.entries() == ()
+
+
+def test_the_trail_reads_back_as_what_was_recorded(
+    trail: AuditTrail, authorisation: Authorisation, recorded: Path
+) -> None:
+    assert trail.entries() == (written_entry(authorisation),)
+
+
+def test_a_skip_reads_back_as_a_skip_and_not_as_a_write(
+    trail: AuditTrail, authorisation: Authorisation
+) -> None:
+    trail.record((written_entry(authorisation, disclosure=Disclosure.DEDUPLICATION_SKIP),))
+
+    assert trail.entries()[0].disclosure is Disclosure.DEDUPLICATION_SKIP
+
+
+def test_an_entry_without_a_role_or_a_file_reads_back_as_such(
+    trail: AuditTrail, authorisation: Authorisation
+) -> None:
+    trail.record(
+        (
+            AuditEntry(
+                recorded_at=MOMENT,
+                operation="list_recent_invoices",
+                authorisation=authorisation,
+                disclosure=Disclosure.MODEL_CONTEXT,
+                subject_role=None,
+                criteria="issue 2026-08-15..open",
+                document_count=0,
+                ksef_numbers=(),
+                output_path=None,
+                formats=(),
+            ),
+        )
+    )
+
+    assert (trail.entries()[0].subject_role, trail.entries()[0].output_path) == (None, None)
+
+
+def test_a_line_from_another_schema_is_refused_rather_than_guessed_at(
+    trail: AuditTrail, authorisation: Authorisation, recorded: Path
+) -> None:
+    document = first_line(recorded) | {"schema_version": 99}
+    recorded.write_text(json.dumps(document) + "\n", encoding="utf-8")
+
+    with pytest.raises(AuditTrailUnreadable, match="schema 99"):
+        trail.entries()
+
+
+def test_the_clock_is_the_wall_clock_in_utc() -> None:
+    assert now_utc().tzinfo is UTC

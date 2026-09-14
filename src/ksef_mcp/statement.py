@@ -352,6 +352,11 @@ class Statement:
     from_cache: bool
     queried_at: datetime
     warnings: tuple[str, ...]
+    # Which invoices the file names, for the audit trail and for nothing else
+    # (#45). Deliberately absent from the tool's answer: fifty numbers in a chat
+    # window are noise, while a record of the access that cannot say what was
+    # read is not a record at all.
+    ksef_numbers: tuple[str, ...] = ()
 
     @property
     def message(self) -> str:
@@ -452,4 +457,5 @@ class StatementComposer:
                 *currency_warning(totals),
                 *unverifiable_warning(rows),
             ),
+            ksef_numbers=tuple(str(row.invoice.ksef_number) for row in rows),
         )

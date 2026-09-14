@@ -12,6 +12,21 @@ udokumentowane.
 
 ### Dodane
 
+- Każdy odczyt zostawia trwały ślad, więc po fakcie da się odtworzyć, kto
+  sięgnął po które faktury, na jakiej podstawie i o co pytał. Wpis niesie
+  moment, NIP, z którego uprawnienia skorzystano, źródło tego uprawnienia
+  (nigdy sam token), kryteria zapytania, liczbę dokumentów, numery KSeF,
+  ścieżkę zapisanego pliku i jego format. Treść faktury nie trafia tam
+  nigdy ([GH-45]).
+- Ślad rozróżnia to, co wylądowało w pliku, od tego, co zobaczył model w
+  oknie rozmowy — to dwa różne zdarzenia i tylko rozdzielone odpowiadają
+  na pytanie, co komu ujawniono. Osobno zapisywane jest też pominięcie
+  faktury rozpoznanej jako już posiadana: bez tego ślad czytałby się tak,
+  jakby nikt jej nie dotknął ([GH-45]).
+- Dziennik leży w katalogu danych, osobno dla każdego podmiotu i
+  środowiska, z prawami tylko dla właściciela, i wyłącznie rośnie —
+  dopisanie wiersza nie stawia pod ryzykiem tego, co już zapisano
+  ([GH-45]).
 - Widać, co doszło od ostatniego spojrzenia — a nie tylko, co jest.
   Nowe narzędzie porównuje ostatnie dziewięćdziesiąt dni z zapisem tego,
   co już zostało pokazane, i wypisuje wyłącznie różnicę. Tego darmowa
@@ -194,6 +209,7 @@ udokumentowane.
 [GH-40]: https://github.com/Dev10x-Guru/ksef-mcp/issues/40
 [GH-41]: https://github.com/Dev10x-Guru/ksef-mcp/issues/41
 [GH-43]: https://github.com/Dev10x-Guru/ksef-mcp/issues/43
+[GH-45]: https://github.com/Dev10x-Guru/ksef-mcp/issues/45
 [GH-57]: https://github.com/Dev10x-Guru/ksef-mcp/issues/57
 
 ## 0.1.1 — 2026-09-13

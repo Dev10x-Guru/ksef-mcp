@@ -1,21 +1,47 @@
+from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
+from typing import Final
 
 from mcp.server import MCPServer
 from pydantic import BaseModel
 
 from ksef_mcp import config, token_store
 from ksef_mcp.archive import InvoiceArchive
-from ksef_mcp.ksef_port.types import InvoiceMetadata
+from ksef_mcp.audit import (
+    CSV_FORMAT,
+    XML_FORMAT,
+    AuditEntry,
+    AuditTrail,
+    Authorisation,
+    Disclosure,
+    token_basis,
+)
+from ksef_mcp.ksef_port.types import InvoiceMetadata, Period
 from ksef_mcp.listing import DirectionListing, InvoiceLister, InvoiceListing
 from ksef_mcp.metadata import SERVER_NAME, VERSION
 from ksef_mcp.period_cache import PeriodCache
 from ksef_mcp.review import DirectionReview, InvoiceReview, InvoiceReviewer, ReviewStore
-from ksef_mcp.statement import AccountingPeriod, Statement, StatementComposer
+from ksef_mcp.statement import (
+    STATEMENT_DIRECTION,
+    AccountingPeriod,
+    Statement,
+    StatementComposer,
+)
 from ksef_mcp.sync_store import SyncStore
-from ksef_mcp.synchronisation import SynchronisationReport, Synchroniser
+from ksef_mcp.synchronisation import DirectionReport, SynchronisationReport, Synchroniser
 
 server: MCPServer = MCPServer(name=SERVER_NAME, version=VERSION)
+
+# The audit trail names the operation by the tool the caller invoked, because
+# that is the name the person reconstructing an access has in front of them.
+SYNCHRONISATION_OPERATION: Final[str] = "synchronise_invoices"
+
+LISTING_OPERATION: Final[str] = "list_recent_invoices"
+
+STATEMENT_OPERATION: Final[str] = "export_period_statement"
+
+REVIEW_OPERATION: Final[str] = "review_new_invoices"
 
 
 class ServerInfo(BaseModel):
@@ -80,7 +106,7 @@ def describe(
     )
 
 
-def authenticated_subject() -> tuple[config.Configuration, str]:
+def authenticated_subject() -> tuple[config.Configuration, token_store.StoredToken]:
     """Which taxpayer we act as, and the secret that proves it. Never logged."""
     configuration = config.load_configuration()
     if configuration is None:
@@ -91,7 +117,90 @@ def authenticated_subject() -> tuple[config.Configuration, str]:
             f"Brak tokenu dla {configuration.nip}. "
             f"Zapisz go: ksef-mcp token set --nip {configuration.nip}"
         )
-    return configuration, stored.value
+    return configuration, stored
+
+
+def authorisation_of(
+    configuration: config.Configuration,
+    stored: token_store.StoredToken,
+) -> Authorisation:
+    """The footing the read stands on — where the proof came from, never the proof."""
+    return Authorisation(
+        nip=configuration.nip,
+        environment=configuration.environment,
+        basis=token_basis(stored.source),
+    )
+
+
+def trail_for(configuration: config.Configuration) -> AuditTrail:
+    return AuditTrail(nip=configuration.nip, environment=configuration.environment)
+
+
+def window_criteria(period: Period) -> str:
+    """The query as asked, so a reader can tell scope from happenstance."""
+    ends = "open" if period.date_to is None else period.date_to.isoformat()
+    return f"{period.date_type} {period.date_from.isoformat()}..{ends}"
+
+
+def synchronisation_entries(
+    report: SynchronisationReport,
+    *,
+    authorisation: Authorisation,
+    moment: datetime,
+) -> tuple[AuditEntry, ...]:
+    """One entry per subject type per outcome — stored, and seen but already held."""
+    return tuple(
+        entry
+        for direction in report.directions
+        for entry in _direction_entries(
+            direction,
+            authorisation=authorisation,
+            moment=moment,
+        )
+    )
+
+
+def _direction_entries(
+    direction: DirectionReport,
+    *,
+    authorisation: Authorisation,
+    moment: datetime,
+) -> tuple[AuditEntry, ...]:
+    reached = "unknown" if direction.reached is None else direction.reached.isoformat()
+    common = {
+        "recorded_at": moment,
+        "operation": SYNCHRONISATION_OPERATION,
+        "authorisation": authorisation,
+        "subject_role": str(direction.direction),
+        "criteria": f"export packages up to {reached}",
+        "output_path": direction.archive_directory,
+    }
+    written = (
+        AuditEntry(
+            disclosure=Disclosure.DISK,
+            document_count=len(direction.archived),
+            ksef_numbers=direction.archived,
+            formats=(XML_FORMAT,),
+            **common,  # type: ignore[arg-type]
+        ),
+    )
+    # Logged as its own event rather than folded into the write or left out
+    # altogether: a trail that records only what was stored would read as though
+    # these invoices had never been touched, when in fact each one was seen and
+    # correctly recognised as already held (#38, #57).
+    skipped = (
+        AuditEntry(
+            disclosure=Disclosure.DEDUPLICATION_SKIP,
+            document_count=len(direction.already_held),
+            ksef_numbers=direction.already_held,
+            formats=(),
+            **common,  # type: ignore[arg-type]
+        ),
+    )
+    return (
+        *(written if direction.archived else ()),
+        *(skipped if direction.already_held else ()),
+    )
 
 
 def synchronise() -> SynchronisationResult:
@@ -100,15 +209,21 @@ def synchronise() -> SynchronisationResult:
     # dependency only this tool reaches for.
     from ksef_mcp.ksef_port.adapter import Ksef2Port
 
-    configuration, token = authenticated_subject()
+    configuration, stored = authenticated_subject()
     synchroniser = Synchroniser(
         port=Ksef2Port(environment=configuration.environment),
         store=SyncStore(nip=configuration.nip, environment=configuration.environment),
     )
-    return describe(
-        synchroniser.run(nip=configuration.nip, token=token),
-        environment=configuration.environment,
+    report = synchroniser.run(nip=configuration.nip, token=stored.value)
+    trail = trail_for(configuration)
+    trail.record(
+        synchronisation_entries(
+            report,
+            authorisation=authorisation_of(configuration, stored),
+            moment=trail.clock(),
+        )
     )
+    return describe(report, environment=configuration.environment)
 
 
 @server.tool()
@@ -217,15 +332,54 @@ def describe_listing(listing: InvoiceListing) -> InvoiceListingResult:
     )
 
 
+def listing_entries(
+    listing: InvoiceListing,
+    *,
+    authorisation: Authorisation,
+    moment: datetime,
+) -> tuple[AuditEntry, ...]:
+    """What the model was shown, which is a different event from what was written.
+
+    Recorded even for a subject type that returned nothing: the query was still
+    made, and the scope of what was asked is half of what a dispute turns on.
+    Above the listing threshold the rows never reach the answer, so the count
+    stands alone with no numbers beside it — which is exactly what happened.
+    """
+    return tuple(
+        AuditEntry(
+            recorded_at=moment,
+            operation=LISTING_OPERATION,
+            authorisation=authorisation,
+            disclosure=Disclosure.MODEL_CONTEXT,
+            subject_role=str(direction.question.direction),
+            criteria=window_criteria(direction.question.period),
+            document_count=direction.invoice_count,
+            ksef_numbers=tuple(str(invoice.ksef_number) for invoice in direction.invoices),
+            output_path=None,
+            formats=(),
+        )
+        for direction in listing.directions
+    )
+
+
 def list_invoices() -> InvoiceListingResult:
     from ksef_mcp.ksef_port.adapter import Ksef2Port
 
-    configuration, token = authenticated_subject()
+    configuration, stored = authenticated_subject()
     lister = InvoiceLister(
         port=Ksef2Port(environment=configuration.environment),
         cache=PeriodCache(nip=configuration.nip, environment=configuration.environment),
     )
-    return describe_listing(lister.run(nip=configuration.nip, token=token))
+    listing = lister.run(nip=configuration.nip, token=stored.value)
+    trail = trail_for(configuration)
+    trail.record(
+        listing_entries(
+            listing,
+            authorisation=authorisation_of(configuration, stored),
+            moment=trail.clock(),
+        )
+    )
+    return describe_listing(listing)
 
 
 @server.tool()
@@ -288,10 +442,39 @@ def describe_statement(statement: Statement) -> StatementResult:
     )
 
 
+def statement_entries(
+    statement: Statement,
+    *,
+    authorisation: Authorisation,
+    moment: datetime,
+) -> tuple[AuditEntry, ...]:
+    """One entry, and it is a disk one — the rows leave in a file, not in the answer.
+
+    `StatementResult` carries counts, sums and a path; no KSeF number of the
+    period reaches the model through it. Recording a `MODEL_CONTEXT` event
+    beside the write would therefore claim a disclosure that did not happen,
+    and the D-011 distinction is worth only as much as its accuracy.
+    """
+    return (
+        AuditEntry(
+            recorded_at=moment,
+            operation=STATEMENT_OPERATION,
+            authorisation=authorisation,
+            disclosure=Disclosure.DISK,
+            subject_role=str(STATEMENT_DIRECTION),
+            criteria=str(statement.period),
+            document_count=statement.row_count,
+            ksef_numbers=statement.ksef_numbers,
+            output_path=statement.path,
+            formats=(CSV_FORMAT,),
+        ),
+    )
+
+
 def export_statement(*, period: str, working_directory: str | None) -> StatementResult:
     from ksef_mcp.ksef_port.adapter import Ksef2Port
 
-    configuration, token = authenticated_subject()
+    configuration, stored = authenticated_subject()
     directory = (
         configuration.invoice_directory
         if working_directory is None
@@ -305,14 +488,21 @@ def export_statement(*, period: str, working_directory: str | None) -> Statement
             environment=configuration.environment,
         ),
     )
-    return describe_statement(
-        composer.run(
-            nip=configuration.nip,
-            token=token,
-            period=AccountingPeriod.parsed(period),
-            directory=directory,
+    statement = composer.run(
+        nip=configuration.nip,
+        token=stored.value,
+        period=AccountingPeriod.parsed(period),
+        directory=directory,
+    )
+    trail = trail_for(configuration)
+    trail.record(
+        statement_entries(
+            statement,
+            authorisation=authorisation_of(configuration, stored),
+            moment=trail.clock(),
         )
     )
+    return describe_statement(statement)
 
 
 @server.tool()
@@ -430,16 +620,57 @@ def describe_review(review: InvoiceReview) -> InvoiceReviewResult:
     )
 
 
+def review_entries(
+    review: InvoiceReview,
+    *,
+    authorisation: Authorisation,
+    moment: datetime,
+) -> tuple[AuditEntry, ...]:
+    """What the reader was shown as new, per subject type.
+
+    `MODEL_CONTEXT` and no output path. The review ledger is written on every
+    marked subject type, but it holds this server's own bookkeeping of what has
+    already been reported, not the invoices — and the answer names it anyway,
+    under `ledger_file`. Above the threshold the rows are dropped before the
+    answer is composed, so the count stands with no numbers beside it, which is
+    precisely what the reader saw.
+    """
+    return tuple(
+        AuditEntry(
+            recorded_at=moment,
+            operation=REVIEW_OPERATION,
+            authorisation=authorisation,
+            disclosure=Disclosure.MODEL_CONTEXT,
+            subject_role=str(direction.question.direction),
+            criteria=window_criteria(direction.question.period),
+            document_count=direction.new_count,
+            ksef_numbers=tuple(str(invoice.ksef_number) for invoice in direction.new_invoices),
+            output_path=None,
+            formats=(),
+        )
+        for direction in review.directions
+    )
+
+
 def review_invoices() -> InvoiceReviewResult:
     from ksef_mcp.ksef_port.adapter import Ksef2Port
 
-    configuration, token = authenticated_subject()
+    configuration, stored = authenticated_subject()
     reviewer = InvoiceReviewer(
         port=Ksef2Port(environment=configuration.environment),
         cache=PeriodCache(nip=configuration.nip, environment=configuration.environment),
         store=ReviewStore(nip=configuration.nip, environment=configuration.environment),
     )
-    return describe_review(reviewer.run(nip=configuration.nip, token=token))
+    review = reviewer.run(nip=configuration.nip, token=stored.value)
+    trail = trail_for(configuration)
+    trail.record(
+        review_entries(
+            review,
+            authorisation=authorisation_of(configuration, stored),
+            moment=trail.clock(),
+        )
+    )
+    return describe_review(review)
 
 
 @server.tool()
