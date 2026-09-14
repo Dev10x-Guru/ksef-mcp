@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ksef-mcp"
-version = "0.2.0"
+version = "0.2.1"
 description = "Local MCP server for KSeF, Poland's national e-invoicing system"
 readme = "README.md"
 requires-python = "==3.13.14"
