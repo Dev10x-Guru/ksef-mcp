@@ -10,94 +10,81 @@ udokumentowane.
 
 ## Bez wydania
 
+Wydanie 0.1.1 umiało jedno: potwierdzić, że token działa. To wydanie
+zamienia narzędzie w takie, które samo ściąga faktury z KSeF na dysk —
+przyrostowo, od punktu kontynuacji, w tempie mieszczącym się
+w godzinowych limitach Ministerstwa. Podatnik może zobaczyć w rozmowie,
+co przyszło, uzgodnić z tego miesiąc dla księgowej, przejrzeć to, co
+doszło od ostatniego spojrzenia, i skasować to, czego nie musi już
+trzymać. Wizualizacji PDF tutaj nie ma: oficjalnego generatora
+Ministerstwa nie ma dziś w publicznym rejestrze npm, więc zadanie
+zostało odłożone ([GH-42]).
+
 ### Dodane
 
-- Archiwum da się wyczyścić jedną komendą — `ksef-mcp purge` — i to bez
-  utraty wiedzy o tym, co już pobrano. Bezterminowa retencja przestaje
-  więc oznaczać, że po roku na laptopie leży komplet faktur wszystkich
-  obsługiwanych podmiotów wraz z danymi osobowymi kontrahentów
-  ([GH-44]).
-- Ciąć można po podmiocie (`--nip`), po okresie (`--od`, `--do`) albo po
-  obu naraz: „faktury klienta X starsze niż rok" to jedno wywołanie.
-  Okres liczony jest datą wpływu do KSeF czytaną z numeru faktury, więc
-  nie zależy od tego, kiedy ktokolwiek po nią sięgnął. Komenda pracuje
-  wyłącznie w katalogu wskazanego podmiotu i nigdy nie zagląda do
-  sąsiedniego ([GH-44]).
-- Po wyczyszczeniu ponowna synchronizacja **nie ściąga skasowanych
-  faktur powtórnie** — indeks deduplikacji jest osobnym plikiem od
-  treści i zostaje nietknięty. Nietknięte zostają też punkty
-  kontynuacji i zapis tego, co już zostało pokazane człowiekowi:
-  zwolnienie miejsca na dysku nie cofa ani pytań zadanych KSeF-owi, ani
-  przeglądu ([GH-44]).
-- Zanim cokolwiek zniknie, komenda wypisuje numery KSeF faktur do
-  skasowania, ile miejsca zwolnią i co zostaje, a potem pyta o zgodę —
-  domyślną odpowiedzią jest „nie". Plik, którego nazwa nie jest numerem
-  KSeF, zostaje na dysku i jest zgłoszony; operacja nieodwracalna nie
-  zgaduje ([GH-44]).
-- Skasowanie zostawia wpis w dzienniku audytu: kiedy, czyje faktury, z
-  jakim zakresem i które numery KSeF przestały istnieć. Treść faktury
-  nie trafia tam nigdy, a dziennik przeżywa faktury, które opisuje
-  ([GH-44]).
-- Każdy odczyt zostawia trwały ślad, więc po fakcie da się odtworzyć, kto
-  sięgnął po które faktury, na jakiej podstawie i o co pytał. Wpis niesie
-  moment, NIP, z którego uprawnienia skorzystano, źródło tego uprawnienia
-  (nigdy sam token), kryteria zapytania, liczbę dokumentów, numery KSeF,
-  ścieżkę zapisanego pliku i jego format. Treść faktury nie trafia tam
-  nigdy ([GH-45]).
-- Ślad rozróżnia to, co wylądowało w pliku, od tego, co zobaczył model w
-  oknie rozmowy — to dwa różne zdarzenia i tylko rozdzielone odpowiadają
-  na pytanie, co komu ujawniono. Osobno zapisywane jest też pominięcie
-  faktury rozpoznanej jako już posiadana: bez tego ślad czytałby się tak,
-  jakby nikt jej nie dotknął ([GH-45]).
-- Dziennik leży w katalogu danych, osobno dla każdego podmiotu i
-  środowiska, z prawami tylko dla właściciela, i wyłącznie rośnie —
-  dopisanie wiersza nie stawia pod ryzykiem tego, co już zapisano
-  ([GH-45]).
-- Widać, co doszło od ostatniego spojrzenia — a nie tylko, co jest.
-  Nowe narzędzie porównuje ostatnie dziewięćdziesiąt dni z zapisem tego,
-  co już zostało pokazane, i wypisuje wyłącznie różnicę. Tego darmowa
-  Aplikacja Podatnika nie robi: pokazuje stan, nigdy przyrost. Zapis
-  jest trwały i przeżywa restart, więc pytanie zadane w poniedziałek nie
-  zaczyna liczyć od zera we wtorek ([GH-43]).
-- Faktura, która wpadła do miesiąca już rozliczonego, przestaje być
-  niewidoczna. KSeF nie zna pojęcia zamkniętego okresu i nie powstrzyma
-  takiego napływu, więc narzędzie liczy osobno te nowe faktury, które
-  numer KSeF dostały przed bieżącym miesiącem, i podaje dni ich nadania.
-  To sygnał do sprawdzenia, nie rozstrzygnięcie — o ujęciu podatkowym
-  decyduje człowiek, nie narzędzie ([GH-43]).
-- Data otrzymania faktury czytana jest z numeru KSeF, a nie z momentu,
-  w którym akurat po nią sięgnięto. Faktura z numerem nadanym w lipcu
-  jest lipcową niezależnie od tego, kiedy ktokolwiek o nią zapytał
-  ([GH-43]).
-- Powyżej progu pięćdziesięciu nowych pozycji wiersze nie są wypisywane
-  i wtedy nic nie zostaje oznaczone jako pokazane — skoro nie było ich
-  widać pojedynczo, kolejne wywołanie je powtórzy. Odpowiedź mówi to
-  wprost ([GH-43]).
-- Miesiąc da się przekazać księgowej jednym załącznikiem: nowe
-  narzędzie zapisuje zestawienie faktur zakupowych za wskazany miesiąc
-  jako plik CSV w zadeklarowanym katalogu roboczym. Nazwa pliku mówi,
-  czym on jest — `zestawienie-2026-08-1234567890.csv` — więc nie trzeba
-  jej rozszyfrowywać po odebraniu poczty ([GH-41]).
-- Zestawienie niesie dokładnie to, czego potrzeba do uzgodnienia okresu:
-  numer KSeF, numer faktury sprzedawcy, datę wystawienia, NIP i nazwę
-  sprzedawcy oraz brutto, netto i VAT. Adresów, numerów rachunków,
-  pozycji faktury ani ścieżek lokalnych w pliku nie ma — CSV jest z
-  założenia przesyłany dalej, a te dane nie są tam do niczego
-  potrzebne ([GH-41]).
-- Każda pozycja ma kod weryfikacyjny KOD I złożony z NIP-u sprzedawcy,
-  daty wystawienia i skrótu SHA-256 faktury leżącej w archiwum. Kwoty
-  przechodzą z KSeF-u do pliku bez zaokrąglenia, więc suma brutto
-  uzgadnia się z Aplikacją Podatnika co do grosza ([GH-41]).
-- Katalog roboczy jest produktem, nie magazynem: powstaje z
-  uprawnieniami 0700, ścieżka wyglądająca na synchronizowaną do chmury
-  jest nazwana wprost w odpowiedzi, a katalog wskazany wewnątrz
-  archiwum albo cache'u zostaje odrzucony — dzięki temu skasowanie
-  zestawień nigdy nie zabiera pobranych faktur ([GH-41]).
+- Komenda `ksef-mcp skill install --scope user|project` zapisuje skill
+  dla Claude Code, dzięki czemu agent od razu wie, jak korzystać
+  z serwera: że odpowiada z lokalnego archiwum, że synchronizacja ma
+  własny rytm, że treść faktury nie wchodzi do kontekstu i że każda
+  odpowiedź nazywa środowisko. Zakres podaje się jawnie — `uvx` bywa
+  uruchamiany z przypadkowego katalogu, więc cicho wybrane miejsce
+  byłoby ostatnim, w którym ktokolwiek szukałby pliku ([GH-34]).
+- Aktualizacja skilla pokazuje różnicę wobec zainstalowanego pliku
+  i pyta o zgodę przed nadpisaniem, więc własne zmiany nie znikają
+  niezauważone ([GH-34]).
+- Narzędzie `synchronise_invoices` ściąga to, czego w archiwum jeszcze
+  nie ma, i samo pilnuje tempa: najwyżej jeden eksport na typ podmiotu
+  w jednym przebiegu, sprzedawca i nabywca nie częściej niż co
+  piętnaście minut, a role rzadkie — `Podmiot 3` i podmiot upoważniony
+  — raz na dobę w oknie nocnym. Narzędzie nie przyjmuje żadnych
+  argumentów: ani okna, ani paginacji. Agent sterujący tymi parametrami
+  spaliłby godzinową pulę w dwie minuty, a Ministerstwo czyta taki
+  wzorzec jako próbę obchodzenia limitu ([GH-36]).
+- Postęp synchronizacji przeżywa restart: punkty kontynuacji — osobne
+  dla każdego typu podmiotu — oraz rekord zakolejkowanego eksportu leżą
+  w katalogu danych, a nie w katalogu podręcznym. Ubicie serwera
+  kosztuje najwyżej jedno odpytanie o status, nigdy eksportu ani pełnej
+  resynchronizacji ([GH-36]).
+- Gotowa paczka eksportu jest odczytywana do końca: części pobierane
+  z osobnych adresów, odszyfrowane kluczem AES-256 z inicjalizacji,
+  złożone i rozpakowane. Podatnik dostaje faktury, a nie zaszyfrowany
+  ZIP w kawałkach ([GH-37]).
+- Jedno wywołanie `synchronise_invoices` kończy się fakturami na dysku.
+  Paczka, którą KSeF ogłosi gotową, jest w tym samym przebiegu pobrana,
+  odszyfrowana i zapisana w archiwum podmiotu — wcześniej przebieg
+  kończył się wiedzą, że paczka czeka. Odpowiedź mówi, gdzie faktury
+  wylądowały i które numery KSeF przyszły ([GH-57]).
+- Nieudane pobranie części albo nieudany zapis nie przybliża okresu do
+  „kompletnego": paczka zostaje na dysku razem z kluczem i dokańcza ją
+  kolejny przebieg, bez wydawania drugiego z dwudziestu eksportów na
+  godzinę. Punkt kontynuacji przesuwa to, co potwierdził KSeF, a nie
+  to, czy temu przebiegowi udało się zapisać pliki ([GH-37], [GH-57]).
+- Faktury lądują w archiwum pod numerem KSeF — `<NumerKSeF>.xml` —
+  w podkatalogu osobnym dla każdego podmiotu i środowiska. Biuro
+  rachunkowe nie pomiesza więc faktur dwóch klientów, a plik da się
+  przekazać i zaimportować bez zgadywania, co w nim jest ([GH-38]).
+- Powtórzona synchronizacja tego samego okresu nie tworzy duplikatów.
+  Rozpoznanie idzie po numerze KSeF z manifestu paczki, nie po nazwie
+  pliku — nazwy potrafiły dawać fałszywe wyniki, numer nie. Odpowiedź
+  wymienia numery, których nie pobierano ponownie ([GH-38], [GH-57]).
+- Pamięć o tym, co już pobrano, leży w osobnym pliku obok faktur.
+  Podatnik może więc skasować same faktury — dla oszczędności miejsca
+  albo z powodów ochrony danych — a kolejna synchronizacja i tak nie
+  ściągnie ich po raz drugi ([GH-38]).
+- Pytanie o ten sam okres drugi raz nie kosztuje ani jednego
+  z dwudziestu zapytań na godzinę. Odpowiedź na zamknięty przedział dat
+  jest zapisywana na dysku razem ze znacznikiem chwili, w której
+  naprawdę zapłacono za nią budżetem, i przy powtórzeniu wraca stamtąd
+  — także po restarcie serwera ([GH-39], [GH-40]).
+- Zapis jest osobny dla każdego typu podmiotu, więc odpowiedź na
+  pytanie „co sprzedałem we wrześniu" nie zostanie podana jako
+  odpowiedź na „co kupiłem" — ta sama firma bywa sprzedawcą na jednej
+  fakturze i nabywcą na następnej ([GH-39]).
 - Po pobraniu widać w rozmowie, co przyszło, bez otwierania katalogu:
-  narzędzie wypisuje metadane faktur z ostatnich trzydziestu dni osobno
-  dla każdej roli podmiotu — numer KSeF, numer faktury sprzedawcy, datę
-  wystawienia, NIP i nazwę sprzedawcy oraz kwoty. Treść faktury nie
-  wchodzi do rozmowy i odczyt nie pyta o zgodę ([GH-40]).
+  narzędzie `list_recent_invoices` wypisuje metadane faktur z ostatnich
+  trzydziestu dni osobno dla każdej roli podmiotu — numer KSeF, numer
+  faktury sprzedawcy, datę wystawienia, NIP i nazwę sprzedawcy oraz
+  kwoty. Odczyt nie pyta o zgodę ([GH-40]).
 - Lista dłuższa niż pięćdziesiąt pozycji nie jest po cichu ucinana:
   zamiast pozycji wraca liczba faktur i suma brutto — osobno dla każdej
   waluty — a odpowiedź mówi wprost, że progu nie da się przekroczyć.
@@ -107,56 +94,99 @@ udokumentowane.
   wywołało: NIP, środowisko, rolę podmiotu i oba końce okresu. Dzięki
   temu „nic nie przyszło" da się odróżnić od „zapytałeś o zły
   miesiąc" ([GH-40]).
-- Powtórzone pytanie o ten sam okres w tej samej godzinie odpowiada
-  z dysku i nie wydaje ani jednego z dwudziestu zapytań na
-  godzinę ([GH-40]).
-
-- Gotowa paczka eksportu jest odczytywana do końca: części pobierane
-  z osobnych adresów, odszyfrowane kluczem AES-256 z inicjalizacji,
-  złożone i rozpakowane. Podatnik dostaje faktury, a nie zaszyfrowany
-  ZIP w kawałkach ([GH-37]).
-- Nieudane pobranie którejkolwiek części nie przybliża okresu do
-  „kompletnego" — paczka zostaje zapisana razem z kluczem i dokańcza ją
-  kolejny przebieg, bez wydawania drugiego z dwudziestu eksportów na
-  godzinę ([GH-37]).
-
-- Komenda `ksef-mcp skill install --scope user|project` zapisująca skill dla
-  Claude Code, dzięki czemu agent od razu wie, jak korzystać z serwera:
-  że odpowiada z lokalnego archiwum, że synchronizacja ma własny rytm, że
-  treść faktury nie wchodzi do kontekstu i że każda odpowiedź nazywa
-  środowisko. Zakres podaje się jawnie — `uvx` bywa uruchamiany
-  z przypadkowego katalogu, więc cicho wybrane miejsce byłoby ostatnim,
-  w którym ktokolwiek szukałby pliku ([GH-34]).
-- Aktualizacja skilla pokazuje różnicę wobec zainstalowanego pliku i pyta
-  o zgodę przed nadpisaniem, więc własne zmiany nie znikają niezauważone
-  ([GH-34]).
-
-- Serwer rozmawia z KSeF przez własną warstwę pośredniczącą, a nie
-  bezpośrednio przez bibliotekę klienta. Dla podatnika oznacza to jedno:
-  gdy biblioteka się zmieni albo zostanie wymieniona, narzędzia i ich
-  odpowiedzi zostaną takie same ([GH-35]).
-- Serwer odczytuje z KSeF rzeczywiste limity zapytań i liczy, ile z nich
-  już zużył, zamiast zakładać wartości z dokumentacji. Podmiot, któremu
-  Ministerstwo podniosło limit, dostaje tyle, ile mu przyznano
-  ([GH-35]).
-
-- Zanim narzędzie sięgnie po token, sprawdza, czy magazyn haseł jest
-  odblokowany — i gdy nie jest, mówi to wprost zamiast otwierać okno
-  z prośbą o hasło. Takie okno zawieszało całą rozmowę z agentem, bo
-  pojawiało się w środku czynności wyglądającej na zwykły odczyt
-  ([GH-33]).
+- Miesiąc da się przekazać księgowej jednym załącznikiem: narzędzie
+  `export_period_statement` zapisuje zestawienie faktur zakupowych za
+  wskazany miesiąc jako plik CSV w zadeklarowanym katalogu roboczym.
+  Nazwa pliku mówi, czym on jest — `zestawienie-2026-08-1234567890.csv`
+  — więc nie trzeba jej rozszyfrowywać po odebraniu poczty ([GH-41]).
+- Zestawienie niesie dokładnie to, czego potrzeba do uzgodnienia
+  okresu: numer KSeF, numer faktury sprzedawcy, datę wystawienia, NIP
+  i nazwę sprzedawcy oraz brutto, netto i VAT. Adresów, numerów
+  rachunków, pozycji faktury ani ścieżek lokalnych w pliku nie ma — CSV
+  jest z założenia przesyłany dalej, a te dane nie są tam do niczego
+  potrzebne ([GH-41]).
+- Każda pozycja ma kod weryfikacyjny KOD I złożony z NIP-u sprzedawcy,
+  daty wystawienia i skrótu SHA-256 faktury leżącej w archiwum. Kwoty
+  przechodzą z KSeF-u do pliku bez zaokrąglenia, więc suma brutto
+  uzgadnia się z Aplikacją Podatnika co do grosza ([GH-41]).
+- Widać, co doszło od ostatniego spojrzenia — a nie tylko, co jest.
+  Narzędzie `review_new_invoices` porównuje ostatnie dziewięćdziesiąt
+  dni z zapisem tego, co już zostało pokazane, i wypisuje wyłącznie
+  różnicę. Tego darmowa Aplikacja Podatnika nie robi: pokazuje stan,
+  nigdy przyrost. Zapis jest trwały i przeżywa restart, więc pytanie
+  zadane w poniedziałek nie zaczyna liczyć od zera we wtorek
+  ([GH-43]).
+- Faktura, która wpadła do miesiąca już rozliczonego, przestaje być
+  niewidoczna. KSeF nie zna pojęcia zamkniętego okresu i nie
+  powstrzyma takiego napływu, więc narzędzie liczy osobno te nowe
+  faktury, które numer KSeF dostały przed bieżącym miesiącem, i podaje
+  dni ich nadania. To sygnał do sprawdzenia, nie rozstrzygnięcie —
+  o ujęciu podatkowym decyduje księgowa, nie narzędzie ([GH-43]).
+- Data otrzymania faktury czytana jest z numeru KSeF, a nie z momentu,
+  w którym akurat po nią sięgnięto. Faktura z numerem nadanym w lipcu
+  jest lipcowa niezależnie od tego, kiedy ktokolwiek o nią zapytał —
+  tak samo przy przeglądzie, jak przy cięciu archiwum po okresie
+  ([GH-43], [GH-44]).
+- Powyżej progu pięćdziesięciu nowych pozycji wiersze nie są wypisywane
+  i wtedy nic nie zostaje oznaczone jako pokazane — skoro nie było ich
+  widać pojedynczo, kolejne wywołanie je powtórzy. Odpowiedź mówi to
+  wprost ([GH-43]).
+- Archiwum da się wyczyścić jedną komendą — `ksef-mcp purge` — i to bez
+  utraty wiedzy o tym, co już pobrano. Bezterminowa retencja przestaje
+  więc oznaczać, że po roku na laptopie leży komplet faktur wszystkich
+  obsługiwanych podmiotów wraz z danymi osobowymi kontrahentów
+  ([GH-44]).
+- Ciąć można po podmiocie (`--nip`), po okresie (`--od`, `--do`) albo
+  po obu naraz: „faktury klienta X starsze niż rok" to jedno
+  wywołanie. Komenda pracuje wyłącznie w katalogu wskazanego podmiotu
+  i nigdy nie zagląda do sąsiedniego ([GH-44]).
+- Po wyczyszczeniu ponowna synchronizacja **nie ściąga skasowanych
+  faktur powtórnie** — indeks deduplikacji jest osobnym plikiem od
+  treści i zostaje nietknięty. Nietknięte zostają też punkty
+  kontynuacji i zapis tego, co już zostało pokazane człowiekowi:
+  zwolnienie miejsca na dysku nie cofa ani pytań zadanych KSeF-owi, ani
+  przeglądu ([GH-44]).
+- Każdy odczyt zostawia trwały ślad, więc po fakcie da się odtworzyć,
+  kto sięgnął po które faktury, na jakiej podstawie i o co pytał. Wpis
+  niesie moment, NIP, z którego uprawnienia skorzystano, źródło tego
+  uprawnienia, kryteria zapytania, liczbę dokumentów, numery KSeF,
+  ścieżkę zapisanego pliku i jego format ([GH-45]).
+- Ślad rozróżnia to, co wylądowało w pliku, od tego, co zobaczył model
+  w oknie rozmowy — to dwa różne zdarzenia i tylko rozdzielone
+  odpowiadają na pytanie, co komu ujawniono. Osobno zapisywane jest też
+  pominięcie faktury rozpoznanej jako już posiadana: bez tego ślad
+  czytałby się tak, jakby nikt jej nie dotknął ([GH-45]).
+- Skasowanie faktur także zostawia wpis w dzienniku: kiedy, czyje
+  faktury, z jakim zakresem i które numery KSeF przestały istnieć.
+  Dziennik przeżywa faktury, które opisuje ([GH-44], [GH-45]).
 
 ### Zmienione
+
+Poniższe zadziała inaczej u kogoś, kto używa 0.1.1.
 
 - Gdy KSeF odmówi, `verify` podaje w jednym zdaniu, **którego podmiotu**
   i **którego środowiska** dotyczy odmowa oraz z jakiego powodu. Przy
   dwóch skonfigurowanych NIP-ach samo „token odrzucony" kazało zgadywać
   ([GH-33]).
-- Po odmowie z powodu wyczerpanego limitu serwer czeka dokładnie tyle,
-  ile podał KSeF, i tylko wtedy, gdy KSeF to podał — a domyślnie nie
-  ponawia wcale i oddaje decyzję człowiekowi. Ministerstwo odnotowuje
-  przekroczenia limitów i wydłuża blokadę przy powtórzeniach, więc
-  wytrwałość klienta szkodzi bardziej niż pojedyncze niepowodzenie
+- Doszły dwie komendy: `ksef-mcp skill install` ([GH-34]) oraz
+  `ksef-mcp purge` ([GH-44]). Dotychczasowe — `onboarding`, `doctor`,
+  `token`, `verify` — działają jak dotąd.
+- Doszły cztery narzędzia MCP: `synchronise_invoices` ([GH-36]),
+  `list_recent_invoices` ([GH-40]), `export_period_statement`
+  ([GH-41]) oraz `review_new_invoices` ([GH-43]). Konfiguracja klienta
+  MCP zostaje bez zmian — serwer startuje tym samym poleceniem.
+- Doszły dwie zależności bezpośrednie: `cryptography` do odszyfrowania
+  paczki eksportu oraz `secretstorage` wyłącznie na Linuksie do odczytu
+  stanu blokady magazynu haseł. Obie przychodziły dotąd jako zależności
+  przechodnie, ale kod, który je importuje, nie ma prawa polegać na
+  cudzym drzewie zależności ([GH-33], [GH-37]).
+- Serwer rozmawia z KSeF przez własną warstwę pośredniczącą, a nie
+  bezpośrednio przez bibliotekę klienta. Dla podatnika oznacza to
+  jedno: gdy biblioteka się zmieni albo zostanie wymieniona, narzędzia
+  i ich odpowiedzi zostaną takie same ([GH-35]).
+- Serwer odczytuje z KSeF rzeczywiste limity zapytań i liczy, ile z
+  nich już zużył, zamiast zakładać wartości z dokumentacji. Podmiot,
+  któremu Ministerstwo podniosło limit, dostaje tyle, ile mu przyznano
   ([GH-35]).
 - Zbyt szerokie okno dat i numer, który nie jest numerem KSeF, są
   odrzucane, zanim cokolwiek poleci do KSeF. Wcześniej kosztowały jedno
@@ -165,8 +195,27 @@ udokumentowane.
   archiwum z ewidencją nie pokaże już różnicy o grosz, której nie ma
   ([GH-35]).
 
+### Poprawione
+
+- Gałąź `main` przestała czerwienieć po każdym udanym wydaniu. Test
+  narzędzi wydawniczych czytał żywy `CHANGELOG.md` i wymagał treści
+  w sekcji, którą skrypt wydania właśnie stamtąd zabierał, więc
+  czerwień mówiła o stanie repozytorium, nie o kodzie. To samo
+  twierdzenie sprawdzane jest teraz na dokumencie syntetycznym.
+
 ### Bezpieczeństwo
 
+- Po odmowie z powodu wyczerpanego limitu serwer czeka dokładnie tyle,
+  ile podał KSeF, i tylko wtedy, gdy KSeF to podał — a domyślnie nie
+  ponawia wcale i oddaje decyzję człowiekowi. Ministerstwo odnotowuje
+  przekroczenia limitów i wydłuża blokadę przy powtórzeniach, więc
+  wytrwałość klienta szkodzi bardziej niż pojedyncze niepowodzenie
+  ([GH-35]).
+- Zanim narzędzie sięgnie po token, sprawdza, czy magazyn haseł jest
+  odblokowany — i gdy nie jest, mówi to wprost zamiast otwierać okno
+  z prośbą o hasło. Takie okno zawieszało całą rozmowę z agentem, bo
+  pojawiało się w środku czynności wyglądającej na zwykły odczyt
+  ([GH-33]).
 - Klucz, którym zaszyfrowana jest paczka, znika w chwili trafienia
   faktur do archiwum — nie zostaje na dysku ani chwili dłużej i nie
   czeka na osobne sprzątanie. Eksport odrzucony przez KSeF również nie
@@ -174,66 +223,54 @@ udokumentowane.
 - Paczka niezgodna z tym, co KSeF o niej podał — rozmiarem albo skrótem
   którejkolwiek części — nie jest rozpakowywana. Nie trafi też do
   archiwum plik, którego nazwa wskazuje poza paczkę ([GH-37]).
-
-- Faktury z pobranej paczki lądują w archiwum pod numerem KSeF —
-  `<NumerKSeF>.xml` — w podkatalogu osobnym dla każdego podmiotu i
-  środowiska. Biuro rachunkowe nie pomiesza więc faktur dwóch klientów,
-  a plik da się przekazać i zaimportować bez zgadywania, co w nim jest
-  ([GH-38]).
-- Powtórzona synchronizacja tego samego okresu nie tworzy duplikatów.
-  Rozpoznanie idzie po numerze KSeF z manifestu paczki, nie po nazwie
-  pliku — nazwy potrafiły dawać fałszywe wyniki, numer nie ([GH-38]).
-- Faktura już zapisana nie jest po cichu nadpisywana: narzędzie mówi
-  wprost, których numerów już nie pobierało ponownie ([GH-38]).
-- Pamięć o tym, co już pobrano, leży w osobnym pliku obok faktur.
-  Podatnik może więc skasować same faktury — dla oszczędności miejsca
-  albo z powodów ochrony danych — a kolejna synchronizacja i tak nie
-  ściągnie ich po raz drugi ([GH-38]).
 - Paczka, której manifest nie wiąże numeru KSeF z plikiem, nie jest
-  archiwizowana wcale, zamiast trafić do archiwum pod zgadniętą nazwą
-  ([GH-38]).
-
-- Pytanie o ten sam okres drugi raz nie kosztuje ani jednego z dwudziestu
-  zapytań na godzinę. Odpowiedź na zamknięty przedział dat jest zapisywana
-  na dysku razem ze znacznikiem chwili, w której naprawdę zapłacono za nią
-  budżetem, i przy powtórzeniu wraca stamtąd — także po restarcie serwera
-  ([GH-39]).
-- Zapis jest osobny dla każdego typu podmiotu, więc odpowiedź na pytanie
-  „co sprzedałem we wrześniu" nie zostanie podana jako odpowiedź na „co
-  kupiłem" — ta sama firma bywa sprzedawcą na jednej fakturze i nabywcą
-  na następnej ([GH-39]).
-- Cache leży w katalogu podręcznym systemu, osobno od katalogu danych
-  z punktami kontynuacji, indeksem deduplikacji i archiwum. Skasowanie
-  katalogu podręcznego — ręcznie albo przez czyszczarkę dysku — kosztuje
-  jedno ponowne odpytanie, nigdy pełnej resynchronizacji ([GH-39]).
-- Uszkodzony albo obcięty wpis w cache'u nie jest błędem, tylko brakiem
-  trafienia: serwer po prostu pyta KSeF raz jeszcze, zamiast odmówić
-  odpowiedzi ([GH-39]).
-
-- Jedno wywołanie `synchronise_invoices` kończy się fakturami na dysku.
-  Paczka, którą KSeF ogłosi gotową, jest w tym samym przebiegu pobrana,
-  odszyfrowana i zapisana jako `<NumerKSeF>.xml` w archiwum podmiotu —
-  wcześniej przebieg kończył się wiedzą, że paczka czeka ([GH-57]).
-- Odpowiedź narzędzia mówi, gdzie faktury wylądowały i które numery
-  KSeF przyszły, a które podmiot już miał. Treści faktury nie niesie
-  nigdy: dokument FA(2)/FA(3) zawiera dane osobowe kontrahenta, więc
-  narzędzie nazywa plik i go nie otwiera ([GH-57]).
-- Drugie wywołanie na tym samym oknie nie pobiera paczki ponownie i nie
-  nadpisuje żadnej faktury — numery, które podmiot już ma, wracają jako
-  „już posiadane" ([GH-57]).
-- Nieudane pobranie albo nieudany zapis zostawia paczkę na dysku razem
-  z kluczem i dokańcza ją kolejny przebieg. Punkt kontynuacji nie cofa
-  się z tego powodu: przesuwa go to, co potwierdził KSeF, a nie to, czy
-  temu przebiegowi udało się zapisać pliki ([GH-57]).
+  archiwizowana wcale, zamiast trafić do archiwum pod zgadniętą nazwą.
+  Faktura już zapisana nie jest po cichu nadpisywana ([GH-38]).
+- Pobranie części paczki nie jest liczone w godzinowym budżecie
+  zapytań. Adresy części są jednorazowe i nie niosą poświadczenia
+  KSeF, a pułap sześćdziesięciu czterech pobrań na godzinę dotyczy
+  sięgania po fakturę po numerze. Liczenie ich tam przerywałoby
+  archiwizację paczki, za której eksport już zapłacono ([GH-57]).
+- Treść faktury nie wchodzi do żadnej odpowiedzi narzędzia. Dokument
+  FA(2)/FA(3) zawiera dane osobowe kontrahenta, więc narzędzie nazywa
+  plik i go nie otwiera — do rozmowy trafiają wyłącznie metadane
+  ([GH-40], [GH-57]).
+- Dziennik audytu nie niesie ani tokenu, ani treści faktury: zapisuje
+  źródło uprawnienia, nigdy sam sekret. Leży w katalogu danych, osobno
+  dla każdego podmiotu i środowiska, z prawami tylko dla właściciela,
+  i wyłącznie rośnie — dopisanie wiersza nie stawia pod ryzykiem tego,
+  co już zapisano ([GH-45]).
+- Archiwum, katalog podręczny z odpowiedziami o okresy oraz katalog
+  roboczy z zestawieniami powstają z prawami wyłącznie dla właściciela:
+  katalogi `0700`, pliki `0600`. Katalog roboczy jest przy tym
+  produktem, nie magazynem — ścieżka wyglądająca na synchronizowaną do
+  chmury jest nazwana wprost w odpowiedzi, a katalog wskazany wewnątrz
+  archiwum albo cache'u zostaje odrzucony, dzięki czemu skasowanie
+  zestawień nigdy nie zabiera pobranych faktur ([GH-38], [GH-39],
+  [GH-41]).
+- Cache odpowiedzi leży w katalogu podręcznym systemu, osobno od
+  katalogu danych z punktami kontynuacji, indeksem deduplikacji
+  i archiwum. Skasowanie katalogu podręcznego — ręcznie albo przez
+  czyszczarkę dysku — kosztuje jedno ponowne odpytanie, nigdy pełnej
+  resynchronizacji. Uszkodzony albo obcięty wpis nie jest błędem, tylko
+  brakiem trafienia ([GH-39]).
+- Zanim `purge` cokolwiek skasuje, wypisuje numery KSeF faktur do
+  skasowania, ile miejsca zwolnią i co zostaje, a potem pyta o zgodę —
+  domyślną odpowiedzią jest „nie" i nie ma przełącznika, który by to
+  pytanie pominął. Plik, którego nazwa nie jest numerem KSeF, zostaje
+  na dysku i jest zgłoszony; operacja nieodwracalna nie zgaduje
+  ([GH-44]).
 
 [GH-33]: https://github.com/Dev10x-Guru/ksef-mcp/issues/33
 [GH-34]: https://github.com/Dev10x-Guru/ksef-mcp/issues/34
 [GH-35]: https://github.com/Dev10x-Guru/ksef-mcp/issues/35
+[GH-36]: https://github.com/Dev10x-Guru/ksef-mcp/issues/36
 [GH-37]: https://github.com/Dev10x-Guru/ksef-mcp/issues/37
 [GH-38]: https://github.com/Dev10x-Guru/ksef-mcp/issues/38
 [GH-39]: https://github.com/Dev10x-Guru/ksef-mcp/issues/39
 [GH-40]: https://github.com/Dev10x-Guru/ksef-mcp/issues/40
 [GH-41]: https://github.com/Dev10x-Guru/ksef-mcp/issues/41
+[GH-42]: https://github.com/Dev10x-Guru/ksef-mcp/issues/42
 [GH-43]: https://github.com/Dev10x-Guru/ksef-mcp/issues/43
 [GH-44]: https://github.com/Dev10x-Guru/ksef-mcp/issues/44
 [GH-45]: https://github.com/Dev10x-Guru/ksef-mcp/issues/45
