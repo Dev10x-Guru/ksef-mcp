@@ -94,11 +94,29 @@ udokumentowane.
   archiwizowana wcale, zamiast trafić do archiwum pod zgadniętą nazwą
   ([GH-38]).
 
+- Pytanie o ten sam okres drugi raz nie kosztuje ani jednego z dwudziestu
+  zapytań na godzinę. Odpowiedź na zamknięty przedział dat jest zapisywana
+  na dysku razem ze znacznikiem chwili, w której naprawdę zapłacono za nią
+  budżetem, i przy powtórzeniu wraca stamtąd — także po restarcie serwera
+  ([GH-39]).
+- Zapis jest osobny dla każdego typu podmiotu, więc odpowiedź na pytanie
+  „co sprzedałem we wrześniu" nie zostanie podana jako odpowiedź na „co
+  kupiłem" — ta sama firma bywa sprzedawcą na jednej fakturze i nabywcą
+  na następnej ([GH-39]).
+- Cache leży w katalogu podręcznym systemu, osobno od katalogu danych
+  z punktami kontynuacji, indeksem deduplikacji i archiwum. Skasowanie
+  katalogu podręcznego — ręcznie albo przez czyszczarkę dysku — kosztuje
+  jedno ponowne odpytanie, nigdy pełnej resynchronizacji ([GH-39]).
+- Uszkodzony albo obcięty wpis w cache'u nie jest błędem, tylko brakiem
+  trafienia: serwer po prostu pyta KSeF raz jeszcze, zamiast odmówić
+  odpowiedzi ([GH-39]).
+
 [GH-33]: https://github.com/Dev10x-Guru/ksef-mcp/issues/33
 [GH-34]: https://github.com/Dev10x-Guru/ksef-mcp/issues/34
 [GH-35]: https://github.com/Dev10x-Guru/ksef-mcp/issues/35
 [GH-37]: https://github.com/Dev10x-Guru/ksef-mcp/issues/37
 [GH-38]: https://github.com/Dev10x-Guru/ksef-mcp/issues/38
+[GH-39]: https://github.com/Dev10x-Guru/ksef-mcp/issues/39
 
 ## 0.1.1 — 2026-09-13
 
