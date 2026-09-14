@@ -10,6 +10,9 @@ udokumentowane.
 
 ## Bez wydania
 
+## 0.3.0 — 2026-09-14
+
+
 Wydanie 0.2.0 sprowadzało faktury na dysk, ale zostawiało podatnika
 z XML-em. To wydanie domyka drogę do dokumentu: faktura otwiera się
 jako PDF wygenerowany oficjalnym modułem Ministerstwa Finansów,
@@ -142,7 +145,6 @@ instrukcją do przepisania.
 [GH-75]: https://github.com/Dev10x-Guru/ksef-mcp/issues/75
 [GH-76]: https://github.com/Dev10x-Guru/ksef-mcp/issues/76
 [GH-78]: https://github.com/Dev10x-Guru/ksef-mcp/issues/78
-
 ## 0.2.0 — 2026-09-14
 
 
