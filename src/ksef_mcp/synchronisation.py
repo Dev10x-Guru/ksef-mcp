@@ -274,16 +274,19 @@ class Synchroniser:
                 ),
             )
         if status.state is ExportState.FAILED:
-            # The key is worthless now and the point never moved, so the same
-            # window is asked for again — one export spent, nothing skipped.
+            # The point never moved, so the same window is asked for again —
+            # one export spent, nothing skipped.
             return state.with_pending(
                 # Recorded rather than dropped: a reference nobody can explain
-                # later is worse than one marked as the failure it was.
+                # later is worse than one marked as the failure it was. The key
+                # does not stay with it: this export is over, and a key that
+                # outlives the export it belongs to is exactly what D-033
+                # forbids.
                 PendingExport(
                     reference=export.reference,
                     direction=export.direction,
                     started_at=export.started_at,
-                    encryption=export.encryption,
+                    encryption=None,
                     state=ExportState.FAILED,
                 )
             ), DirectionReport(

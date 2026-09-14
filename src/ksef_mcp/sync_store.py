@@ -50,6 +50,10 @@ class SyncStateUnreadable(RuntimeError):
     """The record on disk was written by something this build does not understand."""
 
 
+class ExportKeyDiscarded(RuntimeError):
+    """Asked for the key of an export that has already finished."""
+
+
 @dataclass(frozen=True)
 class PendingExport:
     """A package KSeF has been asked for and this process has not yet archived.
@@ -58,18 +62,26 @@ class PendingExport:
     asynchronous: the MCP server under `uvx` is routinely killed together with
     the agent session between the request and the parts becoming available, and
     a key held only in memory would burn one of twenty hourly exports (D-033).
+
+    `encryption` is empty once the export is over: a key outlives nothing it
+    could still open, and a package KSeF refused will never be fetched (D-033).
     """
 
     reference: str
     direction: InvoiceDirection
     started_at: datetime
-    encryption: ExportEncryption
+    encryption: ExportEncryption | None
     state: ExportState
     parts: tuple[ExportPart, ...] = ()
     invoice_count: int = 0
 
     @property
     def handle(self) -> ExportHandle:
+        if self.encryption is None:
+            raise ExportKeyDiscarded(
+                f"Export {self.reference} carries no key: it finished, and the "
+                f"key stopped existing with it. Nothing can be fetched for it."
+            )
         return ExportHandle(reference=self.reference, encryption=self.encryption)
 
 
@@ -103,6 +115,9 @@ class SyncState:
     def with_pending(self, export: PendingExport) -> SyncState:
         return replace(self, pending=(*self.without_pending(reference=export.reference), export))
 
+    def without_export(self, *, reference: str) -> SyncState:
+        return replace(self, pending=self.without_pending(reference=reference))
+
     def with_direction(self, direction: InvoiceDirection, state: DirectionState) -> SyncState:
         return replace(self, directions={**self.directions, direction: state})
 
@@ -133,21 +148,38 @@ def _decode_part(stored: dict[str, object]) -> ExportPart:
     )
 
 
+def _encode_secret(material: bytes | None) -> str | None:
+    # base64 in JSON for the same reason the parts keep both hashes: whoever
+    # decrypts the package next reads this file and nothing else. `null` is the
+    # spelling of a key that no longer exists — the field is never dropped, so a
+    # record without one reads as deliberate rather than as truncation.
+    return None if material is None else base64.b64encode(material).decode("ascii")
+
+
 def _encode_pending(export: PendingExport) -> dict[str, object]:
-    # The key and IV are base64 in JSON for the same reason the parts keep both
-    # hashes: whoever decrypts the package next reads this file and nothing else.
+    encryption = export.encryption
     return {
         "reference": export.reference,
         "direction": str(export.direction),
         "started_at": export.started_at.isoformat(),
         "state": str(export.state),
         "invoice_count": export.invoice_count,
-        "encryption_key": base64.b64encode(export.encryption.key).decode("ascii"),
-        "initialisation_vector": base64.b64encode(export.encryption.initialisation_vector).decode(
-            "ascii"
+        "encryption_key": _encode_secret(None if encryption is None else encryption.key),
+        "initialisation_vector": _encode_secret(
+            None if encryption is None else encryption.initialisation_vector
         ),
         "parts": [_encode_part(part) for part in export.parts],
     }
+
+
+def _decode_encryption(stored: dict[str, object]) -> ExportEncryption | None:
+    key = stored["encryption_key"]
+    if key is None:
+        return None
+    return ExportEncryption(
+        key=base64.b64decode(str(key)),
+        initialisation_vector=base64.b64decode(str(stored["initialisation_vector"])),
+    )
 
 
 def _decode_pending(stored: dict[str, object]) -> PendingExport:
@@ -155,10 +187,7 @@ def _decode_pending(stored: dict[str, object]) -> PendingExport:
         reference=str(stored["reference"]),
         direction=InvoiceDirection(stored["direction"]),
         started_at=datetime.fromisoformat(str(stored["started_at"])),
-        encryption=ExportEncryption(
-            key=base64.b64decode(str(stored["encryption_key"])),
-            initialisation_vector=base64.b64decode(str(stored["initialisation_vector"])),
-        ),
+        encryption=_decode_encryption(stored),
         state=ExportState(stored["state"]),
         parts=tuple(_decode_part(part) for part in stored["parts"]),  # type: ignore[union-attr]
         invoice_count=int(stored["invoice_count"]),  # type: ignore[arg-type]

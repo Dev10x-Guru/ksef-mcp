@@ -24,6 +24,10 @@ dependencies = [
     "keyring==25.7.0",
     "platformdirs==4.11.8",
     "ksef2==0.19.0",
+    # AES-256-CBC over the export package (D-031 §7). It already arrives with
+    # `ksef2`, but code that imports a package declares it — a transitive pin
+    # is somebody else's decision to change.
+    "cryptography==50.0.1",
     # Imported directly to read the collection's lock state without keyring's
     # own unlock prompt (D-004, ST-3). It arrives with keyring on Linux
     # anyway, but code that imports a package declares it.
