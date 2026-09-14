@@ -4,6 +4,14 @@ The canonical pattern the Ministry publishes (D-031), not an invention of ours.
 Everything the caller might be tempted to tune — the window, the page size, how
 many packages to ask for — is decided here or by KSeF, never passed in from a
 tool (D-020).
+
+The pass runs the whole way: a package KSeF reports as ready is fetched,
+decrypted and written to the subject's archive inside the same call, and the
+export key stops existing as part of that (ADR-104 §2, ADR-105). What survives
+a failure is deliberate — the pending record with its key and its parts stays on
+disk, and the continuation point stays where KSeF's own marker put it, because
+the point tracks what the registry confirmed and not what this process managed
+to write (ADR-103 §3).
 """
 
 from __future__ import annotations
@@ -15,8 +23,14 @@ from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Final
 
+from ksef_mcp.archive import (
+    ArchiveIndexUnreadable,
+    ArchiveMetadataUnusable,
+    InvoiceArchive,
+    PackageArchivist,
+)
 from ksef_mcp.ksef_port.budget import Operation, QueryBudget
-from ksef_mcp.ksef_port.errors import KsefRequestRejected
+from ksef_mcp.ksef_port.errors import KsefPortError, KsefRequestRejected
 from ksef_mcp.ksef_port.protocol import KsefPort, KsefSession
 from ksef_mcp.ksef_port.types import (
     ContinuationPoint,
@@ -25,7 +39,14 @@ from ksef_mcp.ksef_port.types import (
     InvoiceDirection,
     Period,
 )
-from ksef_mcp.sync_store import DirectionState, PendingExport, SyncState, SyncStore
+from ksef_mcp.package import PackageRetriever, PackageUnreadable
+from ksef_mcp.sync_store import (
+    DirectionState,
+    ExportKeyDiscarded,
+    PendingExport,
+    SyncState,
+    SyncStore,
+)
 
 # Every subject type, every run: a company appears in different roles on
 # different invoices, and only the loop lets the period be called complete
@@ -72,9 +93,23 @@ POLL_ATTEMPTS: Final[int] = 3
 
 POLL_INTERVAL: Final[timedelta] = timedelta(seconds=10)
 
+# Everything that can stop a ready package short of the archive: the port
+# refusing or failing to hand over a part, bytes that are not the package KSeF
+# described, a manifest that names no KSeF number, an unreadable index, and a
+# record whose key is already gone. Each of them leaves the pending record where
+# it is, so the list is the definition of "retry next pass", not of "give up".
+ARCHIVING_FAILURES: Final[tuple[type[Exception], ...]] = (
+    KsefPortError,
+    PackageUnreadable,
+    ArchiveMetadataUnusable,
+    ArchiveIndexUnreadable,
+    ExportKeyDiscarded,
+)
+
 
 class SyncOutcome(StrEnum):
-    EXPORTED = "exported"
+    ARCHIVED = "archived"
+    NOT_ARCHIVED = "not_archived"
     STILL_RUNNING = "still_running"
     FAILED = "failed"
     NOT_DUE = "not_due"
@@ -84,12 +119,17 @@ class SyncOutcome(StrEnum):
 
 @dataclass(frozen=True)
 class DirectionReport:
+    """One subject type's result. Paths and KSeF numbers, never invoice bodies (D-011)."""
+
     direction: InvoiceDirection
     outcome: SyncOutcome
     detail: str
     invoice_count: int = 0
     part_count: int = 0
     reached: datetime | None = None
+    archived: tuple[str, ...] = ()
+    already_held: tuple[str, ...] = ()
+    archive_directory: str | None = None
 
 
 @dataclass(frozen=True)
@@ -145,11 +185,12 @@ def advance(point: ContinuationPoint, *, status: ExportStatus) -> ContinuationPo
 
 @dataclass(frozen=True)
 class Synchroniser:
-    """One pass over every subject type: resume what is queued, queue what is due.
+    """One pass over every subject type, from "ask KSeF" to "the file is on disk".
 
     Re-entrant by construction. A package that is not ready when the pass ends
     stays on disk with its key and its parts, so the next pass continues it
-    instead of spending another export on the same window.
+    instead of spending another export on the same window — and so does a
+    package that was fetched but could not be archived.
     """
 
     port: KsefPort
@@ -159,15 +200,30 @@ class Synchroniser:
     poll_attempts: int = POLL_ATTEMPTS
     poll_interval: timedelta = POLL_INTERVAL
 
+    @property
+    def archive(self) -> InvoiceArchive:
+        # Derived from the store rather than taken as a second argument: the
+        # invoices and the synchronisation record share one root per subject and
+        # per environment (ADR-105 §1), and two arguments that must agree are
+        # two chances to file one client's invoices under another's NIP (D-034).
+        return InvoiceArchive(
+            nip=self.store.nip,
+            environment=self.store.environment,
+            root=self.store.root,
+            clock=self.clock,
+        )
+
     def run(self, *, nip: str, token: str) -> SynchronisationReport:
         state = self.store.load()
         reports: list[DirectionReport] = []
         with self.port.session(nip=nip, token=token) as session:
             budget = QueryBudget(limits=session.read_limits().rates, clock=self.clock)
+            retriever = PackageRetriever(session=session, store=self.store)
             for direction in SYNCHRONISED_DIRECTIONS:
                 state, report = self._advance_one(
                     session=session,
                     budget=budget,
+                    retriever=retriever,
                     state=state,
                     direction=direction,
                 )
@@ -184,14 +240,33 @@ class Synchroniser:
         *,
         session: KsefSession,
         budget: QueryBudget,
+        retriever: PackageRetriever,
         state: SyncState,
         direction: InvoiceDirection,
     ) -> tuple[SyncState, DirectionReport]:
         queued = state.pending_for(direction)
-        if queued is not None and queued.state is ExportState.RUNNING:
-            return self._resume(session=session, budget=budget, state=state, export=queued)
-        moment = self.clock()
         stored = state.directions.get(direction)
+        if queued is not None and queued.state is ExportState.RUNNING:
+            return self._resume(
+                session=session,
+                budget=budget,
+                retriever=retriever,
+                state=state,
+                export=queued,
+            )
+        if queued is not None and queued.state is ExportState.READY:
+            # A package a previous pass fetched and could not store. Finishing
+            # it costs neither an export nor a status query, so it goes first —
+            # and until it lands, this subject type asks KSeF for nothing new.
+            return self._archive(
+                retriever=retriever,
+                state=state,
+                export=queued,
+                settled=SyncOutcome.ARCHIVED,
+                detail=f"Paczka {queued.reference} z poprzedniego przebiegu trafiła do archiwum.",
+                reached=None if stored is None else stored.reached,
+            )
+        moment = self.clock()
         if not is_due(direction=direction, stored=stored, moment=moment):
             return state, DirectionReport(
                 direction=direction,
@@ -202,6 +277,7 @@ class Synchroniser:
         return self._start(
             session=session,
             budget=budget,
+            retriever=retriever,
             state=state,
             direction=direction,
             stored=stored,
@@ -213,6 +289,7 @@ class Synchroniser:
         *,
         session: KsefSession,
         budget: QueryBudget,
+        retriever: PackageRetriever,
         state: SyncState,
         direction: InvoiceDirection,
         stored: DirectionState | None,
@@ -245,13 +322,20 @@ class Synchroniser:
             direction,
             DirectionState(reached=opening.reached, attempted_at=moment),
         )
-        return self._resume(session=session, budget=budget, state=advanced, export=queued)
+        return self._resume(
+            session=session,
+            budget=budget,
+            retriever=retriever,
+            state=advanced,
+            export=queued,
+        )
 
     def _resume(
         self,
         *,
         session: KsefSession,
         budget: QueryBudget,
+        retriever: PackageRetriever,
         state: SyncState,
         export: PendingExport,
     ) -> tuple[SyncState, DirectionReport]:
@@ -294,11 +378,12 @@ class Synchroniser:
                 outcome=SyncOutcome.FAILED,
                 detail=f"KSeF odrzucił eksport {export.reference}.",
             )
-        return self._complete(state=state, export=export, status=status)
+        return self._complete(retriever=retriever, state=state, export=export, status=status)
 
     def _complete(
         self,
         *,
+        retriever: PackageRetriever,
         state: SyncState,
         export: PendingExport,
         status: ExportStatus,
@@ -319,30 +404,90 @@ class Synchroniser:
         )
         carrying = state.with_pending(ready)
         if moved is None:
-            return carrying, DirectionReport(
-                direction=export.direction,
-                outcome=SyncOutcome.INCONCLUSIVE,
+            return self._archive(
+                retriever=retriever,
+                state=carrying,
+                export=ready,
+                settled=SyncOutcome.INCONCLUSIVE,
                 detail=(
-                    "Paczka jest gotowa, ale KSeF nie podał znacznika kontynuacji; "
-                    "punkt zostaje tam, gdzie był."
+                    "Paczka jest zarchiwizowana, ale KSeF nie podał znacznika "
+                    "kontynuacji; punkt zostaje tam, gdzie był."
                 ),
-                invoice_count=status.invoice_count,
-                part_count=len(status.parts),
                 reached=stored.reached,
             )
         # The point and the parts that justify it are written by one rename: a
         # point ahead of a package nobody recorded would declare a period
         # complete that was never fetched.
-        return carrying.with_direction(
-            export.direction,
-            DirectionState(reached=moved.reached, attempted_at=stored.attempted_at),
-        ), DirectionReport(
-            direction=export.direction,
-            outcome=SyncOutcome.EXPORTED,
-            detail=f"Paczka {export.reference} gotowa do pobrania.",
-            invoice_count=status.invoice_count,
-            part_count=len(status.parts),
+        return self._archive(
+            retriever=retriever,
+            state=carrying.with_direction(
+                export.direction,
+                DirectionState(reached=moved.reached, attempted_at=stored.attempted_at),
+            ),
+            export=ready,
+            settled=SyncOutcome.ARCHIVED,
+            detail=f"Paczka {export.reference} trafiła do archiwum.",
             reached=moved.reached,
+        )
+
+    def _archive(
+        self,
+        *,
+        retriever: PackageRetriever,
+        state: SyncState,
+        export: PendingExport,
+        settled: SyncOutcome,
+        detail: str,
+        reached: datetime | None,
+    ) -> tuple[SyncState, DirectionReport]:
+        """Fetch the parts, store the invoices, and let the key go with them.
+
+        Downloading a part spends no allowance and so counts against no
+        `Operation`: the part URLs are presigned links to external storage,
+        reached without a KSeF credential, while the `invoice_download` family
+        `GET /rate-limits` reports is the sixty-four-per-hour ceiling on
+        fetching a single invoice by its number (D-031 §1, ADR-104). Counting
+        them there would refuse an allowance nobody spent, and would abort a
+        many-part package halfway through a stream whose export is already paid
+        for out of twenty an hour.
+        """
+        # Written before the first part is fetched, and that ordering is the
+        # point: `PackageRetriever.archive` drops the record by reloading this
+        # very file, so a record still only in memory would be replaced by a
+        # document that never knew about it — and with it would go the key.
+        self.store.save(state)
+        archivist = PackageArchivist(archive=self.archive)
+        try:
+            retriever.archive(export=export, archivist=archivist)
+        except ARCHIVING_FAILURES as failure:
+            # The record keeps its key and its parts (ADR-104 §2), and the
+            # continuation point stays exactly where the package itself put it:
+            # it moves on what KSeF confirmed, never on whether this run managed
+            # to write the files (ADR-103 §3). The message names the failure,
+            # never the invoice — these exceptions carry no package content
+            # (D-011).
+            return state, DirectionReport(
+                direction=export.direction,
+                outcome=SyncOutcome.NOT_ARCHIVED,
+                detail=(
+                    f"Paczka {export.reference} czeka na dysku z kluczem, "
+                    f"bo archiwizacja się nie udała: {failure}"
+                ),
+                invoice_count=export.invoice_count,
+                part_count=len(export.parts),
+                reached=reached,
+            )
+        stored = archivist.reported
+        return self.store.load(), DirectionReport(
+            direction=export.direction,
+            outcome=settled,
+            detail=detail,
+            invoice_count=export.invoice_count,
+            part_count=len(export.parts),
+            reached=reached,
+            archived=stored.archived,
+            already_held=stored.already_held,
+            archive_directory=stored.directory,
         )
 
     def _poll(

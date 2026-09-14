@@ -3,6 +3,11 @@
 Every test drives a scripted port rather than KSeF. The suite must say the same
 thing on a machine with no network as in CI, and a live export here would spend
 one of twenty an hour against a real allowance.
+
+The package the scripted port serves is built here — a synthetic ZIP with a
+manifest, encrypted with a key this file invents — so the assertions can follow
+one call all the way to `<NumerKSeF>.xml` on disk. No invoice body in this file
+belongs to a real taxpayer (D-011).
 """
 
 from collections.abc import Iterator
@@ -13,6 +18,7 @@ from pathlib import Path
 
 import pytest
 
+from ksef_mcp.archive import INDEX_FILE, InvoiceArchive
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port import (
     ContinuationPoint,
@@ -24,6 +30,7 @@ from ksef_mcp.ksef_port import (
     InvoiceDirection,
     KsefLimits,
     KsefNumber,
+    KsefUnreachable,
     MetadataPage,
     OperationLimit,
     Period,
@@ -43,10 +50,20 @@ from ksef_mcp.synchronisation import (
     is_due,
     now_utc,
 )
+from synthetic import (
+    aes_encrypted,
+    base64_digest,
+    synthetic_number,
+    synthetic_package,
+)
 
 NIP = "1234567890"
 
 TOKEN = "tajny-token"
+
+KEY = b"k" * 32
+
+IV = b"i" * 16
 
 HWM = datetime(2026, 9, 10, tzinfo=UTC)
 
@@ -56,6 +73,12 @@ NOON = datetime(2026, 9, 12, 12, 0, tzinfo=UTC)
 
 MIDNIGHT = datetime(2026, 9, 12, 2, 0, tzinfo=UTC)
 
+# One part carrying the whole ZIP. Splitting is `test_package`'s subject; here
+# the part only has to be genuine enough to survive both hash checks and unpack.
+PACKAGE = synthetic_package(1, 2)
+
+ENCRYPTED_PACKAGE = aes_encrypted(PACKAGE, key=KEY, initialisation_vector=IV)
+
 
 def a_part(ordinal: int = 1) -> ExportPart:
     return ExportPart(
@@ -63,10 +86,10 @@ def a_part(ordinal: int = 1) -> ExportPart:
         name=f"package_part_{ordinal}.zip.aes",
         method="GET",
         url=f"https://storage.example/part/{ordinal}",
-        size_bytes=1024,
-        content_hash="c3BsaXQ=",
-        encrypted_size_bytes=1040,
-        encrypted_content_hash="ZW5jcnlwdGVk",
+        size_bytes=len(PACKAGE),
+        content_hash=base64_digest(PACKAGE),
+        encrypted_size_bytes=len(ENCRYPTED_PACKAGE),
+        encrypted_content_hash=base64_digest(ENCRYPTED_PACKAGE),
     )
 
 
@@ -109,14 +132,19 @@ def failed() -> ExportStatus:
 
 
 def allowances(
-    *, exports_per_hour: int | None = 20, statuses_per_hour: int | None = 200
+    *,
+    exports_per_hour: int | None = 20,
+    statuses_per_hour: int | None = 200,
+    downloads_per_hour: int | None = 64,
 ) -> KsefLimits:
     return KsefLimits(
         rates=RateLimits(
             metadata_queries=OperationLimit(per_second=8, per_minute=16, per_hour=20),
             exports=OperationLimit(per_second=2, per_minute=4, per_hour=exports_per_hour),
             export_statuses=OperationLimit(per_second=8, per_minute=16, per_hour=statuses_per_hour),
-            invoice_downloads=OperationLimit(per_second=4, per_minute=16, per_hour=64),
+            invoice_downloads=OperationLimit(
+                per_second=4, per_minute=16, per_hour=downloads_per_hour
+            ),
         ),
         ceilings=SessionCeilings(
             max_invoice_megabytes=1,
@@ -130,8 +158,10 @@ def allowances(
 class ScriptedSession:
     statuses: list[ExportStatus]
     limits: KsefLimits
+    storage_failure: Exception | None = None
     started: list[tuple[InvoiceDirection, Period]] = field(default_factory=list)
     polled: list[str] = field(default_factory=list)
+    fetched: list[str] = field(default_factory=list)
 
     def read_limits(self) -> KsefLimits:
         return self.limits
@@ -143,7 +173,7 @@ class ScriptedSession:
         self.started.append((direction, period))
         return ExportHandle(
             reference=f"EXP-{len(self.started)}",
-            encryption=ExportEncryption(key=b"k" * 32, initialisation_vector=b"i" * 16),
+            encryption=ExportEncryption(key=KEY, initialisation_vector=IV),
         )
 
     def check_export(self, *, handle: ExportHandle) -> ExportStatus:
@@ -151,7 +181,10 @@ class ScriptedSession:
         return self.statuses[min(len(self.polled), len(self.statuses)) - 1]
 
     def fetch_part(self, *, handle: ExportHandle, part: ExportPart) -> bytes:
-        return b"\x00encrypted"
+        self.fetched.append(handle.reference)
+        if self.storage_failure is not None:
+            raise self.storage_failure
+        return ENCRYPTED_PACKAGE
 
     def download_invoice(self, *, ksef_number: KsefNumber) -> bytes:
         raise AssertionError("Synchronizacja nie pobiera pojedynczych faktur.")
@@ -178,6 +211,13 @@ class FrozenClock:
 @pytest.fixture
 def store(tmp_path: Path) -> SyncStore:
     return SyncStore(nip=NIP, environment=KsefEnvironment.TEST, root=tmp_path)
+
+
+@pytest.fixture
+def archive(tmp_path: Path) -> InvoiceArchive:
+    # The same root the store gets: the pass derives the archive from the store
+    # precisely so the two cannot point at different subjects (ADR-105 §1).
+    return InvoiceArchive(nip=NIP, environment=KsefEnvironment.TEST, root=tmp_path)
 
 
 @pytest.fixture
@@ -212,6 +252,16 @@ def first_pass(
     return a_synchroniser(session=session, store=store, naps=naps).run(nip=NIP, token=TOKEN)
 
 
+@pytest.fixture
+def after_a_failed_download(store: SyncStore, naps: list[float]) -> SynchronisationReport:
+    session = ScriptedSession(
+        statuses=[ready()],
+        limits=allowances(),
+        storage_failure=KsefUnreachable("Magazyn paczek nie odpowiada."),
+    )
+    return a_synchroniser(session=session, store=store, naps=naps).run(nip=NIP, token=TOKEN)
+
+
 def outcome(report: SynchronisationReport, direction: InvoiceDirection) -> SyncOutcome:
     return next(one.outcome for one in report.directions if one.direction == direction)
 
@@ -229,13 +279,102 @@ def test_every_subject_type_is_reported(first_pass: SynchronisationReport) -> No
     ]
 
 
-def test_the_frequent_subject_types_are_exported_at_noon(
+def test_the_frequent_subject_types_are_archived_at_noon(
     first_pass: SynchronisationReport,
 ) -> None:
     assert (
         outcome(first_pass, InvoiceDirection.SELLER),
         outcome(first_pass, InvoiceDirection.BUYER),
-    ) == (SyncOutcome.EXPORTED, SyncOutcome.EXPORTED)
+    ) == (SyncOutcome.ARCHIVED, SyncOutcome.ARCHIVED)
+
+
+def test_one_pass_puts_the_invoices_on_disk_under_their_ksef_numbers(
+    first_pass: SynchronisationReport, archive: InvoiceArchive
+) -> None:
+    # The whole point of #57: a single call ends with files, not with the
+    # knowledge that KSeF built a package.
+    assert sorted(path.name for path in archive.invoice_directory.iterdir()) == [
+        f"{synthetic_number(1)}.xml",
+        f"{synthetic_number(2)}.xml",
+    ]
+
+
+def test_one_pass_records_what_it_holds_in_the_deduplication_index(
+    first_pass: SynchronisationReport, archive: InvoiceArchive
+) -> None:
+    assert sorted(entry.ksef_number for entry in archive.load_index().entries) == [
+        str(synthetic_number(1)),
+        str(synthetic_number(2)),
+    ]
+
+
+def test_the_index_lives_beside_the_invoices_rather_than_inside_them(
+    first_pass: SynchronisationReport, archive: InvoiceArchive
+) -> None:
+    # Retention deletes bodies without costing idempotence only while the index
+    # is a separate file (D-005, ADR-105 §4).
+    assert archive.index_path == archive.directory / INDEX_FILE
+
+
+def test_the_report_names_the_directory_the_invoices_landed_in(
+    first_pass: SynchronisationReport, archive: InvoiceArchive
+) -> None:
+    assert reported(first_pass, InvoiceDirection.SELLER).archive_directory == str(
+        archive.invoice_directory
+    )
+
+
+def test_the_report_names_the_numbers_it_archived(first_pass: SynchronisationReport) -> None:
+    assert reported(first_pass, InvoiceDirection.SELLER).archived == (
+        str(synthetic_number(1)),
+        str(synthetic_number(2)),
+    )
+
+
+def test_the_second_subject_type_recognises_invoices_the_first_already_stored(
+    first_pass: SynchronisationReport,
+) -> None:
+    # The same invoice reaches a company as seller and as buyer; deduplication
+    # by KSeF number is what stops it being written twice (D-005).
+    assert reported(first_pass, InvoiceDirection.BUYER).already_held == (
+        str(synthetic_number(1)),
+        str(synthetic_number(2)),
+    )
+
+
+def test_a_second_call_on_the_same_window_writes_nothing_new(
+    first_pass: SynchronisationReport,
+    session: ScriptedSession,
+    store: SyncStore,
+    naps: list[float],
+) -> None:
+    later = a_synchroniser(
+        session=session, store=store, naps=naps, moment=NOON + MINIMUM_INTERVAL
+    ).run(nip=NIP, token=TOKEN)
+
+    assert reported(later, InvoiceDirection.SELLER).archived == ()
+
+
+def test_a_second_call_reports_the_numbers_as_already_held(
+    first_pass: SynchronisationReport,
+    session: ScriptedSession,
+    store: SyncStore,
+    naps: list[float],
+) -> None:
+    later = a_synchroniser(
+        session=session, store=store, naps=naps, moment=NOON + MINIMUM_INTERVAL
+    ).run(nip=NIP, token=TOKEN)
+
+    assert reported(later, InvoiceDirection.SELLER).already_held == (
+        str(synthetic_number(1)),
+        str(synthetic_number(2)),
+    )
+
+
+def test_the_invoice_body_never_reaches_the_report(first_pass: SynchronisationReport) -> None:
+    # FA(2)/FA(3) XML carries the counterparty's personal data, so the pass
+    # answers with paths and numbers and nothing else (D-011).
+    assert "Faktura" not in "".join(one.detail for one in first_pass.directions)
 
 
 @pytest.mark.parametrize(
@@ -257,7 +396,7 @@ def test_the_rare_subject_types_are_exported_in_the_night_window(
         nip=NIP, token=TOKEN
     )
 
-    assert outcome(report, InvoiceDirection.THIRD_SUBJECT) is SyncOutcome.EXPORTED
+    assert outcome(report, InvoiceDirection.THIRD_SUBJECT) is SyncOutcome.ARCHIVED
 
 
 def test_the_export_window_is_pinned_to_permanent_storage(
@@ -294,27 +433,13 @@ def test_a_completed_package_reports_what_it_carries(
     ) == (7, 1)
 
 
-def test_the_ready_package_is_left_on_disk_for_whoever_decrypts_it(
+def test_an_archived_package_leaves_no_record_behind(
     first_pass: SynchronisationReport, store: SyncStore
 ) -> None:
-    # The point moved, so the only record that the window was actually fetched
-    # is this one; deleting it before the parts are archived loses invoices.
-    assert [export.state for export in store.load().pending] == [
-        ExportState.READY,
-        ExportState.READY,
-    ]
-
-
-def test_the_stored_package_carries_the_parts_to_fetch(
-    first_pass: SynchronisationReport, store: SyncStore
-) -> None:
-    assert store.load().pending[0].parts == (a_part(),)
-
-
-def test_the_stored_package_carries_its_key(
-    first_pass: SynchronisationReport, store: SyncStore
-) -> None:
-    assert store.load().pending[0].encryption.key == b"k" * 32
+    # The record is the one trace that the window was fetched, so it goes only
+    # once the invoices are durable — and then it must go, because the key it
+    # carries opens nothing any more (D-033, ADR-104 §2).
+    assert store.load().pending == ()
 
 
 def test_the_report_names_the_state_file(
@@ -323,8 +448,10 @@ def test_the_report_names_the_state_file(
     assert first_pass.state_path == str(store.path)
 
 
-def test_the_report_names_every_queued_package(first_pass: SynchronisationReport) -> None:
-    assert first_pass.pending_exports == ("EXP-1", "EXP-2")
+def test_a_pass_that_archived_everything_leaves_nothing_queued(
+    first_pass: SynchronisationReport,
+) -> None:
+    assert first_pass.pending_exports == ()
 
 
 def test_a_second_pass_within_the_interval_asks_for_nothing(
@@ -348,7 +475,7 @@ def test_a_pass_after_the_interval_asks_again(
         session=session, store=store, naps=naps, moment=NOON + MINIMUM_INTERVAL
     ).run(nip=NIP, token=TOKEN)
 
-    assert outcome(later, InvoiceDirection.BUYER) is SyncOutcome.EXPORTED
+    assert outcome(later, InvoiceDirection.BUYER) is SyncOutcome.ARCHIVED
 
 
 def test_the_next_window_starts_where_the_last_one_reached(
@@ -392,7 +519,7 @@ def test_a_package_still_being_built_keeps_its_key_on_disk(
 
     a_synchroniser(session=session, store=store, naps=naps).run(nip=NIP, token=TOKEN)
 
-    assert store.load().pending[0].encryption.initialisation_vector == b"i" * 16
+    assert store.load().pending[0].encryption.initialisation_vector == IV
 
 
 def test_polling_stops_at_its_bound_rather_than_waiting_the_package_out(
@@ -422,56 +549,88 @@ def test_a_package_that_finishes_while_polling_is_completed(
 
     report = a_synchroniser(session=session, store=store, naps=naps).run(nip=NIP, token=TOKEN)
 
-    assert outcome(report, InvoiceDirection.SELLER) is SyncOutcome.EXPORTED
+    assert outcome(report, InvoiceDirection.SELLER) is SyncOutcome.ARCHIVED
+
+
+def left_on_disk(store: SyncStore, *, state: ExportState) -> None:
+    """Put a package from an earlier pass in the record, the way a crash would."""
+    store.save(
+        SyncState(
+            directions={InvoiceDirection.BUYER: DirectionState(reached=LAST_SEEN)},
+            pending=(
+                PendingExport(
+                    reference="EXP-OLD",
+                    direction=InvoiceDirection.BUYER,
+                    started_at=NOON - timedelta(hours=2),
+                    encryption=ExportEncryption(key=KEY, initialisation_vector=IV),
+                    state=state,
+                    parts=(a_part(),),
+                    invoice_count=2,
+                ),
+            ),
+        )
+    )
 
 
 def test_a_queued_package_is_resumed_instead_of_being_asked_for_again(
     store: SyncStore, naps: list[float]
 ) -> None:
-    store.save(
-        SyncState(
-            directions={InvoiceDirection.BUYER: DirectionState(reached=LAST_SEEN)},
-            pending=(
-                PendingExport(
-                    reference="EXP-OLD",
-                    direction=InvoiceDirection.BUYER,
-                    started_at=NOON - timedelta(hours=2),
-                    encryption=ExportEncryption(key=b"k" * 32, initialisation_vector=b"i" * 16),
-                    state=ExportState.RUNNING,
-                ),
-            ),
-        )
-    )
+    left_on_disk(store, state=ExportState.RUNNING)
     session = ScriptedSession(statuses=[ready()], limits=allowances())
 
     report = a_synchroniser(session=session, store=store, naps=naps).run(nip=NIP, token=TOKEN)
 
     assert (outcome(report, InvoiceDirection.BUYER), "EXP-OLD" in session.polled) == (
-        SyncOutcome.EXPORTED,
+        SyncOutcome.ARCHIVED,
         True,
     )
 
 
 def test_a_queued_package_costs_no_second_export(store: SyncStore, naps: list[float]) -> None:
-    store.save(
-        SyncState(
-            directions={InvoiceDirection.BUYER: DirectionState(reached=LAST_SEEN)},
-            pending=(
-                PendingExport(
-                    reference="EXP-OLD",
-                    direction=InvoiceDirection.BUYER,
-                    started_at=NOON - timedelta(hours=2),
-                    encryption=ExportEncryption(key=b"k" * 32, initialisation_vector=b"i" * 16),
-                    state=ExportState.RUNNING,
-                ),
-            ),
-        )
-    )
+    left_on_disk(store, state=ExportState.RUNNING)
     session = ScriptedSession(statuses=[ready()], limits=allowances())
 
     a_synchroniser(session=session, store=store, naps=naps).run(nip=NIP, token=TOKEN)
 
     assert [direction for direction, _ in session.started] == [InvoiceDirection.SELLER]
+
+
+def test_a_package_fetched_but_never_stored_is_archived_on_the_next_pass(
+    store: SyncStore, naps: list[float]
+) -> None:
+    left_on_disk(store, state=ExportState.READY)
+    session = ScriptedSession(statuses=[ready()], limits=allowances())
+
+    report = a_synchroniser(session=session, store=store, naps=naps).run(nip=NIP, token=TOKEN)
+
+    assert outcome(report, InvoiceDirection.BUYER) is SyncOutcome.ARCHIVED
+
+
+def test_a_package_fetched_but_never_stored_puts_its_invoices_on_disk(
+    store: SyncStore, naps: list[float], archive: InvoiceArchive
+) -> None:
+    left_on_disk(store, state=ExportState.READY)
+    session = ScriptedSession(statuses=[ready()], limits=allowances())
+
+    a_synchroniser(session=session, store=store, naps=naps).run(nip=NIP, token=TOKEN)
+
+    assert (archive.invoice_directory / f"{synthetic_number(1)}.xml").is_file()
+
+
+def test_a_package_fetched_but_never_stored_costs_neither_export_nor_status_query(
+    store: SyncStore, naps: list[float]
+) -> None:
+    # The window is already paid for; asking KSeF anything about it again would
+    # spend an allowance for an answer the record on disk already holds.
+    left_on_disk(store, state=ExportState.READY)
+    session = ScriptedSession(statuses=[ready()], limits=allowances())
+
+    a_synchroniser(session=session, store=store, naps=naps).run(nip=NIP, token=TOKEN)
+
+    assert (
+        [direction for direction, _ in session.started],
+        "EXP-OLD" in session.polled,
+    ) == ([InvoiceDirection.SELLER], False)
 
 
 def test_a_refused_export_is_recorded_as_the_failure_it_was(
@@ -527,14 +686,57 @@ def test_a_ready_package_without_a_continuation_marker_does_not_move_the_point(
     assert outcome(report, InvoiceDirection.BUYER) is SyncOutcome.INCONCLUSIVE
 
 
-def test_a_package_without_a_marker_is_still_kept_for_decryption(
-    store: SyncStore, naps: list[float]
+def test_a_package_without_a_marker_is_archived_all_the_same(
+    store: SyncStore, naps: list[float], archive: InvoiceArchive
 ) -> None:
+    # A missing continuation marker says nothing about the invoices in the
+    # package; refusing to store them would lose an export already spent.
     session = ScriptedSession(statuses=[ready(hwm_date=None)], limits=allowances())
 
     a_synchroniser(session=session, store=store, naps=naps).run(nip=NIP, token=TOKEN)
 
+    assert (archive.invoice_directory / f"{synthetic_number(1)}.xml").is_file()
+
+
+def test_a_failed_download_keeps_the_package_and_its_key_on_disk(
+    after_a_failed_download: SynchronisationReport, store: SyncStore
+) -> None:
+    # Nothing D-033 forbids is triggered by a mid-pipeline failure: the export
+    # is not over, so its key is still the only way to read the window.
+    assert [export.encryption.key for export in store.load().pending] == [KEY, KEY]
+
+
+def test_a_failed_download_keeps_the_parts_to_retry_with(
+    after_a_failed_download: SynchronisationReport, store: SyncStore
+) -> None:
     assert store.load().pending[0].parts == (a_part(),)
+
+
+def test_a_failed_download_is_reported_as_the_gap_it_leaves(
+    after_a_failed_download: SynchronisationReport,
+) -> None:
+    assert outcome(after_a_failed_download, InvoiceDirection.BUYER) is SyncOutcome.NOT_ARCHIVED
+
+
+def test_a_failed_download_does_not_roll_the_continuation_point_back(
+    after_a_failed_download: SynchronisationReport, store: SyncStore
+) -> None:
+    # The point moves on what KSeF confirmed, never on whether this run managed
+    # to write the files (ADR-103 §3) — the record left on disk is what says the
+    # window is still owed.
+    assert store.load().directions[InvoiceDirection.BUYER].reached == HWM
+
+
+def test_a_failed_download_writes_no_invoice_at_all(
+    after_a_failed_download: SynchronisationReport, archive: InvoiceArchive
+) -> None:
+    assert archive.invoice_directory.exists() is False
+
+
+def test_a_failed_download_leaves_the_window_to_the_next_pass(
+    after_a_failed_download: SynchronisationReport,
+) -> None:
+    assert after_a_failed_download.pending_exports == ("EXP-1", "EXP-2")
 
 
 def test_an_exhausted_export_allowance_stops_the_pass_rather_than_the_server(
@@ -547,7 +749,7 @@ def test_an_exhausted_export_allowance_stops_the_pass_rather_than_the_server(
     assert (
         outcome(report, InvoiceDirection.SELLER),
         outcome(report, InvoiceDirection.BUYER),
-    ) == (SyncOutcome.EXPORTED, SyncOutcome.BUDGET_SPENT)
+    ) == (SyncOutcome.ARCHIVED, SyncOutcome.BUDGET_SPENT)
 
 
 def test_an_exhausted_export_allowance_spends_no_further_export(
@@ -578,7 +780,7 @@ def test_an_exhausted_status_allowance_still_keeps_the_key(
 
     a_synchroniser(session=session, store=store, naps=naps).run(nip=NIP, token=TOKEN)
 
-    assert store.load().pending[0].encryption.key == b"k" * 32
+    assert store.load().pending[0].encryption.key == KEY
 
 
 def test_an_allowance_kseF_does_not_report_is_not_invented(
@@ -588,7 +790,21 @@ def test_an_allowance_kseF_does_not_report_is_not_invented(
 
     report = a_synchroniser(session=session, store=store, naps=naps).run(nip=NIP, token=TOKEN)
 
-    assert outcome(report, InvoiceDirection.BUYER) is SyncOutcome.EXPORTED
+    assert outcome(report, InvoiceDirection.BUYER) is SyncOutcome.ARCHIVED
+
+
+def test_downloading_the_parts_spends_no_hourly_allowance(
+    store: SyncStore, naps: list[float]
+) -> None:
+    # The part URLs are presigned links to external storage, reached without a
+    # KSeF credential; the `invoice_download` family is the sixty-four-per-hour
+    # ceiling on fetching one invoice by its number (D-031 §1, ADR-104). An
+    # allowance of zero there must not stop a package from being archived.
+    session = ScriptedSession(statuses=[ready()], limits=allowances(downloads_per_hour=0))
+
+    report = a_synchroniser(session=session, store=store, naps=naps).run(nip=NIP, token=TOKEN)
+
+    assert outcome(report, InvoiceDirection.SELLER) is SyncOutcome.ARCHIVED
 
 
 @pytest.mark.parametrize(

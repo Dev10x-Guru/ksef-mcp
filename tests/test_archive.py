@@ -23,6 +23,7 @@ from platformdirs import user_data_path
 from ksef_mcp.archive import (
     ArchiveIndexUnreadable,
     ArchiveMetadataUnusable,
+    ArchiveNotPerformed,
     ArchiveReport,
     InvoiceArchive,
     InvoiceIdentity,
@@ -380,3 +381,24 @@ def test_the_archivist_keeps_the_report_the_retriever_throws_away(
         archived=(str(synthetic_number(1)), str(synthetic_number(2))),
         already_held=(),
     )
+
+
+def test_the_archivist_hands_the_report_over_once_it_has_one(
+    archive: InvoiceArchive, package: ExportPackage
+) -> None:
+    archivist = PackageArchivist(archive=archive)
+
+    archivist(package)
+
+    assert archivist.reported.archived == (str(synthetic_number(1)), str(synthetic_number(2)))
+
+
+def test_an_archivist_asked_before_it_stored_anything_refuses(
+    archive: InvoiceArchive,
+) -> None:
+    # Reading a report that does not exist would report an empty archive as a
+    # successful one — the caller ran the two steps in the wrong order.
+    archivist = PackageArchivist(archive=archive)
+
+    with pytest.raises(ArchiveNotPerformed, match="has not stored a package yet"):
+        archivist.reported  # noqa: B018

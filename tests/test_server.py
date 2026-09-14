@@ -45,6 +45,12 @@ NIP = "1234567890"
 
 REACHED = datetime(2026, 9, 10, tzinfo=UTC)
 
+ARCHIVED_NUMBER = "1234567890-20260901-0100AB12CD01-56"
+
+HELD_NUMBER = "1234567890-20260901-0100AB12CD02-56"
+
+ARCHIVE_DIRECTORY = "/dane/subjects/1234567890/test/invoices"
+
 # `ksef_mcp/__init__.py` re-exports the `server` object, which shadows the
 # submodule of the same name on the package, so `from ksef_mcp import server`
 # hands back the MCPServer instance rather than the module these tests patch.
@@ -63,11 +69,14 @@ class StubSynchroniser:
             directions=(
                 DirectionReport(
                     direction=InvoiceDirection.BUYER,
-                    outcome=SyncOutcome.EXPORTED,
-                    detail="Paczka EXP-1 gotowa do pobrania.",
+                    outcome=SyncOutcome.ARCHIVED,
+                    detail="Paczka EXP-1 trafiła do archiwum.",
                     invoice_count=7,
                     part_count=1,
                     reached=REACHED,
+                    archived=(ARCHIVED_NUMBER,),
+                    already_held=(HELD_NUMBER,),
+                    archive_directory=ARCHIVE_DIRECTORY,
                 ),
                 DirectionReport(
                     direction=InvoiceDirection.THIRD_SUBJECT,
@@ -177,6 +186,40 @@ def test_the_answer_counts_what_the_package_carries(
         synchronised.subject_types[0].invoice_count,
         synchronised.subject_types[0].part_count,
     ) == (7, 1)
+
+
+def test_the_answer_says_where_the_invoices_landed(
+    synchronised: SynchronisationResult,
+) -> None:
+    assert synchronised.subject_types[0].archive_directory == ARCHIVE_DIRECTORY
+
+
+def test_the_answer_names_the_numbers_it_stored(synchronised: SynchronisationResult) -> None:
+    assert synchronised.subject_types[0].archived == [ARCHIVED_NUMBER]
+
+
+def test_the_answer_separates_what_was_already_held(
+    synchronised: SynchronisationResult,
+) -> None:
+    assert synchronised.subject_types[0].already_held == [HELD_NUMBER]
+
+
+def test_a_subject_type_that_stored_nothing_reports_no_directory(
+    synchronised: SynchronisationResult,
+) -> None:
+    assert synchronised.subject_types[1].archive_directory is None
+
+
+@pytest.mark.anyio
+async def test_the_tool_answers_with_paths_and_numbers_but_no_invoice(
+    with_a_token: None,
+) -> None:
+    # An FA(2)/FA(3) body carries the counterparty's personal data, so the tool
+    # names the file and never opens it (D-011).
+    async with Client(server, raise_exceptions=True) as client:
+        called = await client.call_tool("synchronise_invoices")
+
+    assert "Faktura" not in str(called.structured_content)
 
 
 def test_the_answer_points_at_the_packages_left_to_decrypt(

@@ -15,12 +15,17 @@ class ServerInfo(BaseModel):
 
 
 class SubjectTypeResult(BaseModel):
+    """Paths and KSeF numbers for one subject type. Never an invoice body (D-011)."""
+
     subject_type: str
     outcome: str
     detail: str
     invoice_count: int
     part_count: int
     synchronised_up_to: str | None
+    archived: list[str]
+    already_held: list[str]
+    archive_directory: str | None
 
 
 class SynchronisationResult(BaseModel):
@@ -55,6 +60,9 @@ def describe(
                 synchronised_up_to=(
                     None if direction.reached is None else direction.reached.isoformat()
                 ),
+                archived=list(direction.archived),
+                already_held=list(direction.already_held),
+                archive_directory=direction.archive_directory,
             )
             for direction in report.directions
         ],
@@ -90,15 +98,21 @@ def synchronise() -> SynchronisationResult:
 
 @server.tool()
 def synchronise_invoices() -> SynchronisationResult:
-    """Fetch every invoice package KSeF has finished since the last run.
+    """Fetch, decrypt and archive every invoice package KSeF finished since the last run.
 
     Takes no arguments on purpose. The date window, the package size and how
     many packages to ask for are decided by KSeF and by the hourly allowance,
     never by the caller: an agent driving them spends a twenty-per-hour budget
     in two minutes and the Ministry reads the pattern as working around a limit.
 
-    Safe to call again. A package still being built stays recorded on disk with
-    its key, so a second call continues it instead of asking for it twice.
+    Safe to call again. A package still being built, or one fetched but not yet
+    stored, stays recorded on disk with its key, so a second call continues it
+    instead of asking for it twice. An invoice already in the archive is
+    reported under `already_held` rather than downloaded again.
+
+    Reports where the invoices landed and which KSeF numbers arrived. It never
+    returns invoice content: an FA(2)/FA(3) document holds a counterparty's
+    personal data, and reading one means opening the file this tool names.
     """
     return synchronise()
 
