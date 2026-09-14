@@ -8,14 +8,13 @@ from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
-from ksef_mcp import config, preflight, skill, token_store
+from ksef_mcp import client, config, messages, preflight, skill, token_store
 from ksef_mcp.archive import InvoiceArchive
 from ksef_mcp.audit import OPERATOR_BASIS, AuditTrail, Authorisation
 from ksef_mcp.config import Configuration, KsefEnvironment
 from ksef_mcp.metadata import SERVER_NAME, VERSION
 from ksef_mcp.retention import (
     ArchivePurge,
-    PurgePlan,
     PurgeWindow,
     PurgeWindowInverted,
     purge_entry,
@@ -58,10 +57,6 @@ def default_console() -> Console:
     return Console(write=print, ask=input, ask_secret=getpass.getpass)
 
 
-def format_version(version: tuple[int, int, int]) -> str:
-    return ".".join(str(part) for part in version)
-
-
 def ask_with_default(console: Console, *, prompt: str, default: str) -> str:
     return console.ask(f"{prompt} [{default}]: ").strip() or default
 
@@ -80,69 +75,6 @@ def ask_secret_required(console: Console, *, prompt: str) -> str:
         if answer:
             return answer
         console.write("Token jest wymagany.")
-
-
-def describe_requirement_source(report: preflight.NodeReport) -> str:
-    if report.pinned_by is None:
-        return "minimum generatora MF"
-    # Naming both numbers: otherwise the reader sees a requirement that appears
-    # in none of their own files and cannot tell where it came from.
-    if report.pin_is_below_the_generator:
-        return (
-            f"pin {format_version(report.pinned)} w {report.pinned_by} jest niższy "
-            "niż minimum generatora MF, biorę wyższe"
-        )
-    return f"z {report.pinned_by}"
-
-
-def describe_node(report: preflight.NodeReport) -> tuple[str, ...]:
-    required = format_version(report.required)
-    source = describe_requirement_source(report)
-    if report.version is None:
-        return (
-            f"  Node: nie znaleziono, a wymagane jest {required} ({source}).",
-            f"  Instalacja: fnm install {required}",
-            "  Dopisz `fnm env` do profilu powłoki — bez tego .node-version",
-            "  jest deklaracją, nie egzekucją, a wersja cicho się rozjeżdża.",
-        )
-    found = format_version(report.version)
-    # The path matters with fnm: shims make "which node exactly" the whole
-    # question when the version turns out to be the wrong one.
-    where = f"  Ścieżka: {report.executable}"
-    if report.satisfies_requirement:
-        return (f"  Node: {found} — spełnia wymaganie {required} ({source}).", where)
-    return (
-        f"  Node: {found} jest starsze niż wymagane {required} ({source}).",
-        where,
-        f"  Podnieś wersję: fnm install {required}",
-    )
-
-
-def describe_keyring(report: preflight.KeyringReport) -> tuple[str, ...]:
-    if not report.usable:
-        return (
-            "  Keyring: brak dostępnego magazynu (headless, WSL, kontener).",
-            f"  Ścieżka awaryjna: wyeksportuj zmienną {token_store.FALLBACK_ENVIRONMENT_VARIABLE}.",
-        )
-    lines = ["  Keyring: dostępne magazyny —"]
-    for index, backend in enumerate(report.backends, start=1):
-        marker = " — domyślny" if backend.module == report.preferred else ""
-        lines.append(f"    {index}. {backend.module} (priorytet {backend.priority:g}){marker}")
-    return tuple(lines)
-
-
-def describe_collection_lock(state: preflight.CollectionLock) -> tuple[str, ...]:
-    if state is preflight.CollectionLock.LOCKED:
-        return (
-            "  Kolekcja: zablokowana — odblokuj ją w sesji graficznej.",
-            "  O hasło nie pytam: prompt zawiesiłby transport MCP, więc do",
-            f"  tokenu nie sięgam wcale. Awaryjnie: {token_store.FALLBACK_ENVIRONMENT_VARIABLE}.",
-        )
-    if state is preflight.CollectionLock.UNLOCKED:
-        return ("  Kolekcja: odblokowana.",)
-    # ABSENT says nothing about health — macOS and Windows have no Secret
-    # Service at all — and a line about it would read like a fault.
-    return ()
 
 
 def preferred_backend_index(report: preflight.KeyringReport) -> int:
@@ -171,17 +103,40 @@ def choose_keyring_backend(console: Console, report: preflight.KeyringReport) ->
         console.write(f"Podaj numer od 1 do {len(report.backends)}.")
 
 
+ENVIRONMENT_ORDER: Final[tuple[KsefEnvironment, ...]] = (
+    KsefEnvironment.TEST,
+    KsefEnvironment.DEMO,
+    KsefEnvironment.PRODUCTION,
+)
+
+
+def resolve_environment(answer: str) -> KsefEnvironment | None:
+    """A number from the list, or the name spelled out — both keep working."""
+    if answer.isdigit() and 1 <= int(answer) <= len(ENVIRONMENT_ORDER):
+        return ENVIRONMENT_ORDER[int(answer) - 1]
+    try:
+        return KsefEnvironment(answer)
+    except ValueError:
+        return None
+
+
 def choose_environment(console: Console) -> KsefEnvironment:
+    # Numbered rather than retyped: the names differ by a few characters and a
+    # typo here points the whole install at the wrong registry. The default is
+    # the sandbox, so a run of Enters never lands on production.
+    for line in messages.describe_environment_choices():
+        console.write(line)
+    default = str(ENVIRONMENT_ORDER.index(config.DEFAULT_ENVIRONMENT) + 1)
     while True:
         answer = ask_with_default(
             console,
-            prompt="Środowisko KSeF (test/demo/production)",
-            default=str(config.DEFAULT_ENVIRONMENT),
+            prompt="Wybierz środowisko (numer albo nazwa)",
+            default=default,
         ).lower()
-        try:
-            return KsefEnvironment(answer)
-        except ValueError:
-            console.write("Dozwolone wartości: test, demo, production.")
+        chosen = resolve_environment(answer)
+        if chosen is not None:
+            return chosen
+        console.write(f"Podaj numer od 1 do {len(ENVIRONMENT_ORDER)} albo nazwę.")
 
 
 def explain_token_step(console: Console) -> None:
@@ -208,50 +163,100 @@ def choose_invoice_directory(console: Console, *, nip: str) -> Path:
         console.write(f"  Uwaga: ścieżka wygląda na synchronizowaną ({marker}).")
         console.write("  Pobrane faktury zawierają dane osobowe kontrahentów.")
     prepared = config.prepare_invoice_directory(directory)
-    for line in describe_invoice_directory(prepared):
+    for line in messages.describe_invoice_directory(prepared):
         console.write(line)
     return prepared.path
 
 
-def describe_invoice_directory(prepared: config.InvoiceDirectory) -> tuple[str, ...]:
-    if prepared.created:
-        return (f"  Katalog utworzony z uprawnieniami 0700: {prepared.path}",)
-    # Permissions on a directory that already existed are left alone — someone
-    # may have pointed this at a home or a shared path, and tightening it
-    # would be a change they did not ask for.
-    return (
-        f"  Katalog już istniał, zostawiam uprawnienia {prepared.mode:04o}: {prepared.path}",
-        "  Jeśli ma być prywatny: chmod 0700 " + str(prepared.path),
-    )
-
-
 def report_preflight(console: Console, *, working_directory: Path) -> preflight.KeyringReport:
     console.write("Warunki wstępne:")
-    for line in describe_node(preflight.inspect_node(working_directory=working_directory)):
+    node = preflight.inspect_node(working_directory=working_directory)
+    for line in messages.describe_node(node):
         console.write(line)
     keyring_report = preflight.inspect_keyring()
-    for line in describe_keyring(keyring_report):
+    for line in messages.describe_keyring(keyring_report):
         console.write(line)
-    for line in describe_collection_lock(preflight.inspect_collection_lock()):
+    for line in messages.describe_collection_lock(preflight.inspect_collection_lock()):
         console.write(line)
     return keyring_report
 
 
-def summarize(console: Console, configuration: Configuration, *, saved_to: Path) -> None:
+def summarize_configuration(
+    console: Console,
+    configuration: Configuration,
+    *,
+    saved_to: Path,
+) -> None:
+    for line in messages.describe_configuration(configuration, saved_to=saved_to):
+        console.write(line)
+
+
+def affirmative(answer: str) -> bool:
+    return answer.lower() in AFFIRMATIVE_ANSWERS
+
+
+def registration_command() -> str:
+    return f"claude mcp add {SERVER_NAME} -- uvx {SERVER_NAME}"
+
+
+def offer_client_registration(console: Console) -> None:
+    """Register the server with the MCP client, so the taxpayer can just ask.
+
+    Default yes: this writes a line to a client config and reaches nothing —
+    no KSeF call, no budget. Idempotent, because re-running onboarding while
+    fixing a setting must not leave two entries behind.
+    """
     console.write("")
-    console.write("Konfiguracja zapisana:")
-    console.write(f"  NIP: {configuration.nip}")
-    console.write(f"  Środowisko: {configuration.environment}")
-    console.write(f"  Magazyn tokenu: {configuration.keyring_backend}")
-    console.write(f"  Katalog faktur: {configuration.invoice_directory}")
-    console.write(f"  Plik: {saved_to}")
+    if not affirmative(
+        ask_with_default(console, prompt="Podłączyć serwer do klienta MCP? (t/n)", default="t")
+    ):
+        console.write("  Pomijam. Później: " + registration_command())
+        return
+    if not client.command_available():
+        for line in messages.describe_manual_registration(registration_command()):
+            console.write(line)
+        return
+    if client.already_registered(SERVER_NAME):
+        console.write(f"  Serwer {SERVER_NAME} jest już zarejestrowany — nic nie zmieniam.")
+        return
+    client.register(SERVER_NAME)
+    console.write(f"  Zarejestrowany jako {SERVER_NAME}.")
+
+
+def offer_skill_install(console: Console, *, home: Path, working_directory: Path) -> None:
+    """The skill is what tells the agent these tools exist and how to use them."""
     console.write("")
-    # Deliberately not run here: onboarding is re-run while settings are being
-    # fixed, and every KSeF call spends an hourly budget the Ministry polices.
-    # The check is a command the person invokes when they mean to.
-    console.write("Połączenia stąd nie sprawdzam — każde zapytanie zjada")
-    console.write("godzinowy budżet, także przy przebiegu poprawkowym.")
-    console.write("Gdy zechcesz to potwierdzić: ksef-mcp verify")
+    if not affirmative(
+        ask_with_default(console, prompt="Zainstalować skill dla agenta? (t/n)", default="t")
+    ):
+        console.write("  Pomijam. Później: ksef-mcp skill install --scope user")
+        return
+    run_skill_install(
+        console,
+        scope=SkillScope.USER,
+        home=home,
+        working_directory=working_directory,
+    )
+
+
+def offer_connection_check(console: Console, *, configuration_file: Path | None) -> int:
+    """Default NO, and that is the whole point.
+
+    Onboarding gets re-run while a setting is being corrected. If a run of
+    Enters reached KSeF each time, a person fixing a typo in their NIP would
+    spend the hourly allowance the Ministry polices — and repeated breaches
+    lengthen a block (D-020, D-031 §8).
+    """
+    console.write("")
+    if not affirmative(
+        ask_with_default(console, prompt="Sprawdzić teraz połączenie z KSeF? (t/N)", default="n")
+    ):
+        console.write("Połączenia nie sprawdzam — każde zapytanie zjada")
+        console.write("godzinowy budżet, także przy przebiegu poprawkowym.")
+        console.write("Gdy zechcesz to potwierdzić: ksef-mcp verify")
+        return EXIT_OK
+    console.write("")
+    return run_verify(console, configuration_file=configuration_file)
 
 
 def run_onboarding(
@@ -259,6 +264,7 @@ def run_onboarding(
     *,
     working_directory: Path,
     configuration_file: Path | None,
+    home: Path,
 ) -> int:
     console.write(f"{SERVER_NAME} {VERSION} — konfiguracja przed pierwszym uruchomieniem")
     console.write("")
@@ -287,16 +293,10 @@ def run_onboarding(
         invoice_directory=directory,
     )
     saved_to = config.save_configuration(configuration, path=configuration_file)
-    summarize(console, configuration, saved_to=saved_to)
-    return EXIT_OK
-
-
-def describe_invoices(invoices: tuple[ksef_port.InvoiceMetadata, ...]) -> tuple[str, ...]:
-    return tuple(
-        f"  {invoice.issue_date}  {invoice.gross_amount:>12,.2f} {invoice.currency}  "
-        f"{invoice.seller_name or invoice.seller_nip}"
-        for invoice in invoices
-    )
+    summarize_configuration(console, configuration, saved_to=saved_to)
+    offer_client_registration(console)
+    offer_skill_install(console, home=home, working_directory=working_directory)
+    return offer_connection_check(console, configuration_file=configuration_file)
 
 
 def run_verify(console: Console, *, configuration_file: Path | None) -> int:
@@ -318,7 +318,7 @@ def run_verify(console: Console, *, configuration_file: Path | None) -> int:
         )
         return EXIT_NO_TOKEN
     console.write(f"Odpytuję KSeF ({configuration.environment}) jako {configuration.nip}…")
-    console.write(f"Token pochodzi z: {describe_source(stored.source)}")
+    console.write(f"Token pochodzi z: {messages.describe_source(stored.source)}")
     if stored.source is token_store.TokenSource.ENVIRONMENT:
         console.write(
             f"  Zmienna nie jest przypisana do NIP-u, więc nie gwarantuję, że "
@@ -331,31 +331,13 @@ def run_verify(console: Console, *, configuration_file: Path | None) -> int:
             token=stored.value,
         )
     except ksef_port.KsefRateLimited as refusal:
-        console.write(describe_failure(configuration, refusal))
-        console.write(describe_retry_after(refusal.retry_after))
+        console.write(messages.describe_failure(configuration, refusal))
+        console.write(messages.describe_retry_after(refusal.retry_after))
         return EXIT_KSEF_REFUSED
     except ksef_port.KsefPortError as failure:
-        console.write(describe_failure(configuration, failure))
+        console.write(messages.describe_failure(configuration, failure))
         return EXIT_KSEF_REFUSED
     return report_connection(console, checked)
-
-
-def describe_failure(configuration: Configuration, failure: Exception) -> str:
-    # Which subject and in which environment, on the same line as the reason:
-    # with two NIP-y configured, "KSeF odrzucił token" alone leaves the person
-    # guessing whose token was rejected and against which registry.
-    return (
-        f"Nie potwierdziłem połączenia dla {configuration.nip} "
-        f"({configuration.environment}): {failure}"
-    )
-
-
-def describe_retry_after(retry_after: int | None) -> str:
-    if retry_after is None:
-        # No Retry-After means no ceiling we can quote; guessing a wait and
-        # retrying is the behaviour the Ministry penalises.
-        return "Odczekaj przed kolejną próbą — nie ponawiam samoczynnie."
-    return f"Odczekaj {retry_after} s przed kolejną próbą — nie ponawiam samoczynnie."
 
 
 def report_connection(console: Console, checked: ksef_port.ConnectionCheck) -> int:
@@ -370,7 +352,7 @@ def report_connection(console: Console, checked: ksef_port.ConnectionCheck) -> i
         return EXIT_OK
     console.write("")
     console.write(f"Ostatnie faktury zakupowe ({len(checked.invoices)}):")
-    for line in describe_invoices(checked.invoices):
+    for line in messages.describe_invoices(checked.invoices):
         console.write(line)
     return EXIT_OK
 
@@ -412,12 +394,6 @@ def run_token_delete(console: Console, *, nip: str) -> int:
     return EXIT_OK if removal.removed_from_keyring else EXIT_NO_TOKEN
 
 
-def describe_source(source: token_store.TokenSource) -> str:
-    if source is token_store.TokenSource.ENVIRONMENT:
-        return f"zmiennej {token_store.FALLBACK_ENVIRONMENT_VARIABLE}"
-    return "keyringu systemowego"
-
-
 def run_token_status(console: Console, *, nip: str) -> int:
     stored = token_store.read_token(nip=nip)
     if stored is None:
@@ -425,7 +401,7 @@ def run_token_status(console: Console, *, nip: str) -> int:
         return EXIT_NO_TOKEN
     described = token_store.fingerprint(stored.value)
     console.write(
-        f"Token dla {nip} pochodzi z {describe_source(stored.source)}: "
+        f"Token dla {nip} pochodzi z {messages.describe_source(stored.source)}: "
         f"{described.length} znaków, końcówka …{described.suffix}. "
         "Wartości nie pokazuję."
     )
@@ -470,50 +446,6 @@ def run_skill_install(
     return EXIT_OK
 
 
-def describe_window(window: PurgeWindow) -> str:
-    begins = (
-        "od początku archiwum"
-        if window.received_from is None
-        else f"od {window.received_from.isoformat()}"
-    )
-    ends = "do dziś" if window.received_to is None else f"do {window.received_to.isoformat()}"
-    return f"Zakres: faktury z datą wpływu do KSeF {begins} {ends}."
-
-
-def describe_size(size_bytes: int) -> str:
-    return f"{size_bytes / 1024:.1f} kB"
-
-
-def describe_purge_plan(plan: PurgePlan) -> tuple[str, ...]:
-    listed = tuple(
-        f"  {candidate.ksef_number}  {candidate.received_on.isoformat()}"
-        for candidate in plan.candidates
-    )
-    # Named one by one, not counted: this is the last moment before the bodies
-    # stop existing, and a number the operator did not expect to see here is the
-    # only warning that the filter is wider than they meant it to be.
-    return (
-        f"Katalog: {plan.directory}",
-        describe_window(plan.window),
-        "",
-        f"Do skasowania ({len(plan.candidates)}, {describe_size(plan.freed_bytes)}):",
-        *listed,
-        f"Zostaje w archiwum: {len(plan.retained)}.",
-        *describe_unrecognised(plan),
-    )
-
-
-def describe_unrecognised(plan: PurgePlan) -> tuple[str, ...]:
-    if not plan.unrecognised:
-        return ()
-    # Left alone deliberately: an irreversible operation touches only the files
-    # whose own name says they are invoices this archive wrote.
-    return (
-        f"Zostawiam {len(plan.unrecognised)} plików, których nazwa nie jest "
-        f"numerem KSeF — pierwszy z nich: {plan.unrecognised[0]}",
-    )
-
-
 def confirm_purge(console: Console, *, count: int) -> bool:
     return (
         ask_with_default(
@@ -547,7 +479,7 @@ def run_purge(
     purge = ArchivePurge(archive=archive)
     plan = purge.plan(window=window)
     console.write(f"Archiwum podmiotu {subject} ({configuration.environment})")
-    for line in describe_purge_plan(plan):
+    for line in messages.describe_purge_plan(plan):
         console.write(line)
     if not plan.candidates:
         console.write("Nic nie pasuje do tego zakresu — nie kasuję niczego.")
@@ -575,7 +507,8 @@ def run_purge(
         )
     )
     console.write(
-        f"Skasowane faktury: {len(report.purged)}, zwolnione {describe_size(report.freed_bytes)}."
+        f"Skasowane faktury: {len(report.purged)}, "
+        f"zwolnione {messages.describe_size(report.freed_bytes)}."
     )
     console.write(f"Indeks deduplikacji pamięta nadal {report.still_known} numerów KSeF:")
     console.write(f"  {report.index_path}")
@@ -667,6 +600,7 @@ def dispatch(
             console,
             working_directory=working_directory,
             configuration_file=configuration_file,
+            home=home,
         )
     if arguments.command == "doctor":
         return run_doctor(console, working_directory=working_directory)

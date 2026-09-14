@@ -1,9 +1,9 @@
-from collections.abc import Callable
 from pathlib import Path
 from subprocess import CompletedProcess, TimeoutExpired
 
 import pytest
 
+from conftest import raiser
 from ksef_mcp import preflight
 
 # Captured before the suite-wide fixture stands in for the machine: this one
@@ -15,13 +15,6 @@ def backend(module: str, priority: float) -> object:
     stub = type("Backend", (), {"__module__": module})()
     stub.priority = priority
     return stub
-
-
-def raiser(error: Exception) -> Callable[..., object]:
-    def raise_it(*args: object, **kwargs: object) -> object:
-        raise error
-
-    return raise_it
 
 
 class FakeSecretStorageException(Exception):
