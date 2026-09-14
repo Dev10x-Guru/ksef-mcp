@@ -4,12 +4,22 @@ import argparse
 import getpass
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 from ksef_mcp import config, preflight, skill, token_store
+from ksef_mcp.archive import InvoiceArchive
+from ksef_mcp.audit import OPERATOR_BASIS, AuditTrail, Authorisation
 from ksef_mcp.config import Configuration, KsefEnvironment
 from ksef_mcp.metadata import SERVER_NAME, VERSION
+from ksef_mcp.retention import (
+    ArchivePurge,
+    PurgePlan,
+    PurgeWindow,
+    PurgeWindowInverted,
+    purge_entry,
+)
 from ksef_mcp.server import main as run_mcp_server
 from ksef_mcp.skill import SkillScope
 
@@ -29,6 +39,10 @@ EXIT_NOT_CONFIGURED: Final[int] = 3
 EXIT_KSEF_REFUSED: Final[int] = 4
 
 EXIT_SKILL_KEPT: Final[int] = 5
+
+EXIT_PURGE_DECLINED: Final[int] = 6
+
+EXIT_INVALID_WINDOW: Final[int] = 7
 
 AFFIRMATIVE_ANSWERS: Final[frozenset[str]] = frozenset({"t", "tak"})
 
@@ -456,6 +470,119 @@ def run_skill_install(
     return EXIT_OK
 
 
+def describe_window(window: PurgeWindow) -> str:
+    begins = (
+        "od początku archiwum"
+        if window.received_from is None
+        else f"od {window.received_from.isoformat()}"
+    )
+    ends = "do dziś" if window.received_to is None else f"do {window.received_to.isoformat()}"
+    return f"Zakres: faktury z datą wpływu do KSeF {begins} {ends}."
+
+
+def describe_size(size_bytes: int) -> str:
+    return f"{size_bytes / 1024:.1f} kB"
+
+
+def describe_purge_plan(plan: PurgePlan) -> tuple[str, ...]:
+    listed = tuple(
+        f"  {candidate.ksef_number}  {candidate.received_on.isoformat()}"
+        for candidate in plan.candidates
+    )
+    # Named one by one, not counted: this is the last moment before the bodies
+    # stop existing, and a number the operator did not expect to see here is the
+    # only warning that the filter is wider than they meant it to be.
+    return (
+        f"Katalog: {plan.directory}",
+        describe_window(plan.window),
+        "",
+        f"Do skasowania ({len(plan.candidates)}, {describe_size(plan.freed_bytes)}):",
+        *listed,
+        f"Zostaje w archiwum: {len(plan.retained)}.",
+        *describe_unrecognised(plan),
+    )
+
+
+def describe_unrecognised(plan: PurgePlan) -> tuple[str, ...]:
+    if not plan.unrecognised:
+        return ()
+    # Left alone deliberately: an irreversible operation touches only the files
+    # whose own name says they are invoices this archive wrote.
+    return (
+        f"Zostawiam {len(plan.unrecognised)} plików, których nazwa nie jest "
+        f"numerem KSeF — pierwszy z nich: {plan.unrecognised[0]}",
+    )
+
+
+def confirm_purge(console: Console, *, count: int) -> bool:
+    return (
+        ask_with_default(
+            console,
+            prompt=f"Skasować {count} faktur bezpowrotnie? (t/n)",
+            default="n",
+        ).lower()
+        in AFFIRMATIVE_ANSWERS
+    )
+
+
+def run_purge(
+    console: Console,
+    *,
+    nip: str | None,
+    received_from: date | None,
+    received_to: date | None,
+    configuration_file: Path | None,
+) -> int:
+    configuration = config.load_configuration(path=configuration_file)
+    if configuration is None:
+        console.write("Brak konfiguracji. Uruchom najpierw: ksef-mcp onboarding")
+        return EXIT_NOT_CONFIGURED
+    try:
+        window = PurgeWindow(received_from=received_from, received_to=received_to)
+    except PurgeWindowInverted as inverted:
+        console.write(str(inverted))
+        return EXIT_INVALID_WINDOW
+    subject = configuration.nip if nip is None else nip
+    archive = InvoiceArchive(nip=subject, environment=configuration.environment)
+    purge = ArchivePurge(archive=archive)
+    plan = purge.plan(window=window)
+    console.write(f"Archiwum podmiotu {subject} ({configuration.environment})")
+    for line in describe_purge_plan(plan):
+        console.write(line)
+    if not plan.candidates:
+        console.write("Nic nie pasuje do tego zakresu — nie kasuję niczego.")
+        return EXIT_OK
+    console.write("")
+    console.write("Nie ruszam indeksu deduplikacji, punktów kontynuacji ani")
+    console.write("dziennika przeglądu — po wyczyszczeniu synchronizacja nie")
+    console.write("ściągnie tych faktur powtórnie.")
+    if not confirm_purge(console, count=len(plan.candidates)):
+        console.write("Zostawiam archiwum bez zmian.")
+        return EXIT_PURGE_DECLINED
+    report = purge.remove(plan=plan)
+    trail = AuditTrail(nip=subject, environment=configuration.environment)
+    recorded = trail.record(
+        (
+            purge_entry(
+                report,
+                authorisation=Authorisation(
+                    nip=subject,
+                    environment=configuration.environment,
+                    basis=OPERATOR_BASIS,
+                ),
+                moment=trail.clock(),
+            ),
+        )
+    )
+    console.write(
+        f"Skasowane faktury: {len(report.purged)}, zwolnione {describe_size(report.freed_bytes)}."
+    )
+    console.write(f"Indeks deduplikacji pamięta nadal {report.still_known} numerów KSeF:")
+    console.write(f"  {report.index_path}")
+    console.write(f"Wpis w dzienniku audytu: {recorded}")
+    return EXIT_OK
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog=SERVER_NAME,
@@ -471,12 +598,35 @@ def build_parser() -> argparse.ArgumentParser:
         token_command=None,
         skill_command=None,
         scope=None,
+        received_from=None,
+        received_to=None,
     )
     subcommands = parser.add_subparsers(dest="command")
 
     subcommands.add_parser("onboarding", help="Przeprowadza przez konfigurację")
     subcommands.add_parser("doctor", help="Sprawdza warunki wstępne i kończy")
     subcommands.add_parser("verify", help="Odpytuje KSeF i pokazuje ostatnie faktury")
+
+    purge = subcommands.add_parser(
+        "purge",
+        help="Kasuje faktury z archiwum, zachowując indeks deduplikacji",
+    )
+    # The configured subject by default, but the subject dimension is offered:
+    # an accounting office losing a client purges that client's own directory and
+    # never a neighbour's (D-032, D-034).
+    purge.add_argument("--nip", help="Podmiot do wyczyszczenia (domyślnie ten z konfiguracji)")
+    purge.add_argument(
+        "--od",
+        dest="received_from",
+        type=date.fromisoformat,
+        help="Najwcześniejsza data wpływu do KSeF (RRRR-MM-DD), włącznie",
+    )
+    purge.add_argument(
+        "--do",
+        dest="received_to",
+        type=date.fromisoformat,
+        help="Najpóźniejsza data wpływu do KSeF (RRRR-MM-DD), włącznie",
+    )
 
     token = subcommands.add_parser("token", help="Zarządza tokenem w keyringu")
     token_actions = token.add_subparsers(dest="token_command", required=True)
@@ -522,6 +672,14 @@ def dispatch(
         return run_doctor(console, working_directory=working_directory)
     if arguments.command == "verify":
         return run_verify(console, configuration_file=configuration_file)
+    if arguments.command == "purge":
+        return run_purge(
+            console,
+            nip=arguments.nip,
+            received_from=arguments.received_from,
+            received_to=arguments.received_to,
+            configuration_file=configuration_file,
+        )
     if arguments.command == "skill":
         return run_skill_install(
             console,
