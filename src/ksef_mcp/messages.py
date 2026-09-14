@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 
 from ksef_mcp import config, preflight, token_store
 from ksef_mcp.config import Configuration
-from ksef_mcp.metadata import SERVER_NAME
+from ksef_mcp.metadata import DISTRIBUTION_NAME, SERVER_NAME, VERSION
 from ksef_mcp.retention import PurgePlan, PurgeWindow
 
 if TYPE_CHECKING:
@@ -87,6 +87,34 @@ def describe_collection_lock(state: preflight.CollectionLock) -> tuple[str, ...]
     # ABSENT says nothing about health — macOS and Windows have no Secret
     # Service at all — and a line about it would read like a fault.
     return ()
+
+
+def describe_identity(executable: str | None) -> tuple[str, ...]:
+    """Which `ksef-mcp` is actually running, and against which registry.
+
+    An unrelated project ships a console script under the same name, so with
+    both installed the winner is whichever comes first on PATH — and the
+    difference is not cosmetic: that one is a remote service (#75). The path
+    is the only answer that settles it.
+
+    The environment and the subject belong here too, because `doctor` is the
+    one command that can say them without spending an hourly allowance —
+    `verify` costs a KSeF call to answer the same question.
+    """
+    return (
+        f"  Dystrybucja: {DISTRIBUTION_NAME} {VERSION} (Dev10x.Guru, lokalny)",
+        f"  Ścieżka: {'nie znaleziono w PATH' if executable is None else executable}",
+        "  To nie jest ksef-mcp.pl — tamten projekt jest niepowiązany i zdalny.",
+    )
+
+
+def describe_subject(configuration: Configuration | None) -> tuple[str, ...]:
+    if configuration is None:
+        return ("  Podmiot: brak konfiguracji — uruchom `ksef-mcp onboarding`.",)
+    return (
+        f"  Podmiot: {configuration.nip}",
+        f"  Środowisko: {configuration.environment}",
+    )
 
 
 def describe_environment_choices() -> tuple[str, ...]:
