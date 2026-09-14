@@ -16,6 +16,7 @@ from io import BytesIO
 
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.padding import PKCS7
+from ksef2.services.builders.fa3.root import StandardInvoiceBuilder
 
 from ksef_mcp.ksef_port import InvoiceMetadata, KsefNumber
 from ksef_mcp.package import AES_BLOCK_BITS, METADATA_ENTRY
@@ -23,6 +24,48 @@ from ksef_mcp.package import AES_BLOCK_BITS, METADATA_ENTRY
 SELLER_NIP = "9876543210"
 
 BUYER_NAME = "Moja Firma sp. z o.o."
+
+
+def synthetic_fa3_invoice() -> bytes:
+    """An FA(3) document the Ministry's own XSD accepts, built from invented data.
+
+    The PDF generator refuses anything that is not a real invoice, so the stub
+    bodies above cannot exercise it. This one goes through `ksef2`'s builder,
+    which validates against the packaged schema on the way out — so a test that
+    renders it proves the render, not the fixture.
+    """
+    builder = StandardInvoiceBuilder()
+    builder.header(generation_timestamp="2026-09-01T10:00:00Z")
+    builder.seller(
+        name="Przykładowa Hurtownia sp. z o.o.",
+        country_code="PL",
+        address_line_1="ul. Testowa 1",
+        address_line_2="00-001 Warszawa",
+        tax_id=SELLER_NIP,
+    )
+    builder.buyer(
+        name=BUYER_NAME,
+        country_code="PL",
+        address_line_1="ul. Odbiorcza 7",
+        address_line_2="30-001 Kraków",
+        tax_id="1234567890",
+    )
+    body = builder.standard()
+    body.currency(value="PLN")
+    body.issue_date(value="2026-09-01")
+    body.issue_place(value="Warszawa")
+    body.invoice_number(value="FV/2026/09/0001")
+    rows = body.rows()
+    rows.add_row(
+        name="Olej napędowy",
+        quantity=Decimal("100.000"),
+        unit_price_net=Decimal("5.20"),
+        vat_rate="23",
+        unit_of_measure="l",
+    )
+    rows.done()
+    body.done()
+    return builder.to_xml().encode("utf-8")
 
 
 def synthetic_number(ordinal: int = 1) -> KsefNumber:
