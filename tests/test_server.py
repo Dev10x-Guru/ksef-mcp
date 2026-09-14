@@ -12,7 +12,14 @@ from mcp.types import CallToolResult, ListToolsResult
 from ksef_mcp import config, token_store
 from ksef_mcp.audit import AuditEntry, AuditTrail, Disclosure
 from ksef_mcp.config import Configuration, KsefEnvironment
-from ksef_mcp.ksef_port import DateType, InvoiceDirection, KsefNumber, MetadataPage, Period
+from ksef_mcp.ksef_port import (
+    DateType,
+    InvoiceDirection,
+    KsefNumber,
+    KsefRefused,
+    MetadataPage,
+    Period,
+)
 from ksef_mcp.listing import (
     LISTING_THRESHOLD,
     CurrencyTotal,
@@ -168,6 +175,72 @@ def test_synchronisation_refuses_before_onboarding(monkeypatch: pytest.MonkeyPat
 
     with pytest.raises(NotConfigured, match="ksef-mcp onboarding"):
         synchronise()
+
+
+async def failing_call(tool: str) -> CallToolResult:
+    async with Client(server) as client:
+        return await client.call_tool(tool)
+
+
+@pytest.fixture
+async def refused_synchronisation(monkeypatch: pytest.MonkeyPatch) -> CallToolResult:
+    def refuse() -> SynchronisationResult:
+        raise KsefRefused("KSeF call failed: Invalid response payload")
+
+    monkeypatch.setattr(server_module, "synchronise", refuse)
+    return await failing_call("synchronise_invoices")
+
+
+@pytest.fixture
+async def unconfigured_listing(monkeypatch: pytest.MonkeyPatch) -> CallToolResult:
+    def unconfigured() -> InvoiceListingResult:
+        raise NotConfigured("no configuration file")
+
+    monkeypatch.setattr(server_module, "list_invoices", unconfigured)
+    return await failing_call("list_recent_invoices")
+
+
+@pytest.fixture
+async def crashed_review(monkeypatch: pytest.MonkeyPatch) -> CallToolResult:
+    def crash() -> InvoiceReviewResult:
+        raise ZeroDivisionError("a path fragment nobody vetted")
+
+    monkeypatch.setattr(server_module, "review_invoices", crash)
+    return await failing_call("review_new_invoices")
+
+
+@pytest.mark.anyio
+async def test_a_port_failure_reaches_the_caller_with_its_reason(
+    refused_synchronisation: CallToolResult,
+) -> None:
+    # Not a bare `Error executing tool synchronise_invoices` with the reason
+    # stranded in a stderr nobody reads — that is how GH-76 looked like a dead
+    # server while `verify` was passing.
+    assert "Invalid response payload" in str(refused_synchronisation.content)
+
+
+@pytest.mark.anyio
+async def test_a_port_failure_is_reported_as_a_failure(
+    refused_synchronisation: CallToolResult,
+) -> None:
+    assert refused_synchronisation.is_error
+
+
+@pytest.mark.anyio
+async def test_a_missing_configuration_names_the_command_that_fixes_it(
+    unconfigured_listing: CallToolResult,
+) -> None:
+    assert "ksef-mcp onboarding" in str(unconfigured_listing.content)
+
+
+@pytest.mark.anyio
+async def test_a_genuine_crash_keeps_its_text_off_the_wire(
+    crashed_review: CallToolResult,
+) -> None:
+    # The boundary is narrow on purpose: only failures written for a reader
+    # travel. An unforeseen crash may carry anything — a path, a fragment of a
+    # payload — so it keeps the SDK's generic message.
+    assert "a path fragment nobody vetted" not in str(crashed_review.content)
 
 
 def test_synchronisation_refuses_without_a_token(

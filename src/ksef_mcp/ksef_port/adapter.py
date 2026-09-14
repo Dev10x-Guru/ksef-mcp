@@ -8,7 +8,12 @@ from typing import Final
 import httpx
 from ksef2 import Client, Environment
 from ksef2.config import RetryConfig, TransportConfig
-from ksef2.core.exceptions import KSeFAuthError, KSeFException, KSeFRateLimitError
+from ksef2.core.exceptions import (
+    KSeFAuthError,
+    KSeFException,
+    KSeFRateLimitError,
+    KSeFValidationError,
+)
 from ksef2.domain.models.invoices import InvoicesFilter
 from ksef2.domain.models.pagination import InvoiceMetadataParams
 
@@ -58,6 +63,32 @@ SINGLE_ATTEMPT: Final[RetryConfig] = RetryConfig(max_attempts=1)
 # an answer about why.
 FAILED_EXPORT_CODE: Final[int] = 400
 
+# What to spend against when KSeF answers about limits in a shape the SDK cannot
+# parse. Production omits `collectiveIdentifier`, which `ksef2` requires without
+# a default, so the whole limits response is lost over a field this project never
+# reads (GH-76).
+#
+# `None` here would be the tempting shortcut and the wrong one: `QueryBudget`
+# reads `per_hour is None` as "no ceiling" and then never refuses a call. A
+# parse failure would silently disarm the counter, which is the pattern the
+# Ministry blocks a subject for (D-020, D-031 §8). So these are real numbers,
+# and they are the lowest ones observed rather than the most convenient.
+CONSERVATIVE_RATES: Final[RateLimits] = RateLimits(
+    metadata_queries=OperationLimit(per_second=8, per_minute=16, per_hour=20),
+    exports=OperationLimit(per_second=2, per_minute=4, per_hour=20),
+    export_statuses=OperationLimit(per_second=8, per_minute=16, per_hour=200),
+    invoice_downloads=OperationLimit(per_second=4, per_minute=16, per_hour=64),
+)
+
+# Sizes, not rates (D-031 §9), and the documented allowance rather than a
+# guess. Same direction of caution as above: a ceiling assumed too high is the
+# one that costs a rejected session.
+CONSERVATIVE_CEILINGS: Final[SessionCeilings] = SessionCeilings(
+    max_invoice_megabytes=1,
+    max_invoice_with_attachment_megabytes=3,
+    max_invoices_per_session=10_000,
+)
+
 # A package part is tens of megabytes off presigned storage, so the default
 # five seconds would abort a healthy download.
 PART_DOWNLOAD_TIMEOUT: Final[float] = 300.0
@@ -84,8 +115,15 @@ def translated() -> Iterator[None]:
         raise KsefRefused(f"KSeF call failed: {error}") from error
     # Transport failures happen before a response exists, so the SDK lets httpx
     # errors through without a shared base class of its own.
+    #
+    # The class name, not `str(error)`: httpx spells the full request URL into
+    # its message, and these messages now travel to the MCP client rather than
+    # dying in a stderr nobody reads (GH-76). The class is the part that helps
+    # — `ConnectTimeout` and `ConnectError` call for different answers — while
+    # the URL only risks carrying whatever a future SDK version puts in a query
+    # string. The original stays on `__cause__` for anyone reading a traceback.
     except httpx.HTTPError as error:
-        raise KsefUnreachable(f"Could not reach KSeF: {error}") from error
+        raise KsefUnreachable(f"Could not reach KSeF: {type(error).__name__}") from error
 
 
 def as_amount(value: float) -> Decimal:
@@ -177,23 +215,52 @@ class Ksef2Session:
     transport: httpx.Client
 
     def read_limits(self) -> KsefLimits:
-        with translated():
-            rates = self.authenticated.limits.get_api_rate_limits()
-            ceilings = self.authenticated.limits.get_context_limits()
+        # Limits are a guard rail, not the errand. Every budget-counting tool
+        # reads them first, so letting a schema mismatch out of here takes the
+        # whole server down over a number nobody asked for (GH-76). Each read
+        # falls back on its own: production can answer one of the two in a
+        # shape we understand and the other not.
+        rates, rates_read = self._read_rates()
+        ceilings, ceilings_read = self._read_ceilings()
         return KsefLimits(
-            rates=RateLimits(
+            rates=rates,
+            ceilings=ceilings,
+            degraded=not (rates_read and ceilings_read),
+        )
+
+    def _read_rates(self) -> tuple[RateLimits, bool]:
+        with translated():
+            try:
+                rates = self.authenticated.limits.get_api_rate_limits()
+            # Narrow on purpose. A payload we cannot parse is survivable; a
+            # rejected token or an unreachable host is not, and those travel
+            # the sibling branches of `translated()` untouched.
+            except KSeFValidationError:
+                return CONSERVATIVE_RATES, False
+        return (
+            RateLimits(
                 metadata_queries=as_operation_limit(rates.invoice_metadata),
                 exports=as_operation_limit(rates.invoice_export),
                 export_statuses=as_operation_limit(rates.invoice_export_status),
                 invoice_downloads=as_operation_limit(rates.invoice_download),
             ),
-            ceilings=SessionCeilings(
-                max_invoice_megabytes=ceilings.online_session.max_invoice_size_mb,
-                max_invoice_with_attachment_megabytes=(
-                    ceilings.online_session.max_invoice_with_attachment_size_mb
-                ),
-                max_invoices_per_session=ceilings.online_session.max_invoices,
+            True,
+        )
+
+    def _read_ceilings(self) -> tuple[SessionCeilings, bool]:
+        with translated():
+            try:
+                ceilings = self.authenticated.limits.get_context_limits()
+            except KSeFValidationError:
+                return CONSERVATIVE_CEILINGS, False
+        session = ceilings.online_session
+        return (
+            SessionCeilings(
+                max_invoice_megabytes=session.max_invoice_size_mb,
+                max_invoice_with_attachment_megabytes=session.max_invoice_with_attachment_size_mb,
+                max_invoices_per_session=session.max_invoices,
             ),
+            True,
         )
 
     def query_metadata(

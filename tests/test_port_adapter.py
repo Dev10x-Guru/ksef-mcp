@@ -45,6 +45,8 @@ from doubles import (
     FakeSdkClient,
     FakeSeller,
     FakeSessionLimits,
+    FakeUnparsableLimitsClient,
+    RefusingLimitsClient,
     sdk_metadata,
     sdk_part,
 )
@@ -57,12 +59,19 @@ from ksef_mcp.ksef_port import (
     KsefAuthenticationFailed,
     KsefRateLimited,
     KsefRefused,
+    KsefRequestRejected,
     KsefSession,
     KsefUnreachable,
+    Operation,
     Period,
+    QueryBudget,
 )
 from ksef_mcp.ksef_port import adapter as port_adapter
-from ksef_mcp.ksef_port.adapter import Ksef2Port
+from ksef_mcp.ksef_port.adapter import (
+    CONSERVATIVE_CEILINGS,
+    CONSERVATIVE_RATES,
+    Ksef2Port,
+)
 from ksef_mcp.ksef_port.types import PAGE_SIZE
 
 NIP = "1234567890"
@@ -97,7 +106,9 @@ class Plan:
         status: FakeExportStatusResponse | None = None,
         authentication_error: Exception | None = None,
         call_error: Exception | None = None,
+        limits: object | None = None,
     ) -> None:
+        self.limits = limits if limits is not None else FakeLimitsClient()
         self.service = FakeInvoicesService(
             page=list(page if page is not None else [sdk_metadata(1), sdk_metadata(2)]),
             status=status if status is not None else ready_status(),
@@ -114,7 +125,7 @@ class Plan:
                 authentication=FakeAuthentication(
                     authenticated=FakeAuthenticated(
                         invoices=self.service,
-                        limits=FakeLimitsClient(),
+                        limits=self.limits,
                     ),
                     error=self.authentication_error,
                 ),
@@ -299,6 +310,86 @@ def test_the_session_ceilings_come_from_ksef_too(session: KsefSession) -> None:
         limits.ceilings.max_invoice_with_attachment_megabytes,
         limits.ceilings.max_invoices_per_session,
     ) == (1, 3, 10_000)
+
+
+@pytest.fixture
+def unreadable_limits(monkeypatch: pytest.MonkeyPatch, port: Ksef2Port) -> Iterator[KsefSession]:
+    prepared = Plan(limits=FakeUnparsableLimitsClient())
+    prepared.install(monkeypatch)
+    with port.session(nip=NIP, token=TOKEN) as opened:
+        yield opened
+
+
+@pytest.fixture
+def unreadable_rates(monkeypatch: pytest.MonkeyPatch, port: Ksef2Port) -> Iterator[KsefSession]:
+    prepared = Plan(limits=FakeUnparsableLimitsClient(ceilings_unparsable=False))
+    prepared.install(monkeypatch)
+    with port.session(nip=NIP, token=TOKEN) as opened:
+        yield opened
+
+
+@pytest.fixture
+def unreadable_ceilings(monkeypatch: pytest.MonkeyPatch, port: Ksef2Port) -> Iterator[KsefSession]:
+    prepared = Plan(limits=FakeUnparsableLimitsClient(rates_unparsable=False))
+    prepared.install(monkeypatch)
+    with port.session(nip=NIP, token=TOKEN) as opened:
+        yield opened
+
+
+def test_limits_we_cannot_parse_do_not_take_the_call_down(
+    unreadable_limits: KsefSession,
+) -> None:
+    limits = unreadable_limits.read_limits()
+
+    assert limits.degraded
+
+
+def test_unparsable_rates_fall_back_to_the_conservative_allowance(
+    unreadable_rates: KsefSession,
+) -> None:
+    limits = unreadable_rates.read_limits()
+
+    assert limits.rates == CONSERVATIVE_RATES
+
+
+def test_unparsable_ceilings_fall_back_to_the_conservative_session(
+    unreadable_ceilings: KsefSession,
+) -> None:
+    limits = unreadable_ceilings.read_limits()
+
+    assert limits.ceilings == CONSERVATIVE_CEILINGS
+
+
+def test_one_unreadable_read_does_not_discard_the_other(
+    unreadable_ceilings: KsefSession,
+) -> None:
+    limits = unreadable_ceilings.read_limits()
+
+    assert limits.rates.metadata_queries.per_hour == 20
+
+
+def test_a_degraded_allowance_still_runs_out(unreadable_limits: KsefSession) -> None:
+    # The point of the fallback. `None` would read as "no ceiling" and let the
+    # counter wave every call through — the pattern the Ministry blocks for.
+    budget = QueryBudget(limits=unreadable_limits.read_limits().rates)
+    for _ in range(20):
+        budget.spend(Operation.METADATA_QUERY)
+
+    with pytest.raises(KsefRequestRejected):
+        budget.spend(Operation.METADATA_QUERY)
+
+
+def test_a_refusal_is_not_mistaken_for_an_unreadable_limit(
+    monkeypatch: pytest.MonkeyPatch,
+    port: Ksef2Port,
+) -> None:
+    # The fallback is narrow on purpose: only an unparsable payload survives.
+    # An error KSeF actually reported still reaches the caller.
+    prepared = Plan(limits=RefusingLimitsClient())
+    prepared.install(monkeypatch)
+
+    with port.session(nip=NIP, token=TOKEN) as opened, pytest.raises(KsefRefused):
+        opened.read_limits()
 
 
 def test_an_export_keeps_the_key_it_was_minted_with(session: KsefSession) -> None:

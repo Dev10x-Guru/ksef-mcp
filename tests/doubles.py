@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from typing import Self
 
+from ksef2.core.exceptions import KSeFException, KSeFValidationError
+
 from synthetic import BUYER_NAME, SELLER_NIP
 
 HWM = datetime(2026, 9, 10, tzinfo=UTC)
@@ -167,6 +169,35 @@ class FakeLimitsClient:
 
     def get_context_limits(self) -> FakeContextLimits:
         return sdk_context_limits()
+
+
+# Production answers 200 but omits `collectiveIdentifier`, which the SDK model
+# requires, so the SDK raises rather than returning a partial object. The two
+# reads fail independently — hence the flags (GH-76).
+@dataclass
+class FakeUnparsableLimitsClient:
+    rates_unparsable: bool = True
+    ceilings_unparsable: bool = True
+
+    def get_api_rate_limits(self) -> FakeApiRateLimits:
+        if self.rates_unparsable:
+            raise KSeFValidationError("Invalid response payload")
+        return sdk_rate_limits()
+
+    def get_context_limits(self) -> FakeContextLimits:
+        if self.ceilings_unparsable:
+            raise KSeFValidationError("Invalid response payload")
+        return sdk_context_limits()
+
+
+class RefusingLimitsClient:
+    """KSeF answered with an error, not with a payload we failed to read."""
+
+    def get_api_rate_limits(self) -> FakeApiRateLimits:
+        raise KSeFException("Context is not authorised for this operation")
+
+    def get_context_limits(self) -> FakeContextLimits:
+        raise KSeFException("Context is not authorised for this operation")
 
 
 @dataclass
