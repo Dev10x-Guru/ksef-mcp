@@ -1,0 +1,49 @@
+name: PR Context
+
+# The unprivileged half of the fork-review split (#6).
+#
+# GitHub refuses to mint an OIDC token for a `pull_request` run from a fork,
+# so the review workflows could not authenticate and were skipped outright —
+# leaving outside contributors to a public AGPL package without the automated
+# review everyone else gets.
+#
+# This workflow runs in the fork's own context. It therefore has NO secrets,
+# NO write permission and nothing worth stealing: its only job is to record
+# which PR is in play, so the privileged half (`workflow_run`) knows what to
+# review without ever checking out the fork's code.
+#
+# Deliberately minimal. Everything this file writes is attacker-controlled as
+# far as the privileged workflow is concerned, so the less it writes, the less
+# there is to validate on the other side. The PR number alone is enough — the
+# reviewer reads the diff from the GitHub API, not from an artifact.
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+    types: [opened, ready_for_review, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    steps:
+      # No checkout. This job never needs the fork's files, and not fetching
+      # them is the cheapest way to be sure none of them run.
+      - name: Record which PR this is
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          mkdir -p pr-context
+          printf '%s\n' "$PR_NUMBER" > pr-context/number
+
+      - name: Upload the PR context
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-context
+          path: pr-context/
+          retention-days: 1
