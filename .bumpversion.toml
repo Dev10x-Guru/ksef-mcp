@@ -1,5 +1,5 @@
 [tool.bumpversion]
-current_version = "0.2.1"
+current_version = "0.2.1.dev0"
 allow_dirty = false
 
 # `main` carries `X.Y.Z.dev0` between releases so a wheel built from it is
@@ -12,6 +12,14 @@ serialize = [
     "{major}.{minor}.{patch}.dev{dev}",
     "{major}.{minor}.{patch}",
 ]
+
+# Bez tego `.dev0` znika po cichu: dla części liczbowej `optional_value`
+# domyślnie równa się `first_value`, więc `dev = 0` uchodzi za wartość
+# domyślną i serializacja wybiera krótszy format. Sufiks, o który tu
+# chodzi, to dokładnie `dev0` — jedyna wartość, którą dotąd gubiliśmy.
+[tool.bumpversion.parts.dev]
+first_value = "0"
+optional_value = "none"
 
 # Neither commit nor tag: bin/release.py owns both, so that the guard rails
 # run between changing the number and making it irreversible. A tag created
