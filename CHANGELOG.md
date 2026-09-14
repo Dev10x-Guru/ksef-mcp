@@ -111,12 +111,29 @@ udokumentowane.
   trafienia: serwer po prostu pyta KSeF raz jeszcze, zamiast odmówić
   odpowiedzi ([GH-39]).
 
+- Jedno wywołanie `synchronise_invoices` kończy się fakturami na dysku.
+  Paczka, którą KSeF ogłosi gotową, jest w tym samym przebiegu pobrana,
+  odszyfrowana i zapisana jako `<NumerKSeF>.xml` w archiwum podmiotu —
+  wcześniej przebieg kończył się wiedzą, że paczka czeka ([GH-57]).
+- Odpowiedź narzędzia mówi, gdzie faktury wylądowały i które numery
+  KSeF przyszły, a które podmiot już miał. Treści faktury nie niesie
+  nigdy: dokument FA(2)/FA(3) zawiera dane osobowe kontrahenta, więc
+  narzędzie nazywa plik i go nie otwiera ([GH-57]).
+- Drugie wywołanie na tym samym oknie nie pobiera paczki ponownie i nie
+  nadpisuje żadnej faktury — numery, które podmiot już ma, wracają jako
+  „już posiadane" ([GH-57]).
+- Nieudane pobranie albo nieudany zapis zostawia paczkę na dysku razem
+  z kluczem i dokańcza ją kolejny przebieg. Punkt kontynuacji nie cofa
+  się z tego powodu: przesuwa go to, co potwierdził KSeF, a nie to, czy
+  temu przebiegowi udało się zapisać pliki ([GH-57]).
+
 [GH-33]: https://github.com/Dev10x-Guru/ksef-mcp/issues/33
 [GH-34]: https://github.com/Dev10x-Guru/ksef-mcp/issues/34
 [GH-35]: https://github.com/Dev10x-Guru/ksef-mcp/issues/35
 [GH-37]: https://github.com/Dev10x-Guru/ksef-mcp/issues/37
 [GH-38]: https://github.com/Dev10x-Guru/ksef-mcp/issues/38
 [GH-39]: https://github.com/Dev10x-Guru/ksef-mcp/issues/39
+[GH-57]: https://github.com/Dev10x-Guru/ksef-mcp/issues/57
 
 ## 0.1.1 — 2026-09-13
 

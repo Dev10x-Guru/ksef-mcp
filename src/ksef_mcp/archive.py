@@ -81,6 +81,10 @@ class ArchiveIndexUnreadable(RuntimeError):
     """The deduplication index was written by something this build cannot read."""
 
 
+class ArchiveNotPerformed(RuntimeError):
+    """Asked what an archivist stored before it stored anything."""
+
+
 @dataclass(frozen=True)
 class InvoiceIdentity:
     """One line of the manifest: which entry of the package is which invoice."""
@@ -372,6 +376,17 @@ class PackageArchivist:
 
     archive: InvoiceArchive
     report: ArchiveReport | None = None
+
+    @property
+    def reported(self) -> ArchiveReport:
+        """What was stored, for a caller that already knows the archiving ran."""
+        if self.report is None:
+            raise ArchiveNotPerformed(
+                "This archivist has not stored a package yet, so there are no "
+                "paths and no KSeF numbers to report. Asking before the "
+                "retriever called it means the two ran in the wrong order."
+            )
+        return self.report
 
     def __call__(self, package: ExportPackage) -> None:
         self.report = self.archive.store(package=package)
