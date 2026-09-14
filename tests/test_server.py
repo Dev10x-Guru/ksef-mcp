@@ -1,3 +1,4 @@
+import subprocess
 import sys
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -10,7 +11,7 @@ from mcp import Client
 from mcp.types import CallToolResult, ListToolsResult
 
 from ksef_mcp import config, token_store
-from ksef_mcp.audit import AuditEntry, AuditTrail, Disclosure
+from ksef_mcp.audit import ARCHIVE_BASIS, PDF_FORMAT, AuditEntry, AuditTrail, Disclosure
 from ksef_mcp.config import Configuration, KsefEnvironment
 from ksef_mcp.ksef_port import (
     DateType,
@@ -28,11 +29,14 @@ from ksef_mcp.listing import (
     summarise,
 )
 from ksef_mcp.metadata import SERVER_NAME, VERSION
+from ksef_mcp.pdf import InvoiceNotArchived, InvoiceRenderer
+from ksef_mcp.preflight import NodeReport
 from ksef_mcp.review import InvoiceReview, assess
 from ksef_mcp.server import (
     InvoiceListingResult,
     InvoiceReviewResult,
     NotConfigured,
+    RenderedInvoiceResult,
     StatementResult,
     SynchronisationResult,
     describe,
@@ -40,6 +44,7 @@ from ksef_mcp.server import (
     export_statement,
     list_invoices,
     main,
+    render_invoice,
     review_invoices,
     server,
     synchronise,
@@ -47,7 +52,7 @@ from ksef_mcp.server import (
 )
 from ksef_mcp.statement import AccountingPeriod, Statement
 from ksef_mcp.synchronisation import DirectionReport, SynchronisationReport, SyncOutcome
-from synthetic import synthetic_metadata
+from synthetic import synthetic_fa3_invoice, synthetic_metadata
 
 
 @pytest.fixture
@@ -156,6 +161,7 @@ async def test_every_tool_is_registered(listed_tools: ListToolsResult) -> None:
         "list_recent_invoices",
         "export_period_statement",
         "review_new_invoices",
+        "render_invoice_pdf",
     ]
 
 
@@ -980,3 +986,130 @@ def test_a_review_records_a_subject_type_with_nothing_new(
     review: InvoiceReviewResult, trail: AuditTrail
 ) -> None:
     assert recorded_reads(trail)[1].document_count == 0
+
+
+# Renderowanie PDF (#42). Narzędzie nie sięga do KSeF — otwiera to, co archiwum
+# już trzyma — więc jego testy nie potrzebują tokenu ani atrapy portu.
+
+RENDER_NUMBER = "1234567890-20260817-0100AB12CD01-56"
+
+
+@pytest.fixture
+def archived_invoice(configured: Configuration, tmp_path: Path) -> Path:
+    directory = tmp_path / "archiwum"
+    directory.mkdir()
+    (directory / f"{RENDER_NUMBER}.xml").write_bytes(synthetic_fa3_invoice())
+    return directory
+
+
+@pytest.fixture
+def rendering(monkeypatch: pytest.MonkeyPatch, archived_invoice: Path) -> None:
+    class StubArchive:
+        def __init__(self, **kwargs: object) -> None:
+            self.invoice_directory = archived_invoice
+
+    def stub_runner(command: list[str]) -> subprocess.CompletedProcess[str]:
+        Path(command[4]).write_bytes(b"%PDF-1.3 udawany")
+        return subprocess.CompletedProcess(args=command, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(server_module, "InvoiceArchive", StubArchive)
+    monkeypatch.setattr(
+        server_module,
+        "InvoiceRenderer",
+        lambda **kwargs: InvoiceRenderer(
+            **kwargs,
+            runner=stub_runner,
+            node_report=lambda *, working_directory: NodeReport(
+                executable="/usr/bin/node",
+                version=(22, 17, 0),
+                required=(22, 14, 0),
+                pinned=None,
+                pinned_by=None,
+            ),
+        ),
+    )
+
+
+@pytest.fixture
+def rendered(rendering: None) -> RenderedInvoiceResult:
+    return render_invoice(ksef_number=RENDER_NUMBER, working_directory=None)
+
+
+def test_rendering_refuses_before_onboarding(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(config, "load_configuration", lambda: None)
+
+    with pytest.raises(NotConfigured, match="ksef-mcp onboarding"):
+        render_invoice(ksef_number=RENDER_NUMBER, working_directory=None)
+
+
+def test_the_answer_points_at_the_document_it_wrote(rendered: RenderedInvoiceResult) -> None:
+    assert Path(rendered.path).is_file()
+
+
+def test_the_answer_names_the_invoice_it_opened(rendered: RenderedInvoiceResult) -> None:
+    assert rendered.ksef_number == RENDER_NUMBER
+
+
+def test_the_answer_names_the_generator_build(rendered: RenderedInvoiceResult) -> None:
+    assert rendered.generator_version == "1.1.39"
+
+
+def test_a_test_environment_document_carries_no_verification_link(
+    rendered: RenderedInvoiceResult,
+) -> None:
+    assert rendered.verification_url is None
+
+
+def test_the_answer_repeats_the_environment_it_acted_in(rendered: RenderedInvoiceResult) -> None:
+    assert rendered.environment == "test"
+
+
+def test_a_caller_may_declare_the_directory_for_one_render(
+    rendering: None,
+    tmp_path: Path,
+) -> None:
+    elsewhere = tmp_path / "gdzie indziej"
+
+    result = render_invoice(ksef_number=RENDER_NUMBER, working_directory=str(elsewhere))
+
+    assert Path(result.path).parent == elsewhere
+
+
+def test_an_unsynchronised_invoice_is_refused_rather_than_fetched(rendering: None) -> None:
+    with pytest.raises(InvoiceNotArchived, match="Uruchom najpierw"):
+        render_invoice(
+            ksef_number="1234567890-20260817-0100AB12CD99-56",
+            working_directory=None,
+        )
+
+
+def test_a_render_records_a_disk_disclosure(
+    rendered: RenderedInvoiceResult, trail: AuditTrail
+) -> None:
+    assert recorded_reads(trail)[0].disclosure is Disclosure.DISK
+
+
+def test_a_render_records_the_invoice_it_opened(
+    rendered: RenderedInvoiceResult, trail: AuditTrail
+) -> None:
+    assert recorded_reads(trail)[0].ksef_numbers == (RENDER_NUMBER,)
+
+
+def test_a_render_records_the_format_it_produced(
+    rendered: RenderedInvoiceResult, trail: AuditTrail
+) -> None:
+    assert recorded_reads(trail)[0].formats == (PDF_FORMAT,)
+
+
+def test_a_render_records_that_no_token_was_needed(
+    rendered: RenderedInvoiceResult, trail: AuditTrail
+) -> None:
+    assert recorded_reads(trail)[0].authorisation.basis == ARCHIVE_BASIS
+
+
+@pytest.mark.anyio
+async def test_the_render_tool_answers_with_a_path_but_no_invoice(rendering: None) -> None:
+    async with Client(server, raise_exceptions=True) as client:
+        called = await client.call_tool("render_invoice_pdf", {"ksef_number": RENDER_NUMBER})
+
+    assert called.structured_content["path"].endswith(f"{RENDER_NUMBER}.pdf")

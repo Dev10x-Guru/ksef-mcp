@@ -12,7 +12,9 @@ from pydantic import BaseModel
 from ksef_mcp import config, token_store
 from ksef_mcp.archive import InvoiceArchive
 from ksef_mcp.audit import (
+    ARCHIVE_BASIS,
     CSV_FORMAT,
+    PDF_FORMAT,
     XML_FORMAT,
     AuditEntry,
     AuditTrail,
@@ -24,6 +26,7 @@ from ksef_mcp.ksef_port.errors import KsefPortError
 from ksef_mcp.ksef_port.types import InvoiceMetadata, Period
 from ksef_mcp.listing import DirectionListing, InvoiceLister, InvoiceListing
 from ksef_mcp.metadata import SERVER_NAME, VERSION
+from ksef_mcp.pdf import InvoiceRenderer, RenderedInvoice
 from ksef_mcp.period_cache import PeriodCache
 from ksef_mcp.review import DirectionReview, InvoiceReview, InvoiceReviewer, ReviewStore
 from ksef_mcp.statement import (
@@ -31,6 +34,7 @@ from ksef_mcp.statement import (
     AccountingPeriod,
     Statement,
     StatementComposer,
+    prepare_working_directory,
 )
 from ksef_mcp.sync_store import SyncStore
 from ksef_mcp.synchronisation import DirectionReport, SynchronisationReport, Synchroniser
@@ -46,6 +50,8 @@ LISTING_OPERATION: Final[str] = "list_recent_invoices"
 STATEMENT_OPERATION: Final[str] = "export_period_statement"
 
 REVIEW_OPERATION: Final[str] = "review_new_invoices"
+
+RENDER_OPERATION: Final[str] = "render_invoice_pdf"
 
 
 class ServerInfo(BaseModel):
@@ -739,6 +745,134 @@ def review_new_invoices() -> InvoiceReviewResult:
     """
     with reported(REVIEW_OPERATION):
         return review_invoices()
+
+
+class RenderedInvoiceResult(BaseModel):
+    """Where the document is and what it was made with. Never its content."""
+
+    nip: str
+    environment: str
+    ksef_number: str
+    path: str
+    byte_count: int
+    generator_version: str
+    verification_url: str | None
+
+
+def describe_rendered(
+    rendered: RenderedInvoice,
+    *,
+    nip: str,
+    environment: config.KsefEnvironment,
+) -> RenderedInvoiceResult:
+    return RenderedInvoiceResult(
+        nip=nip,
+        environment=str(environment),
+        ksef_number=rendered.ksef_number,
+        path=str(rendered.path),
+        byte_count=rendered.byte_count,
+        generator_version=rendered.generator_version,
+        verification_url=rendered.verification_url,
+    )
+
+
+def render_entries(
+    rendered: RenderedInvoice,
+    *,
+    authorisation: Authorisation,
+    moment: datetime,
+) -> tuple[AuditEntry, ...]:
+    """A disk disclosure of exactly one document, named by its number.
+
+    The body reached a PDF on disk and nothing of it reached the model, so this
+    is a `DISK` entry and not two (D-011). Nothing was fetched from KSeF either —
+    the invoice was already held — which is why no criteria window is stated.
+    """
+    return (
+        AuditEntry(
+            recorded_at=moment,
+            operation=RENDER_OPERATION,
+            authorisation=authorisation,
+            disclosure=Disclosure.DISK,
+            subject_role=None,
+            criteria=rendered.ksef_number,
+            document_count=1,
+            ksef_numbers=(rendered.ksef_number,),
+            output_path=str(rendered.path),
+            formats=(PDF_FORMAT,),
+        ),
+    )
+
+
+def render_invoice(*, ksef_number: str, working_directory: str | None) -> RenderedInvoiceResult:
+    configuration = config.load_configuration()
+    if configuration is None:
+        raise NotConfigured("Brak konfiguracji. Uruchom najpierw: ksef-mcp onboarding")
+    directory = (
+        configuration.invoice_directory
+        if working_directory is None
+        else Path(working_directory).expanduser()
+    )
+    archive = InvoiceArchive(nip=configuration.nip, environment=configuration.environment)
+    renderer = InvoiceRenderer(
+        environment=configuration.environment,
+        archive_directory=archive.invoice_directory,
+        working_directory=prepare_working_directory(directory).path,
+    )
+    rendered = renderer(ksef_number)
+    trail = trail_for(configuration)
+    # No token was needed and none was read: the invoice was already on disk.
+    # The trail still says under whose NIP and environment it was opened.
+    trail.record(
+        render_entries(
+            rendered,
+            authorisation=Authorisation(
+                nip=configuration.nip,
+                environment=configuration.environment,
+                basis=ARCHIVE_BASIS,
+            ),
+            moment=trail.clock(),
+        )
+    )
+    return describe_rendered(
+        rendered,
+        nip=configuration.nip,
+        environment=configuration.environment,
+    )
+
+
+@server.tool()
+def render_invoice_pdf(
+    ksef_number: str,
+    working_directory: str | None = None,
+) -> RenderedInvoiceResult:
+    """Write one archived invoice as the PDF the Ministry's own application shows.
+
+    `ksef_number` names an invoice already in the archive. Nothing is fetched:
+    this call spends none of the twenty metadata queries an hour and works with
+    no network at all. An invoice that has not been synchronised yet is refused
+    rather than downloaded, so the answer never depends on a query budget.
+
+    The document is produced by the Ministry's own generator, run locally from a
+    build vendored with this package — the same code the verification portal
+    loads into a browser. Fidelity is therefore official rather than
+    approximate, and `generator_version` names the build, the same string the
+    footer of the document carries.
+
+    `working_directory` overrides the directory declared during onboarding for
+    this one call, under the same rules as the statement: created `0700` if new,
+    refused inside the cache or data root.
+
+    On production the document carries the QR code and verification link, and
+    `verification_url` repeats it here. Test and demo invoices have no
+    verification surface, so both are absent rather than pointing at a page that
+    would not resolve.
+
+    Requires Node — `uvx` cannot install it and a Python package cannot depend
+    on it. Without Node this one call fails with a message saying what to
+    install; synchronisation, the CSV statement and the listing are unaffected.
+    """
+    return render_invoice(ksef_number=ksef_number, working_directory=working_directory)
 
 
 def main() -> None:
