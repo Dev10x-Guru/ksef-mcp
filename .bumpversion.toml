@@ -2,6 +2,17 @@
 current_version = "0.2.0"
 allow_dirty = false
 
+# `main` carries `X.Y.Z.dev0` between releases so a wheel built from it is
+# distinguishable from the one on PyPI; the release itself drops the suffix.
+# Both forms therefore have to parse. Every bump here is driven by
+# `--new-version` from bin/release.py, so `serialize` only decides how a
+# number is written back, never which part gets incremented.
+parse = '''(?P<major>\d+)\.(?P<minor>\d+)\.(?P<patch>\d+)(\.dev(?P<dev>\d+))?'''
+serialize = [
+    "{major}.{minor}.{patch}.dev{dev}",
+    "{major}.{minor}.{patch}",
+]
+
 # Neither commit nor tag: bin/release.py owns both, so that the guard rails
 # run between changing the number and making it irreversible. A tag created
 # here would be pushed before anything checked whether PyPI already has it.
