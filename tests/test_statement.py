@@ -262,7 +262,7 @@ def test_faktura_spoza_archiwum_nie_dostaje_kodu(archived: InvoiceArchive) -> No
     assert verification_code(invoice=synthetic_metadata(2), archive=archived) is None
 
 
-def test_wiersz_niesie_osiem_kolumn_i_kod(archived: InvoiceArchive) -> None:
+def test_wiersz_niesie_osiem_kolumn_walute_i_kod(archived: InvoiceArchive) -> None:
     row = rows_for(invoices=(synthetic_metadata(1),), archive=archived)[0]
 
     assert row.cells == (
@@ -274,6 +274,7 @@ def test_wiersz_niesie_osiem_kolumn_i_kod(archived: InvoiceArchive) -> None:
         "1230,00",
         "1000,00",
         "230,00",
+        "PLN",
         f"{SELLER_NIP}-20260901-{digest_of(synthetic_body(1))}",
     )
 
@@ -286,10 +287,18 @@ def test_sprzedawca_bez_nazwy_daje_puste_pole(archived: InvoiceArchive) -> None:
 
 def test_pozycja_bez_pliku_mowi_o_tym_wprost() -> None:
     # Pusta komórka wyglądałaby jak faktura, której skrótu nie policzono.
-    assert StatementRow(invoice=synthetic_metadata(1), code=None).cells[8] == NO_ARCHIVED_BODY
+    assert StatementRow(invoice=synthetic_metadata(1), code=None).cells[-1] == NO_ARCHIVED_BODY
 
 
-def test_plik_zaczyna_sie_naglowkiem_dziewieciu_kolumn() -> None:
+def test_wiersz_nazywa_walute_kwot(archived: InvoiceArchive) -> None:
+    # Bez tego miesiąc z fakturą w euro obok złotówkowej sumował się w jedną
+    # liczbę, która nie znaczyła nic (#63).
+    row = rows_for(invoices=(synthetic_metadata(1),), archive=archived)[0]
+
+    assert row.cells[COLUMNS.index("Waluta")] == "PLN"
+
+
+def test_plik_zaczyna_sie_naglowkiem_wszystkich_kolumn() -> None:
     first = rendered(()).splitlines()[0]
 
     assert first.lstrip("﻿") == ";".join(COLUMNS)

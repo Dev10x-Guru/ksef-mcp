@@ -554,11 +554,12 @@ def export_period_statement(
     storage and deleting statements must never reach the archive — and is
     reported in `warnings` when its path looks like a cloud sync folder.
 
-    The file holds nine columns: the eight reconciliation columns (KSeF number,
-    the seller's own invoice number, issue date, seller NIP, seller name, gross,
-    net, VAT) and a KOD I verification code per row, composed from the seller
-    NIP, the issue date and the SHA-256 of the archived invoice body. Rows whose
-    body is not in the archive yet say so instead of carrying a blank code.
+    The file holds ten columns, in this order: KSeF number, the seller's own
+    invoice number, issue date, seller NIP, seller name, gross, net, VAT,
+    currency, and a KOD I verification code. The code is composed from the
+    seller NIP, the issue date and the SHA-256 of the archived invoice body;
+    rows whose body is not in the archive yet say so instead of carrying a
+    blank code.
 
     Addresses, bank accounts, invoice lines and local paths are absent on
     purpose: this file is written to be attached to an e-mail. The paths are in

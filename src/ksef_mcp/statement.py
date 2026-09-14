@@ -8,7 +8,9 @@ to an e-mail, and the whole design follows from that file leaving the machine.
 
 Leaving the machine decides the columns. The eight settled in #41 are the
 reconciliation minimum — the KSeF number, the seller's own number, the date, the
-counterparty's NIP and name, and the three amounts. Addresses, bank accounts and
+counterparty's NIP and name, and the three amounts — with the currency added in
+#63, because a month mixing euro and złoty otherwise summed into one figure that
+meant nothing. Addresses, bank accounts and
 invoice lines are absent by choice, not by omission: a CSV is the artefact most
 likely to end up in somebody's cloud spreadsheet, so it carries what a
 reconciliation needs and not one field more. Local paths are absent for a second
@@ -99,6 +101,11 @@ COLUMNS: Final[tuple[str, ...]] = (
     "Brutto",
     "Netto",
     "VAT",
+    # Next to the amounts it qualifies rather than at the end: a column that
+    # says which currency a figure is in is useless one scroll away from it.
+    # The eight reconciliation columns settled in #41 carried no currency, so
+    # a month mixing euro and złoty summed into one meaningless total (#63).
+    "Waluta",
     "KOD I",
 )
 
@@ -215,6 +222,7 @@ class StatementRow:
             amount(self.invoice.gross_amount),
             amount(self.invoice.net_amount),
             amount(self.invoice.vat_amount),
+            self.invoice.currency,
             NO_ARCHIVED_BODY if self.code is None else str(self.code),
         )
 
@@ -381,12 +389,13 @@ def completeness_warning(*, complete: bool) -> tuple[str, ...]:
 def currency_warning(totals: tuple[CurrencyTotal, ...]) -> tuple[str, ...]:
     if len(totals) < 2:
         return ()
-    # The eight columns carry no currency (#41), so two currencies land in one
-    # "Brutto" column indistinguishable from each other.
+    # The "Waluta" column tells the rows apart (#63), but a spreadsheet summing
+    # "Brutto" whole still adds euro to złoty. Naming the currency removes the
+    # ambiguity from the file; it does not make the naive total correct.
     return (
-        f"Okres ma faktury w kilku walutach ({', '.join(total.currency for total in totals)}), "
-        f"a kolumna Brutto waluty nie nazywa. Sumuj po walutach z tej odpowiedzi, "
-        f"nie po kolumnie.",
+        f"Okres ma faktury w kilku walutach ({', '.join(total.currency for total in totals)}). "
+        f"Kolumna Waluta rozróżnia wiersze, ale suma całej kolumny Brutto "
+        f"dodałaby waluty do siebie — sumuj po walutach.",
     )
 
 
