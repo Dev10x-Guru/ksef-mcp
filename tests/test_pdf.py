@@ -1,4 +1,6 @@
 import hashlib
+import json
+import re
 import shutil
 import subprocess
 from datetime import date
@@ -49,6 +51,17 @@ def completed(returncode: int = 0, stderr: str = "") -> subprocess.CompletedProc
     return subprocess.CompletedProcess(
         args=["node"], returncode=returncode, stderr=stderr, stdout=""
     )
+
+
+def writing_runner(command: list[str]) -> subprocess.CompletedProcess[str]:
+    """Stands in for Node: writes something PDF-shaped where it was told to."""
+    Path(command[4]).write_bytes(b"%PDF-1.3 udawany")
+    return completed()
+
+
+def refusing_runner(command: list[str]) -> subprocess.CompletedProcess[str]:
+    """Fails the test loudly if the renderer reaches Node when it must not."""
+    raise AssertionError(f"generator nie powinien zostać wywołany: {command}")
 
 
 @pytest.fixture
@@ -105,31 +118,56 @@ def test_the_shim_is_present_in_the_package() -> None:
 
 
 def test_issue_date_is_read_off_the_ksef_number() -> None:
-    assert pdf.issue_date_of(KSEF_NUMBER) == date(2026, 8, 17)
-
-
-def test_a_number_with_the_wrong_shape_is_refused() -> None:
-    with pytest.raises(pdf.InvoiceNotArchived, match="nie wygląda na numer KSeF"):
-        pdf.issue_date_of("../../etc/passwd")
+    assert pdf.validated(KSEF_NUMBER).assigned_on == date(2026, 8, 17)
 
 
 def test_nip_is_the_leading_field_of_the_number() -> None:
-    assert pdf.nip_of(KSEF_NUMBER) == "1234567890"
+    assert pdf.validated(KSEF_NUMBER).issued_for_nip == "1234567890"
+
+
+# Each of these has exactly four hyphen-separated parts and a second part that
+# `date.fromisoformat` accepts, so a validator counting parts let them through
+# and `archive_directory / name` then escaped the archive — an absolute part
+# discards the archive entirely. The port's anchored pattern is what stops them.
+@pytest.mark.parametrize(
+    "escape",
+    [
+        "../../../../tmp/x-20260817-y-56",
+        "/etc/passwd-20260817-y-56",
+        "..-20260817-y-56",
+        "../../etc/passwd",
+        "1234567890-20260817-0100AB12CD01-56/../../../etc",
+    ],
+)
+def test_a_number_that_could_reach_out_of_the_archive_is_refused(escape: str) -> None:
+    with pytest.raises(pdf.InvoiceNotArchived, match="nie jest numerem KSeF"):
+        pdf.validated(escape)
+
+
+def test_a_traversing_number_never_reaches_the_generator(
+    archive: Path,
+    working: Path,
+) -> None:
+    render = renderer(archive=archive, working=working, runner=refusing_runner)
+
+    with pytest.raises(pdf.InvoiceNotArchived):
+        render("../../../../tmp/x-20260817-y-56")
 
 
 def test_verification_url_names_the_issuer_the_date_and_the_bytes() -> None:
-    url = pdf.verification_url(ksef_number=KSEF_NUMBER, content=b"faktura")
+    url = pdf.verification_url(ksef_number=pdf.validated(KSEF_NUMBER), content=b"faktura")
     assert url.startswith("https://qr.ksef.mf.gov.pl/client-app/invoice/1234567890/17-08-2026/")
 
 
 def test_verification_url_changes_when_the_bytes_change() -> None:
-    first = pdf.verification_url(ksef_number=KSEF_NUMBER, content=b"faktura")
-    second = pdf.verification_url(ksef_number=KSEF_NUMBER, content=b"inna faktura")
+    number = pdf.validated(KSEF_NUMBER)
+    first = pdf.verification_url(ksef_number=number, content=b"faktura")
+    second = pdf.verification_url(ksef_number=number, content=b"inna faktura")
     assert first != second
 
 
 def test_verification_digest_carries_no_padding() -> None:
-    url = pdf.verification_url(ksef_number=KSEF_NUMBER, content=b"faktura")
+    url = pdf.verification_url(ksef_number=pdf.validated(KSEF_NUMBER), content=b"faktura")
     assert "=" not in url.rsplit("/", maxsplit=1)[1]
 
 
@@ -183,9 +221,10 @@ def test_absent_node_stops_the_render_before_it_starts(archive: Path, working: P
     render = renderer(
         archive=archive,
         working=working,
+        runner=refusing_runner,
         report=node_report(executable=None, version=None),
     )
-    with pytest.raises(pdf.NodeUnavailable):
+    with pytest.raises(pdf.NodeUnavailable, match=re.escape("fnm install 22.14.0")):
         render(KSEF_NUMBER)
 
 
@@ -199,16 +238,12 @@ def test_a_refusing_generator_is_reported_with_its_reason(archive: Path, working
         render(KSEF_NUMBER)
 
 
-def test_production_invoices_get_a_verification_link(archive: Path, working: Path) -> None:
-    seen: list[list[str]] = []
+@pytest.fixture
+def rendered(archive: Path, working: Path) -> pdf.RenderedInvoice:
+    return renderer(archive=archive, working=working, runner=writing_runner)(KSEF_NUMBER)
 
-    def capture(command: list[str]) -> subprocess.CompletedProcess[str]:
-        seen.append(command)
-        Path(command[4]).write_bytes(b"%PDF-1.3 udawany")
-        return completed()
 
-    render = renderer(archive=archive, working=working, runner=capture)
-    rendered = render(KSEF_NUMBER)
+def test_production_invoices_get_a_verification_link(rendered: pdf.RenderedInvoice) -> None:
     assert rendered.verification_url is not None
 
 
@@ -216,36 +251,32 @@ def test_test_environment_invoices_get_no_verification_link(
     archive: Path,
     working: Path,
 ) -> None:
-    def capture(command: list[str]) -> subprocess.CompletedProcess[str]:
-        Path(command[4]).write_bytes(b"%PDF-1.3 udawany")
-        return completed()
-
     render = renderer(
         archive=archive,
         working=working,
         environment=KsefEnvironment.TEST,
-        runner=capture,
+        runner=writing_runner,
     )
     assert render(KSEF_NUMBER).verification_url is None
 
 
-def test_the_rendered_file_is_readable_only_by_its_owner(archive: Path, working: Path) -> None:
-    def capture(command: list[str]) -> subprocess.CompletedProcess[str]:
-        Path(command[4]).write_bytes(b"%PDF-1.3 udawany")
-        return completed()
-
-    render = renderer(archive=archive, working=working, runner=capture)
-    rendered = render(KSEF_NUMBER)
+def test_the_rendered_file_is_readable_only_by_its_owner(rendered: pdf.RenderedInvoice) -> None:
     assert rendered.path.stat().st_mode & 0o777 == pdf.PDF_FILE_MODE
 
 
-def test_the_result_names_the_generator_version(archive: Path, working: Path) -> None:
-    def capture(command: list[str]) -> subprocess.CompletedProcess[str]:
-        Path(command[4]).write_bytes(b"%PDF-1.3 udawany")
-        return completed()
+def test_the_render_leaves_no_staging_file_behind(rendered: pdf.RenderedInvoice) -> None:
+    assert not rendered.path.with_suffix(pdf.STAGING_SUFFIX).exists()
 
-    render = renderer(archive=archive, working=working, runner=capture)
-    assert render(KSEF_NUMBER).generator_version == "1.1.39"
+
+def test_the_result_names_the_generator_version(rendered: pdf.RenderedInvoice) -> None:
+    assert rendered.generator_version == "1.1.39"
+
+
+def test_a_chatty_generator_complaint_is_cut_short() -> None:
+    # Insurance against a future build quoting the document it rejected: this
+    # string reaches the caller, and an invoice body must not ride along.
+    stated = pdf.stated_failure(json.dumps({"error": "x" * 500}))
+    assert len(stated) == pdf.FAILURE_DETAIL_LIMIT
 
 
 @without_node

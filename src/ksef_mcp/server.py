@@ -871,6 +871,10 @@ def render_invoice_pdf(
     Requires Node — `uvx` cannot install it and a Python package cannot depend
     on it. Without Node this one call fails with a message saying what to
     install; synchronisation, the CSV statement and the listing are unaffected.
+
+    The generator accepts FA(1), FA(2), FA(3), UPO and PEF, but only FA(3) has
+    been exercised end to end. Treat a refusal on an older schema as untested
+    rather than impossible, and report it.
     """
     return render_invoice(ksef_number=ksef_number, working_directory=working_directory)
 

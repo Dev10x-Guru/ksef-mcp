@@ -30,7 +30,7 @@ jawny, nie żeby sugerować gotowość.
 | Konfiguracja: `onboarding`, `doctor`, `token` | ✅ działa |
 | Potwierdzenie połączenia: `verify` | ✅ działa |
 | Wyszukiwanie i pobieranie faktur | 🚧 planowane |
-| Wizualizacja PDF | 🚧 planowane |
+| Wizualizacja PDF | ✅ działa, wymaga Node |
 
 ## Co ten projekt robi
 
@@ -62,7 +62,7 @@ Zasada obowiązuje w całym projekcie: przypinamy konkretne wersje, nigdy zakres
 także zależności. Rozjazd interpretera pociąga rozjazd rozwiązanych wersji
 bibliotek, a `uvx` i tak rozwiązuje wersję za nas.
 
-🚧 **Node 22.17.0 przez [fnm](https://github.com/Schniz/fnm)** — planowane, potrzebne
+**Node 22.17.0 przez [fnm](https://github.com/Schniz/fnm)** — potrzebny
 **wyłącznie** do generowania PDF-ów.
 
 ```powershell
@@ -162,13 +162,24 @@ końca limitu — doda tylko prób do wzorca wyglądającego na jego obchodzenie
 
 ## Wizualizacja PDF
 
-🚧 Planowane.
+Narzędzie MCP `render_invoice_pdf` bierze numer KSeF faktury **już leżącej
+w archiwum** i zapisuje ją jako PDF w katalogu roboczym. Nic nie pobiera:
+nie zużywa godzinowego budżetu zapytań i działa bez sieci. Faktura, której
+jeszcze nie zsynchronizowano, jest odmawiana, a nie dociągana.
 
-PDF-y będą generowane **oficjalnym generatorem Ministerstwa Finansów**
-(`@akmf/ksef-fe-invoice-converter`, licencja MIT), zwendorowanym w
+PDF-y generuje **oficjalny generator Ministerstwa Finansów**
+(`@akmf/ksef-fe-invoice-converter`, licencja MIT), zwendorowany w
 `src/ksef_mcp/vendor/`. Wynik jest tożsamy z tym, co daje portal MF — zweryfikowane
 uruchomieniem, nie tylko lekturą kodu. Dokument niesie kod QR, link weryfikacyjny
 i numer KSeF.
+
+Bundel **nie pochodzi z rejestru npm** — paczki o tej nazwie tam nie ma.
+Serwuje go portal weryfikacyjny MF pod `/client-app/pdf-lib/`; szczegóły
+i suma kontrolna w [`src/ksef_mcp/vendor/LICENCJA-MF.md`](src/ksef_mcp/vendor/LICENCJA-MF.md).
+
+Link weryfikacyjny trafia wyłącznie na dokumenty **produkcyjne**. Środowiska
+TEST i DEMO nie mają powierzchni weryfikacyjnej, więc PDF stamtąd nie niesie
+odsyłacza prowadzącego donikąd.
 
 Generator obsługuje FA(1), FA(2), FA(3), UPO i PEF, ale **przetestowaliśmy wyłącznie
 FA(3)**. Pozostałe schematy traktujemy jako niepotwierdzone.
@@ -211,6 +222,7 @@ więc lokalny przebieg i CI stosują identyczny próg.
 
 Projekt jest na licencji **AGPL-3.0-only** — pełny tekst w pliku [LICENSE](LICENSE).
 
-🚧 Zwendorowany generator PDF Ministerstwa Finansów jest osobnym artefaktem na
-licencji **MIT**. Jego nota licencyjna będzie leżeć obok niego w
-`src/ksef_mcp/vendor/` i dotyczy wyłącznie tego pliku, nie reszty projektu.
+Zwendorowany generator PDF Ministerstwa Finansów jest osobnym artefaktem na
+licencji **MIT**. Jego nota licencyjna leży obok niego —
+[`src/ksef_mcp/vendor/LICENCJA-MF.md`](src/ksef_mcp/vendor/LICENCJA-MF.md) —
+i dotyczy wyłącznie tego pliku, nie reszty projektu.
