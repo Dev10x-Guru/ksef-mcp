@@ -80,6 +80,13 @@ XML_FORMAT: Final[str] = "xml"
 
 CSV_FORMAT: Final[str] = "csv"
 
+PDF_FORMAT: Final[str] = "pdf"
+
+# A read that needed no token: the invoice was already held, so there is no
+# secret to name a source for. Spelled out rather than left blank, because a
+# blank basis reads like a field nobody filled in.
+ARCHIVE_BASIS: Final[str] = "archiwum_lokalne"
+
 
 class AuditTrailUnreadable(RuntimeError):
     """A line of the trail was written by a build this one does not understand.
