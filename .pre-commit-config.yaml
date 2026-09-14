@@ -9,8 +9,15 @@ repos:
       - id: check-merge-conflict
       - id: check-toml
       - id: check-yaml
+      # Te dwa hooki PRZEPISUJĄ pliki, więc na zwendorowanym artefakcie robią
+      # szkodę, nie porządek: trailing-whitespace zmienił bundel MF przy
+      # pierwszym uruchomieniu, unieważniając sumę SHA-256 z noty licencyjnej i
+      # zgodność bajt w bajt z plikiem serwowanym przez portal. Wyłączenie
+      # obejmuje cały `vendor/`, bo cały ten katalog jest cudzy.
       - id: end-of-file-fixer
+        exclude: ^src/ksef_mcp/vendor/
       - id: trailing-whitespace
+        exclude: ^src/ksef_mcp/vendor/
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.16.7
