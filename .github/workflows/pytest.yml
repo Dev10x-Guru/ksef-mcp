@@ -15,9 +15,13 @@ on:
     # PR zmieniający wyłącznie `bin/` nie uruchamiał żadnego zadania. Skrypt
     # wydania przeszedł CI jedynie dlatego, że przy okazji dotknął pyproject.
     paths:
-      - "src/**/*.py"
+      # `src/**`, nie `src/**/*.py`: pakiet niesie też shim Node i zwendorowany
+      # bundel generatora MF. Filtr wymieniający wyłącznie pliki `.py` puszczał
+      # bez żadnego zadania PR, który psuł renderowanie PDF.
+      - "src/**"
       - "tests/**/*.py"
       - "bin/**"
+      - ".node-version"
       - "pyproject.toml"
       - "uv.lock"
       - ".bumpversion.toml"
@@ -36,6 +40,16 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
+
+      # Renderowanie PDF uruchamia oficjalny generator MF pod Node (D-027), a
+      # test renderu pomija się tam, gdzie Node nie ma. Bez tego kroku bieg
+      # byłby zielony dokładnie dlatego, że najważniejszy test się nie wykonał.
+      # `node-version-file` czyta ten sam pin co reszta projektu, więc nie
+      # powstaje drugie źródło prawdy — tak samo jak przy Pythonie niżej.
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
 
       # No python-version here and no `uv python install`: the project
       # pins an exact interpreter in .python-version, and uv reads it.
