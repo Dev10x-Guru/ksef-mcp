@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import shutil
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import date
@@ -357,8 +358,16 @@ def report_connection(console: Console, checked: ksef_port.ConnectionCheck) -> i
     return EXIT_OK
 
 
-def run_doctor(console: Console, *, working_directory: Path) -> int:
+def run_doctor(
+    console: Console, *, working_directory: Path, configuration_file: Path | None
+) -> int:
     console.write(f"{SERVER_NAME} {VERSION}")
+    console.write("")
+    console.write("Tożsamość:")
+    for line in messages.describe_identity(shutil.which(SERVER_NAME)):
+        console.write(line)
+    for line in messages.describe_subject(config.load_configuration(path=configuration_file)):
+        console.write(line)
     console.write("")
     report_preflight(console, working_directory=working_directory)
     return EXIT_OK
@@ -603,7 +612,11 @@ def dispatch(
             home=home,
         )
     if arguments.command == "doctor":
-        return run_doctor(console, working_directory=working_directory)
+        return run_doctor(
+            console,
+            working_directory=working_directory,
+            configuration_file=configuration_file,
+        )
     if arguments.command == "verify":
         return run_verify(console, configuration_file=configuration_file)
     if arguments.command == "purge":

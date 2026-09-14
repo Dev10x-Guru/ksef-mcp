@@ -629,16 +629,75 @@ def test_onboarding_says_why_it_does_not_call_ksef(
     assert "godzinowy budżet" in recorder.transcript
 
 
-def test_doctor_reports_preflight_only(
+@pytest.fixture
+def doctored(
     healthy_node: None,
     usable_keyring: preflight.KeyringReport,
     tmp_path: Path,
+    configuration_file: Path,
+) -> tuple[int, Recorder]:
+    # The configuration path is explicit on purpose: without it `doctor` reads
+    # whatever the developer running the suite happens to have configured.
+    recorder = Recorder()
+    code = cli.main(
+        ["doctor"],
+        console=recorder.console,
+        working_directory=tmp_path,
+        configuration_file=configuration_file,
+    )
+    return code, recorder
+
+
+def test_doctor_succeeds(doctored: tuple[int, Recorder]) -> None:
+    code, _ = doctored
+
+    assert code == cli.EXIT_OK
+
+
+def test_doctor_reports_preflight(doctored: tuple[int, Recorder]) -> None:
+    _, recorder = doctored
+
+    assert "Warunki wstępne:" in recorder.transcript
+
+
+def test_doctor_names_the_path_it_runs_from(doctored: tuple[int, Recorder]) -> None:
+    # With two distributions shipping a `ksef-mcp` script, the path is the
+    # only answer that says which one won on PATH (#75).
+    _, recorder = doctored
+
+    assert "Ścieżka:" in recorder.transcript
+
+
+def test_doctor_disowns_the_unrelated_project(doctored: tuple[int, Recorder]) -> None:
+    _, recorder = doctored
+
+    assert "To nie jest ksef-mcp.pl" in recorder.transcript
+
+
+def test_doctor_says_when_there_is_no_configuration(doctored: tuple[int, Recorder]) -> None:
+    _, recorder = doctored
+
+    assert "brak konfiguracji" in recorder.transcript
+
+
+def test_doctor_names_the_environment_without_calling_ksef(
+    healthy_node: None,
+    usable_keyring: preflight.KeyringReport,
+    tmp_path: Path,
+    configured: Path,
 ) -> None:
+    # `doctor` is the only command that can answer this for free; `verify`
+    # spends a KSeF call to say the same thing.
     recorder = Recorder()
 
-    code = cli.main(["doctor"], console=recorder.console, working_directory=tmp_path)
+    cli.main(
+        ["doctor"],
+        console=recorder.console,
+        working_directory=tmp_path,
+        configuration_file=configured,
+    )
 
-    assert (code, "Warunki wstępne:" in recorder.transcript) == (cli.EXIT_OK, True)
+    assert "Środowisko: test" in recorder.transcript
 
 
 def test_token_set_stores_and_confirms(
@@ -1005,6 +1064,7 @@ def test_doctor_reports_a_locked_collection(
     monkeypatch: pytest.MonkeyPatch,
     usable_keyring: preflight.KeyringReport,
     healthy_node: None,
+    configuration_file: Path,
 ) -> None:
     monkeypatch.setattr(
         preflight,
@@ -1013,7 +1073,12 @@ def test_doctor_reports_a_locked_collection(
     )
     recorder = Recorder()
 
-    cli.main(["doctor"], console=recorder.console, working_directory=Path.cwd())
+    cli.main(
+        ["doctor"],
+        console=recorder.console,
+        working_directory=Path.cwd(),
+        configuration_file=configuration_file,
+    )
 
     assert "Kolekcja: zablokowana" in recorder.transcript
 
@@ -1022,6 +1087,7 @@ def test_doctor_reports_an_unlocked_collection(
     monkeypatch: pytest.MonkeyPatch,
     usable_keyring: preflight.KeyringReport,
     healthy_node: None,
+    configuration_file: Path,
 ) -> None:
     monkeypatch.setattr(
         preflight,
@@ -1030,7 +1096,12 @@ def test_doctor_reports_an_unlocked_collection(
     )
     recorder = Recorder()
 
-    cli.main(["doctor"], console=recorder.console, working_directory=Path.cwd())
+    cli.main(
+        ["doctor"],
+        console=recorder.console,
+        working_directory=Path.cwd(),
+        configuration_file=configuration_file,
+    )
 
     assert "Kolekcja: odblokowana" in recorder.transcript
 
@@ -1038,12 +1109,18 @@ def test_doctor_reports_an_unlocked_collection(
 def test_doctor_says_nothing_about_a_platform_without_a_collection(
     usable_keyring: preflight.KeyringReport,
     healthy_node: None,
+    configuration_file: Path,
 ) -> None:
     # macOS and Windows have no Secret Service at all, and a line about it
     # would read like a fault where there is none.
     recorder = Recorder()
 
-    cli.main(["doctor"], console=recorder.console, working_directory=Path.cwd())
+    cli.main(
+        ["doctor"],
+        console=recorder.console,
+        working_directory=Path.cwd(),
+        configuration_file=configuration_file,
+    )
 
     assert "Kolekcja" not in recorder.transcript
 
