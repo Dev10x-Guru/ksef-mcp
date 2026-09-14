@@ -10,6 +10,7 @@ from mcp import Client
 from mcp.types import CallToolResult, ListToolsResult
 
 from ksef_mcp import config, token_store
+from ksef_mcp.audit import AuditEntry, AuditTrail, Disclosure
 from ksef_mcp.config import Configuration, KsefEnvironment
 from ksef_mcp.ksef_port import DateType, InvoiceDirection, KsefNumber, MetadataPage, Period
 from ksef_mcp.listing import (
@@ -35,6 +36,7 @@ from ksef_mcp.server import (
     review_invoices,
     server,
     synchronise,
+    window_criteria,
 )
 from ksef_mcp.statement import AccountingPeriod, Statement
 from ksef_mcp.synchronisation import DirectionReport, SynchronisationReport, SyncOutcome
@@ -740,3 +742,168 @@ async def test_the_review_tool_hands_back_what_is_new(reviewing: None) -> None:
         called = await client.call_tool("review_new_invoices")
 
     assert called.structured_content["subject_types"][0]["new_count"] == 1
+
+
+# Ślad audytowy (#45). W sporze o wyciek to jedyny dowód, więc każde narzędzie
+# odczytu zostawia wpis — niezależnie od tego, że odczyt nie ma bramki zgody.
+
+
+@pytest.fixture
+def trail(audit_root: Path) -> AuditTrail:
+    return AuditTrail(nip=NIP, environment=KsefEnvironment.TEST, root=audit_root)
+
+
+def recorded_reads(trail: AuditTrail) -> tuple[AuditEntry, ...]:
+    return trail.entries()
+
+
+def test_a_synchronisation_records_what_it_stored(
+    synchronised: SynchronisationResult, trail: AuditTrail
+) -> None:
+    stored = recorded_reads(trail)[0]
+
+    assert (stored.operation, stored.disclosure, stored.ksef_numbers) == (
+        "synchronise_invoices",
+        Disclosure.DISK,
+        (ARCHIVED_NUMBER,),
+    )
+
+
+def test_a_synchronisation_records_a_deduplication_skip_as_a_skip(
+    synchronised: SynchronisationResult, trail: AuditTrail
+) -> None:
+    # Ślad złożony wyłącznie z zapisów czytałby się tak, jakby tej faktury nigdy
+    # nie dotknięto — a była widziana i rozpoznana jako już posiadana.
+    skipped = recorded_reads(trail)[1]
+
+    assert (skipped.disclosure, skipped.ksef_numbers) == (
+        Disclosure.DEDUPLICATION_SKIP,
+        (HELD_NUMBER,),
+    )
+
+
+def test_a_synchronisation_records_the_subject_and_the_footing(
+    synchronised: SynchronisationResult, trail: AuditTrail
+) -> None:
+    stored = recorded_reads(trail)[0]
+
+    assert (stored.authorisation.nip, stored.authorisation.basis) == (NIP, "ksef_token:keyring")
+
+
+def test_a_synchronisation_records_where_the_invoices_landed(
+    synchronised: SynchronisationResult, trail: AuditTrail
+) -> None:
+    assert recorded_reads(trail)[0].output_path == ARCHIVE_DIRECTORY
+
+
+def test_a_subject_type_that_touched_nothing_leaves_no_entry(
+    synchronised: SynchronisationResult, trail: AuditTrail
+) -> None:
+    assert len(recorded_reads(trail)) == 2
+
+
+def test_no_token_value_reaches_the_trail(
+    synchronised: SynchronisationResult, trail: AuditTrail
+) -> None:
+    assert "tajny-token" not in trail.path.read_text(encoding="utf-8")
+
+
+def test_a_listing_records_that_the_model_was_shown_the_rows(
+    listing: InvoiceListingResult, trail: AuditTrail
+) -> None:
+    # Osobne zdarzenie niż zapis na dysk (D-011): „czat zobaczył" to nie to samo
+    # co „plik powstał".
+    shown = recorded_reads(trail)[0]
+
+    assert (shown.operation, shown.disclosure, shown.output_path) == (
+        "list_recent_invoices",
+        Disclosure.MODEL_CONTEXT,
+        None,
+    )
+
+
+def test_a_listing_records_the_window_it_asked_about(
+    listing: InvoiceListingResult, trail: AuditTrail
+) -> None:
+    assert recorded_reads(trail)[0].criteria == (
+        f"issue_date {LISTING_PERIOD.date_from.isoformat()}..{LISTING_PERIOD.date_to.isoformat()}"
+    )
+
+
+def test_a_listing_records_the_numbers_that_reached_the_answer(
+    listing: InvoiceListingResult, trail: AuditTrail
+) -> None:
+    assert recorded_reads(trail)[0].ksef_numbers == (str(synthetic_metadata(1).ksef_number),)
+
+
+def test_a_listing_records_a_subject_type_that_returned_nothing(
+    listing: InvoiceListingResult, trail: AuditTrail
+) -> None:
+    # Pytanie padło, więc zakres, o który zapytano, jest częścią śladu.
+    empty = recorded_reads(trail)[1]
+
+    assert (empty.subject_role, empty.document_count, empty.ksef_numbers) == ("seller", 0, ())
+
+
+def test_an_open_window_is_recorded_as_open() -> None:
+    open_ended = Period.for_synchronisation(since=datetime(2026, 9, 1, tzinfo=UTC))
+
+    assert window_criteria(open_ended).endswith("..open")
+
+
+def test_a_statement_records_the_file_it_wrote(
+    exported: StatementResult, trail: AuditTrail
+) -> None:
+    written = recorded_reads(trail)[0]
+
+    assert (written.operation, written.disclosure, written.output_path, written.formats) == (
+        "export_period_statement",
+        Disclosure.DISK,
+        STATEMENT_PATH,
+        ("csv",),
+    )
+
+
+def test_a_statement_records_the_month_it_closed(
+    exported: StatementResult, trail: AuditTrail
+) -> None:
+    assert (recorded_reads(trail)[0].criteria, recorded_reads(trail)[0].subject_role) == (
+        "2026-08",
+        "buyer",
+    )
+
+
+def test_a_statement_records_the_numbers_its_rows_name(
+    exported: StatementResult, trail: AuditTrail
+) -> None:
+    # `StatementResult` ich nie niesie — pięćdziesiąt numerów w oknie czatu to
+    # hałas — ale zapis dostępu bez numerów nie odtwarza jego zakresu.
+    assert recorded_reads(trail)[0].document_count == 1
+
+
+def test_a_review_records_what_the_reader_was_shown(
+    review: InvoiceReviewResult, trail: AuditTrail
+) -> None:
+    shown = recorded_reads(trail)[0]
+
+    assert (shown.operation, shown.disclosure, shown.ksef_numbers) == (
+        "review_new_invoices",
+        Disclosure.MODEL_CONTEXT,
+        (LATE_NUMBER,),
+    )
+
+
+def test_a_review_records_the_window_and_the_count(
+    review: InvoiceReviewResult, trail: AuditTrail
+) -> None:
+    assert (recorded_reads(trail)[0].criteria, recorded_reads(trail)[0].document_count) == (
+        f"invoicing_date {REVIEW_PERIOD.date_from.isoformat()}"
+        f"..{REVIEW_PERIOD.date_to.isoformat()}",
+        1,
+    )
+
+
+def test_a_review_records_a_subject_type_with_nothing_new(
+    review: InvoiceReviewResult, trail: AuditTrail
+) -> None:
+    assert recorded_reads(trail)[1].document_count == 0
