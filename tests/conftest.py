@@ -1,8 +1,18 @@
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 
 from ksef_mcp import audit, preflight
+
+
+def raiser(error: Exception) -> Callable[..., object]:
+    """Substitute for anything whose failure is what the test is about."""
+
+    def raise_it(*args: object, **kwargs: object) -> object:
+        raise error
+
+    return raise_it
 
 
 @pytest.fixture

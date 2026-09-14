@@ -6,10 +6,22 @@ from pathlib import Path
 
 import pytest
 
-from ksef_mcp import archive, cli, config, ksef_port, preflight, skill, token_store
+from conftest import raiser
+from ksef_mcp import (
+    archive,
+    cli,
+    client,
+    config,
+    ksef_port,
+    messages,
+    preflight,
+    skill,
+    token_store,
+)
 from ksef_mcp.archive import InvoiceArchive
 from ksef_mcp.audit import OPERATOR_BASIS, AuditTrail, Disclosure
 from ksef_mcp.config import Configuration, KsefEnvironment
+from ksef_mcp.metadata import SERVER_NAME
 from synthetic import synthetic_metadata
 from test_retention import a_number as a_ksef_number
 from test_retention import a_package as retention_package
@@ -51,13 +63,6 @@ class Recorder:
     @property
     def transcript(self) -> str:
         return "\n".join(self.lines)
-
-
-def raiser(error: Exception) -> Callable[..., object]:
-    def raise_it(*args: object, **kwargs: object) -> object:
-        raise error
-
-    return raise_it
 
 
 def keyring_report(*modules_with_priority: tuple[str, float]) -> preflight.KeyringReport:
@@ -141,8 +146,10 @@ def completed_onboarding(
     configuration_file: Path,
     invoice_directory: Path,
 ) -> tuple[int, Recorder]:
+    # Four settings, then the three closing offers from GH-74 and GH-72:
+    # register with the client, install the skill, check the connection.
     recorder = Recorder(
-        answers=[NIP, "", "", str(invoice_directory)],
+        answers=[NIP, "", "", str(invoice_directory), "n", "n", ""],
         secrets=[TOKEN],
     )
     code = cli.main(
@@ -150,6 +157,7 @@ def completed_onboarding(
         console=recorder.console,
         working_directory=configuration_file.parent,
         configuration_file=configuration_file,
+        home=configuration_file.parent,
     )
     return code, recorder
 
@@ -189,13 +197,13 @@ def test_required_secret_is_asked_again_when_blank() -> None:
 
 
 def test_missing_node_is_described_with_an_install_command() -> None:
-    described = "\n".join(cli.describe_node(node_report(version=None)))
+    described = "\n".join(messages.describe_node(node_report(version=None)))
 
     assert "fnm install 22.14.0" in described
 
 
 def test_missing_node_warns_about_the_shell_profile() -> None:
-    described = "\n".join(cli.describe_node(node_report(version=None)))
+    described = "\n".join(messages.describe_node(node_report(version=None)))
 
     assert "fnm env" in described
 
@@ -203,7 +211,7 @@ def test_missing_node_warns_about_the_shell_profile() -> None:
 def test_current_node_is_described_as_satisfying(tmp_path: Path) -> None:
     pin_file = tmp_path / preflight.NODE_VERSION_FILE
     described = "\n".join(
-        cli.describe_node(
+        messages.describe_node(
             node_report(
                 version=(22, 17, 0),
                 required=(22, 17, 0),
@@ -216,9 +224,10 @@ def test_current_node_is_described_as_satisfying(tmp_path: Path) -> None:
     assert f"z {pin_file}" in described
 
 
-def test_a_pin_below_the_generator_minimum_names_both_numbers(tmp_path: Path) -> None:
-    described = "\n".join(
-        cli.describe_node(
+@pytest.fixture
+def pin_below_the_generator(tmp_path: Path) -> str:
+    return "\n".join(
+        messages.describe_node(
             node_report(
                 version=(20, 11, 0),
                 required=preflight.MINIMUM_NODE_VERSION,
@@ -228,24 +237,34 @@ def test_a_pin_below_the_generator_minimum_names_both_numbers(tmp_path: Path) ->
         )
     )
 
-    assert "pin 20.11.0" in described and "biorę wyższe" in described
+
+def test_a_pin_below_the_generator_names_the_pinned_version(
+    pin_below_the_generator: str,
+) -> None:
+    assert "pin 20.11.0" in pin_below_the_generator
+
+
+def test_a_pin_below_the_generator_says_which_number_wins(
+    pin_below_the_generator: str,
+) -> None:
+    assert "biorę wyższe" in pin_below_the_generator
 
 
 def test_old_node_is_described_as_too_old() -> None:
-    described = "\n".join(cli.describe_node(node_report(version=(20, 11, 0))))
+    described = "\n".join(messages.describe_node(node_report(version=(20, 11, 0))))
 
     assert "starsze niż wymagane 22.14.0" in described
 
 
 def test_absent_keyring_points_at_the_environment_variable() -> None:
-    described = "\n".join(cli.describe_keyring(keyring_report()))
+    described = "\n".join(messages.describe_keyring(keyring_report()))
 
     assert token_store.FALLBACK_ENVIRONMENT_VARIABLE in described
 
 
 def test_available_keyring_marks_the_default_backend() -> None:
     described = "\n".join(
-        cli.describe_keyring(
+        messages.describe_keyring(
             keyring_report(("keyring.backends.SecretService", 5), ("keyring.backends.kwallet", 4))
         )
     )
@@ -253,26 +272,53 @@ def test_available_keyring_marks_the_default_backend() -> None:
     assert "1. keyring.backends.SecretService (priorytet 5) — domyślny" in described
 
 
-def test_single_backend_is_chosen_without_asking() -> None:
+@pytest.fixture
+def single_backend_choice() -> tuple[str, Recorder]:
     recorder = Recorder()
-
     chosen = cli.choose_keyring_backend(
         recorder.console, keyring_report(("keyring.backends.SecretService", 5))
     )
+    return chosen, recorder
 
-    assert (chosen, recorder.prompts) == ("keyring.backends.SecretService", [])
+
+def test_single_backend_is_chosen_without_asking(
+    single_backend_choice: tuple[str, Recorder],
+) -> None:
+    _, recorder = single_backend_choice
+
+    assert recorder.prompts == []
 
 
-def test_backend_choice_rejects_a_number_out_of_range() -> None:
+def test_single_backend_is_the_one_that_exists(
+    single_backend_choice: tuple[str, Recorder],
+) -> None:
+    chosen, _ = single_backend_choice
+
+    assert chosen == "keyring.backends.SecretService"
+
+
+@pytest.fixture
+def backend_choice_out_of_range() -> tuple[str, Recorder]:
     recorder = Recorder(answers=["7", "2"])
     report = keyring_report(("keyring.backends.SecretService", 5), ("keyring.backends.kwallet", 4))
-
     chosen = cli.choose_keyring_backend(recorder.console, report)
+    return chosen, recorder
 
-    assert (chosen, "Podaj numer od 1 do 2." in recorder.transcript) == (
-        "keyring.backends.kwallet",
-        True,
-    )
+
+def test_backend_choice_rejects_a_number_out_of_range(
+    backend_choice_out_of_range: tuple[str, Recorder],
+) -> None:
+    _, recorder = backend_choice_out_of_range
+
+    assert "Podaj numer od 1 do 2." in recorder.transcript
+
+
+def test_backend_choice_takes_the_second_answer(
+    backend_choice_out_of_range: tuple[str, Recorder],
+) -> None:
+    chosen, _ = backend_choice_out_of_range
+
+    assert chosen == "keyring.backends.kwallet"
 
 
 def test_backend_choice_defaults_to_the_preferred_backend() -> None:
@@ -288,15 +334,56 @@ def test_environment_defaults_to_the_test_registry() -> None:
     assert cli.choose_environment(recorder.console) is KsefEnvironment.TEST
 
 
-def test_environment_rejects_an_unknown_value() -> None:
+@pytest.fixture
+def environment_rejected_then_named() -> tuple[KsefEnvironment, Recorder]:
     recorder = Recorder(answers=["produkcja", "production"])
-
     chosen = cli.choose_environment(recorder.console)
+    return chosen, recorder
 
-    assert (chosen, "Dozwolone wartości" in recorder.transcript) == (
-        KsefEnvironment.PRODUCTION,
-        True,
-    )
+
+def test_environment_rejects_an_unknown_value(
+    environment_rejected_then_named: tuple[KsefEnvironment, Recorder],
+) -> None:
+    _, recorder = environment_rejected_then_named
+
+    assert "Podaj numer od 1 do 3 albo nazwę." in recorder.transcript
+
+
+def test_environment_still_accepts_the_name_spelled_out(
+    environment_rejected_then_named: tuple[KsefEnvironment, Recorder],
+) -> None:
+    # Backwards compatibility: GH-71 added numbers, it did not remove names.
+    chosen, _ = environment_rejected_then_named
+
+    assert chosen is KsefEnvironment.PRODUCTION
+
+
+@pytest.mark.parametrize(
+    ("answer", "expected"),
+    [
+        ("1", KsefEnvironment.TEST),
+        ("2", KsefEnvironment.DEMO),
+        ("3", KsefEnvironment.PRODUCTION),
+    ],
+)
+def test_environment_is_chosen_by_number(answer: str, expected: KsefEnvironment) -> None:
+    recorder = Recorder(answers=[answer])
+
+    assert cli.choose_environment(recorder.console) is expected
+
+
+def test_environment_list_explains_the_difference_between_test_and_demo() -> None:
+    recorder = Recorder(answers=[""])
+
+    cli.choose_environment(recorder.console)
+
+    assert "piaskownica" in recorder.transcript
+
+
+def test_environment_rejects_a_number_past_the_list() -> None:
+    recorder = Recorder(answers=["4", "1"])
+
+    assert cli.choose_environment(recorder.console) is KsefEnvironment.TEST
 
 
 def test_invoice_directory_is_created_and_reported(invoice_directory: Path) -> None:
@@ -357,6 +444,137 @@ def test_onboarding_never_prompts_without_a_keyring(
     )
 
     assert recorder.prompts == []
+
+
+@pytest.fixture
+def onboarding_with(
+    healthy_node: None,
+    usable_keyring: preflight.KeyringReport,
+    accepting_token_store: list[tuple[str, str]],
+    configuration_file: Path,
+    invoice_directory: Path,
+) -> Callable[[list[str]], Recorder]:
+    """Onboarding driven to the end, with the three closing offers answered."""
+
+    def run(closing_answers: list[str]) -> Recorder:
+        recorder = Recorder(
+            answers=[NIP, "", "", str(invoice_directory), *closing_answers],
+            secrets=[TOKEN],
+        )
+        cli.main(
+            ["onboarding"],
+            console=recorder.console,
+            working_directory=configuration_file.parent,
+            configuration_file=configuration_file,
+            home=configuration_file.parent,
+        )
+        return recorder
+
+    return run
+
+
+@pytest.fixture
+def absent_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(client, "command_available", lambda: False)
+
+
+@pytest.fixture
+def registering_client(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    registered: list[str] = []
+    monkeypatch.setattr(client, "command_available", lambda: True)
+    monkeypatch.setattr(client, "already_registered", lambda name: False)
+    monkeypatch.setattr(client, "register", lambda name: registered.append(name) or True)
+    return registered
+
+
+@pytest.fixture
+def client_already_holding_the_server(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(client, "command_available", lambda: True)
+    monkeypatch.setattr(client, "already_registered", lambda name: True)
+
+
+def test_declined_registration_leaves_the_command_to_copy(
+    onboarding_with: Callable[[list[str]], Recorder],
+) -> None:
+    recorder = onboarding_with(["n", "n", ""])
+
+    assert f"claude mcp add {SERVER_NAME}" in recorder.transcript
+
+
+def test_registration_happens_when_the_client_is_there(
+    onboarding_with: Callable[[list[str]], Recorder],
+    registering_client: list[str],
+) -> None:
+    onboarding_with(["t", "n", ""])
+
+    assert registering_client == [SERVER_NAME]
+
+
+def test_registration_is_not_repeated(
+    onboarding_with: Callable[[list[str]], Recorder],
+    client_already_holding_the_server: None,
+) -> None:
+    # Onboarding gets re-run while a setting is corrected; a second entry
+    # under the same name is exactly what that must not produce.
+    recorder = onboarding_with(["t", "n", ""])
+
+    assert "jest już zarejestrowany" in recorder.transcript
+
+
+def test_a_missing_client_hands_over_the_config_block(
+    onboarding_with: Callable[[list[str]], Recorder],
+    absent_client: None,
+) -> None:
+    recorder = onboarding_with(["t", "n", ""])
+
+    assert '"mcpServers"' in recorder.transcript
+
+
+def test_a_missing_client_names_the_command_verbatim(
+    onboarding_with: Callable[[list[str]], Recorder],
+    absent_client: None,
+) -> None:
+    recorder = onboarding_with(["t", "n", ""])
+
+    assert f"claude mcp add {SERVER_NAME} -- uvx {SERVER_NAME}" in recorder.transcript
+
+
+def test_declined_skill_install_names_the_command(
+    onboarding_with: Callable[[list[str]], Recorder],
+) -> None:
+    recorder = onboarding_with(["n", "n", ""])
+
+    assert "ksef-mcp skill install --scope user" in recorder.transcript
+
+
+def test_accepted_skill_install_writes_the_skill(
+    onboarding_with: Callable[[list[str]], Recorder],
+) -> None:
+    recorder = onboarding_with(["n", "t", ""])
+
+    assert "Skill zainstalowany" in recorder.transcript
+
+
+def test_a_run_of_enters_never_reaches_ksef(
+    onboarding_with: Callable[[list[str]], Recorder],
+    absent_client: None,
+) -> None:
+    # The whole reason the verify offer defaults to no: a corrective re-run
+    # must not spend an hourly allowance the Ministry polices (D-020).
+    recorder = onboarding_with(["", "", ""])
+
+    assert "Odpytuję KSeF" not in recorder.transcript
+
+
+def test_accepting_the_check_runs_verify(
+    onboarding_with: Callable[[list[str]], Recorder],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(cli, "run_verify", lambda console, **kwargs: cli.EXIT_OK)
+
+    recorder = onboarding_with(["n", "n", "t"])
+
+    assert "Gdy zechcesz to potwierdzić" not in recorder.transcript
 
 
 def test_onboarding_succeeds(completed_onboarding: tuple[int, Recorder]) -> None:
