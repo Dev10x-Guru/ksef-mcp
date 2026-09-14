@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
@@ -41,6 +41,17 @@ def test_a_ksef_number_reads_back_as_written() -> None:
 
 def test_a_ksef_number_carries_the_subject_it_was_issued_for() -> None:
     assert KsefNumber(VALID_NUMBER).issued_for_nip == "1234567890"
+
+
+def test_a_ksef_number_carries_the_day_it_was_assigned() -> None:
+    # Data otrzymania faktury, niezależna od momentu pobrania: nic w
+    # InvoiceMetadata jej nie niesie, więc numer jest jedynym jej źródłem.
+    assert KsefNumber(VALID_NUMBER).assigned_on == date(2026, 9, 1)
+
+
+def test_eight_digits_that_are_not_a_date_are_refused() -> None:
+    with pytest.raises(KsefRequestRejected, match="not a date"):
+        KsefNumber("1234567890-20260231-0100AB12CD34-56")
 
 
 @pytest.mark.parametrize("rejected", ["12345678", "12345678901", "123456789a"])
