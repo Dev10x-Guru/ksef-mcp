@@ -9,6 +9,7 @@ import sys
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from types import ModuleType
+from typing import Protocol
 
 import pytest
 
@@ -141,6 +142,94 @@ def test_a_finished_release_on_a_clean_number_reopens_the_next_one(
     # The state that used to start a brand-new release and silently skip the
     # reopening for good — every later wheel then matched the published one.
     assert outstanding("0.2.1", tagged=True, released=True) == "0.2.2.dev0"
+
+
+class PlanLike(Protocol):
+    """The shape of `release.Plan`, which a path-loaded module cannot export."""
+
+    version: str
+    tag: str
+    resuming: bool
+
+
+@pytest.fixture
+def plan_for(release: ModuleType, monkeypatch: pytest.MonkeyPatch) -> Callable[..., PlanLike]:
+    """The plan a tree resolves to, without git in the way."""
+
+    def resolve(
+        version: str,
+        *,
+        tagged_remotely: bool,
+        tagged_locally: bool,
+        released: bool,
+    ) -> PlanLike:
+        monkeypatch.setattr(
+            release,
+            "remote_tag_commit",
+            lambda project, *, tag: "abc123" if tagged_remotely else None,
+        )
+        monkeypatch.setattr(
+            release,
+            "local_tag_commit",
+            lambda project, *, tag: "abc123" if tagged_locally else None,
+        )
+        monkeypatch.setattr(release, "github_release_exists", lambda project, *, tag: released)
+        project = release.Project(root=Path("/nonexistent"), name="ksef-mcp", version=version)
+        return release.resolve_plan(project, kind="fixes")
+
+    return resolve
+
+
+def test_a_tree_that_lost_the_suffix_cannot_be_released(
+    release: ModuleType, plan_for: Callable[..., PlanLike]
+) -> None:
+    # Nothing was ever tagged, so no release of this number is in flight: the
+    # suffix is simply missing. Publishing here would put a number on PyPI that
+    # every wheel built from `main` already claims.
+    with pytest.raises(release.ReleaseRefused, match="bez sufiksu"):
+        plan_for("0.2.1", tagged_remotely=False, tagged_locally=False, released=False)
+
+
+def test_the_refusal_names_both_ways_back_to_the_invariant(
+    release: ModuleType, plan_for: Callable[..., PlanLike]
+) -> None:
+    with pytest.raises(release.ReleaseRefused) as refusal:
+        plan_for("0.2.1", tagged_remotely=False, tagged_locally=False, released=False)
+
+    assert "0.2.1.dev0" in str(refusal.value) and "0.2.2.dev0" in str(refusal.value)
+
+
+def test_an_interrupted_release_still_resumes(plan_for: Callable[..., PlanLike]) -> None:
+    # The clean number here is correct state, not drift: the tag is on the
+    # remote and only the GitHub release is missing. The refusal must not reach
+    # this path, or a half-published version could never be finished.
+    plan = plan_for("0.2.1", tagged_remotely=True, tagged_locally=True, released=False)
+
+    assert (plan.version, plan.tag, plan.resuming) == ("0.2.1", "v0.2.1", True)
+
+
+def test_a_reopened_tree_plans_a_fresh_release(plan_for: Callable[..., PlanLike]) -> None:
+    plan = plan_for("0.2.1.dev0", tagged_remotely=False, tagged_locally=False, released=False)
+
+    assert (plan.version, plan.tag, plan.resuming) == ("0.2.1", "v0.2.1", False)
+
+
+def test_a_finished_release_plans_the_number_after_it(plan_for: Callable[..., PlanLike]) -> None:
+    # Reached only when the reconciliation in `release()` was bypassed — the
+    # plan still has to read a finished release as "start the next one" rather
+    # than as drift, or the refusal would swallow a legitimate state.
+    plan = plan_for("0.2.1", tagged_remotely=True, tagged_locally=True, released=True)
+
+    assert (plan.version, plan.tag, plan.resuming) == ("0.2.2", "v0.2.2", False)
+
+
+def test_a_local_only_tag_keeps_its_own_refusal(
+    release: ModuleType, plan_for: Callable[..., PlanLike]
+) -> None:
+    # Both refusals answer a clean number, so the more specific one has to win:
+    # a stray local tag needs deleting or pushing, not a version bump.
+    with pytest.raises(release.ReleaseRefused, match="istnieje lokalnie"):
+        plan_for("0.2.1", tagged_remotely=False, tagged_locally=True, released=False)
 
 
 def test_releasing_twice_in_a_row_never_reuses_a_number(release: ModuleType) -> None:
