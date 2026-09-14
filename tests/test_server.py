@@ -1,4 +1,5 @@
 import sys
+from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -10,7 +11,7 @@ from mcp.types import CallToolResult, ListToolsResult
 
 from ksef_mcp import config, token_store
 from ksef_mcp.config import Configuration, KsefEnvironment
-from ksef_mcp.ksef_port import DateType, InvoiceDirection, MetadataPage, Period
+from ksef_mcp.ksef_port import DateType, InvoiceDirection, KsefNumber, MetadataPage, Period
 from ksef_mcp.listing import (
     LISTING_THRESHOLD,
     CurrencyTotal,
@@ -19,8 +20,10 @@ from ksef_mcp.listing import (
     summarise,
 )
 from ksef_mcp.metadata import SERVER_NAME, VERSION
+from ksef_mcp.review import InvoiceReview, assess
 from ksef_mcp.server import (
     InvoiceListingResult,
+    InvoiceReviewResult,
     NotConfigured,
     StatementResult,
     SynchronisationResult,
@@ -29,6 +32,7 @@ from ksef_mcp.server import (
     export_statement,
     list_invoices,
     main,
+    review_invoices,
     server,
     synchronise,
 )
@@ -142,6 +146,7 @@ async def test_every_tool_is_registered(listed_tools: ListToolsResult) -> None:
         "synchronise_invoices",
         "list_recent_invoices",
         "export_period_statement",
+        "review_new_invoices",
     ]
 
 
@@ -574,3 +579,164 @@ async def test_the_statement_tool_answers_with_a_path_but_no_invoice(composing: 
         called = await client.call_tool("export_period_statement", {"period": "2026-08"})
 
     assert called.structured_content["path"] == STATEMENT_PATH
+
+
+REVIEW_PERIOD = Period(
+    date_from=datetime(2026, 6, 16, 7, tzinfo=UTC),
+    date_to=datetime(2026, 9, 14, 7, tzinfo=UTC),
+    date_type=DateType.INVOICING,
+)
+
+LEDGER_PATH = "/dane/subjects/1234567890/test/review.json"
+
+# Numer nadany w lipcu, wykryty we wrześniu — przypadek z badania [D-025].
+LATE_NUMBER = "1234567890-20260707-0100AB12CD77-56"
+
+
+def reviewed_question(direction: InvoiceDirection) -> Question:
+    return Question(
+        nip=NIP,
+        environment=KsefEnvironment.TEST,
+        direction=direction,
+        period=REVIEW_PERIOD,
+    )
+
+
+class StubReviewer:
+    """Stands in for the comparison itself: this module's job is the tool surface."""
+
+    def __init__(self, *, port: object, cache: object, store: object) -> None:
+        self.port = port
+        self.cache = cache
+        self.store = store
+
+    def run(self, *, nip: str, token: str) -> InvoiceReview:
+        late = replace(synthetic_metadata(1), ksef_number=KsefNumber(LATE_NUMBER))
+        return InvoiceReview(
+            nip=nip,
+            environment=KsefEnvironment.TEST,
+            threshold=LISTING_THRESHOLD,
+            period=REVIEW_PERIOD,
+            ledger_path=LEDGER_PATH,
+            directions=(
+                assess(
+                    question=reviewed_question(InvoiceDirection.BUYER),
+                    invoices=(late,),
+                    reviewed=frozenset(),
+                    complete=True,
+                    moment=REVIEW_PERIOD.date_to,
+                    queried_at=REACHED,
+                    from_cache=True,
+                ),
+                assess(
+                    question=reviewed_question(InvoiceDirection.SELLER),
+                    invoices=(),
+                    reviewed=frozenset(),
+                    complete=True,
+                    moment=REVIEW_PERIOD.date_to,
+                    queried_at=REACHED,
+                    from_cache=False,
+                ),
+            ),
+        )
+
+
+@pytest.fixture
+def reviewing(monkeypatch: pytest.MonkeyPatch, with_a_token: None) -> None:
+    monkeypatch.setattr(server_module, "InvoiceReviewer", StubReviewer)
+    monkeypatch.setattr(server_module, "PeriodCache", lambda **kwargs: kwargs)
+    monkeypatch.setattr(server_module, "ReviewStore", lambda **kwargs: kwargs)
+
+
+@pytest.fixture
+def review(reviewing: None) -> InvoiceReviewResult:
+    return review_invoices()
+
+
+def test_the_review_refuses_before_onboarding(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(config, "load_configuration", lambda: None)
+
+    with pytest.raises(NotConfigured, match="ksef-mcp onboarding"):
+        review_invoices()
+
+
+def test_the_review_names_the_subject_it_acted_as(review: InvoiceReviewResult) -> None:
+    assert (review.nip, review.environment, review.threshold) == (NIP, "test", 50)
+
+
+def test_the_review_states_the_window_once(review: InvoiceReviewResult) -> None:
+    assert (review.period_from, review.period_to) == (
+        REVIEW_PERIOD.date_from.isoformat(),
+        REVIEW_PERIOD.date_to.isoformat(),
+    )
+
+
+def test_the_review_points_at_the_ledger_that_survives_the_session(
+    review: InvoiceReviewResult,
+) -> None:
+    assert review.ledger_file == LEDGER_PATH
+
+
+def test_a_new_invoice_carries_the_day_ksef_gave_it_its_number(
+    review: InvoiceReviewResult,
+) -> None:
+    # Data otrzymania, nie data pobrania i nie data wystawienia sprzedawcy.
+    row = review.subject_types[0].new_invoices[0]
+
+    assert (row.received_on, row.issue_date) == ("2026-07-07", "2026-09-01")
+
+
+def test_an_invoice_from_an_earlier_month_is_counted_as_a_signal(
+    review: InvoiceReviewResult,
+) -> None:
+    assert review.subject_types[0].earlier_month_count == 1
+
+
+def test_a_reported_invoice_is_recorded_as_shown(review: InvoiceReviewResult) -> None:
+    assert review.subject_types[0].marked_as_reviewed is True
+
+
+def test_a_subject_type_with_nothing_new_says_so(review: InvoiceReviewResult) -> None:
+    assert (review.subject_types[1].outcome, review.subject_types[1].new_count) == (
+        "nothing_new",
+        0,
+    )
+
+
+def test_the_review_says_whether_disk_answered(review: InvoiceReviewResult) -> None:
+    assert [one.from_cache for one in review.subject_types] == [True, False]
+
+
+def test_the_review_says_when_it_was_asked(review: InvoiceReviewResult) -> None:
+    assert review.subject_types[0].queried_at == REACHED.isoformat()
+
+
+def test_the_review_carries_the_gross_total_of_what_is_new(
+    review: InvoiceReviewResult,
+) -> None:
+    assert review.subject_types[0].gross_totals[0].gross == Decimal("1230.00")
+
+
+@pytest.mark.anyio
+async def test_the_review_tool_takes_no_arguments_from_the_caller(
+    listed_tools: ListToolsResult,
+) -> None:
+    tool = next(tool for tool in listed_tools.tools if tool.name == "review_new_invoices")
+
+    assert tool.input_schema.get("properties", {}) == {}
+
+
+@pytest.mark.anyio
+async def test_the_review_tool_answers_with_metadata_but_no_invoice(reviewing: None) -> None:
+    async with Client(server, raise_exceptions=True) as client:
+        called = await client.call_tool("review_new_invoices")
+
+    assert "<Faktura" not in str(called.structured_content)
+
+
+@pytest.mark.anyio
+async def test_the_review_tool_hands_back_what_is_new(reviewing: None) -> None:
+    async with Client(server, raise_exceptions=True) as client:
+        called = await client.call_tool("review_new_invoices")
+
+    assert called.structured_content["subject_types"][0]["new_count"] == 1

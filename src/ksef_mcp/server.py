@@ -6,9 +6,11 @@ from pydantic import BaseModel
 
 from ksef_mcp import config, token_store
 from ksef_mcp.archive import InvoiceArchive
+from ksef_mcp.ksef_port.types import InvoiceMetadata
 from ksef_mcp.listing import DirectionListing, InvoiceLister, InvoiceListing
 from ksef_mcp.metadata import SERVER_NAME, VERSION
 from ksef_mcp.period_cache import PeriodCache
+from ksef_mcp.review import DirectionReview, InvoiceReview, InvoiceReviewer, ReviewStore
 from ksef_mcp.statement import AccountingPeriod, Statement, StatementComposer
 from ksef_mcp.sync_store import SyncStore
 from ksef_mcp.synchronisation import SynchronisationReport, Synchroniser
@@ -347,6 +349,131 @@ def export_period_statement(
     answer, per currency, and never one figure across several of them.
     """
     return export_statement(period=period, working_directory=working_directory)
+
+
+class ReviewedInvoiceRow(InvoiceRow):
+    """An invoice row plus the day KSeF gave it its number — its date of receipt."""
+
+    received_on: str
+
+
+class DirectionReviewResult(BaseModel):
+    subject_type: str
+    outcome: str
+    message: str
+    new_invoices: list[ReviewedInvoiceRow]
+    new_count: int
+    earlier_month_count: int
+    gross_totals: list[GrossTotal]
+    complete: bool
+    marked_as_reviewed: bool
+    queried_at: str | None
+    from_cache: bool
+
+
+class InvoiceReviewResult(BaseModel):
+    nip: str
+    environment: str
+    threshold: int
+    period_from: str
+    period_to: str
+    ledger_file: str
+    subject_types: list[DirectionReviewResult]
+
+
+def reviewed_row(invoice: InvoiceMetadata) -> ReviewedInvoiceRow:
+    return ReviewedInvoiceRow(
+        ksef_number=str(invoice.ksef_number),
+        seller_invoice_number=invoice.seller_invoice_number,
+        issue_date=invoice.issue_date.isoformat(),
+        seller_nip=invoice.seller_nip,
+        seller_name=invoice.seller_name,
+        buyer_name=invoice.buyer_name,
+        gross_amount=invoice.gross_amount,
+        net_amount=invoice.net_amount,
+        vat_amount=invoice.vat_amount,
+        currency=invoice.currency,
+        received_on=invoice.ksef_number.assigned_on.isoformat(),
+    )
+
+
+def describe_review_direction(review: DirectionReview) -> DirectionReviewResult:
+    return DirectionReviewResult(
+        subject_type=str(review.question.direction),
+        outcome=str(review.outcome),
+        message=review.message,
+        new_invoices=[reviewed_row(invoice) for invoice in review.new_invoices],
+        new_count=review.new_count,
+        earlier_month_count=len(review.earlier_months),
+        gross_totals=[
+            GrossTotal(currency=total.currency, gross=total.gross) for total in review.gross_totals
+        ],
+        complete=review.complete,
+        marked_as_reviewed=review.marked,
+        queried_at=None if review.queried_at is None else review.queried_at.isoformat(),
+        from_cache=review.from_cache,
+    )
+
+
+def describe_review(review: InvoiceReview) -> InvoiceReviewResult:
+    asked = review.period
+    return InvoiceReviewResult(
+        nip=review.nip,
+        environment=str(review.environment),
+        threshold=review.threshold,
+        period_from=asked.date_from.isoformat(),
+        # Both ends are closed by construction (`review_period`), which is what
+        # lets the period cache answer a repeat of this question for free.
+        period_to=asked.date_to.isoformat(),  # type: ignore[union-attr]
+        ledger_file=review.ledger_path,
+        subject_types=[describe_review_direction(one) for one in review.directions],
+    )
+
+
+def review_invoices() -> InvoiceReviewResult:
+    from ksef_mcp.ksef_port.adapter import Ksef2Port
+
+    configuration, token = authenticated_subject()
+    reviewer = InvoiceReviewer(
+        port=Ksef2Port(environment=configuration.environment),
+        cache=PeriodCache(nip=configuration.nip, environment=configuration.environment),
+        store=ReviewStore(nip=configuration.nip, environment=configuration.environment),
+    )
+    return describe_review(reviewer.run(nip=configuration.nip, token=token))
+
+
+@server.tool()
+def review_new_invoices() -> InvoiceReviewResult:
+    """Report the invoices that have arrived since a person was last shown any.
+
+    This is the question the free Ministry application cannot answer: it lists
+    what is there, never what is new since somebody last looked. The comparison
+    is against a ledger of KSeF numbers already reported by this tool, kept on
+    disk per subject and per environment, so it survives restarts.
+
+    The window is the last ninety days, dated by acceptance in KSeF rather than
+    by the seller's issue date — an invoice issued in March and accepted
+    yesterday is new to the reader, and a window dated by issue date would not
+    contain it. Both ends are fixed, so asking again within the same hour is
+    answered from disk and spends nothing from twenty metadata queries an hour.
+
+    `received_on` per invoice is the day KSeF assigned the number, read off the
+    number itself. It is independent of when this tool fetched anything, and it
+    is not the seller's issue date, which is reported separately.
+
+    KSeF has no notion of a closed period and will not stop an invoice from
+    landing in a month already filed, so `earlier_month_count` counts the new
+    invoices whose number was assigned before the current month. That is a
+    signal to look, never a statement that an invoice belongs to any period —
+    the tax treatment is the reader's decision and this tool does not make it.
+
+    Invoices listed individually are recorded as shown, and the next call does
+    not repeat them. Above the threshold the rows are dropped, and then nothing
+    is recorded, because nobody saw them — `marked_as_reviewed` says which of
+    the two happened. Metadata only: an FA(2)/FA(3) body holds a counterparty's
+    personal data and never enters this answer.
+    """
+    return review_invoices()
 
 
 def main() -> None:

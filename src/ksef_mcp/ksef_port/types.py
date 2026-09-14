@@ -16,6 +16,8 @@ KSEF_NUMBER_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"^\d{10}-\d{8}-[0-9A-Za-z]+-[0-9A-Za-z]+$"
 )
 
+KSEF_NUMBER_DATE_FORMAT: Final[str] = "%Y%m%d"
+
 # `ksef2` enforces nothing on the date window and `ksef-client` caps it at 100
 # days client-side (D-017). Without a cap here a too-wide window comes back as
 # a server error spent from a 20-per-hour budget, so the port refuses it for
@@ -65,6 +67,17 @@ class KsefNumber:
                 f"<NIP>-<YYYYMMDD>-<identifier>-<checksum>; the seller's own "
                 f"invoice number is never a deduplication key."
             )
+        # Eight digits is not yet a date, and `assigned_on` is the only record of
+        # when an invoice reached KSeF (nothing on `InvoiceMetadata` carries it).
+        # A number stating the thirty-first of February would otherwise fail far
+        # from here, in the middle of reporting, rather than at the boundary.
+        try:
+            datetime.strptime(self.value.split("-")[1], KSEF_NUMBER_DATE_FORMAT)
+        except ValueError as impossible:
+            raise KsefRequestRejected(
+                f"KSeF number {self.value!r} states {self.value.split('-')[1]!r} "
+                f"as the day it was assigned, and that is not a date."
+            ) from impossible
 
     def __str__(self) -> str:
         return self.value
@@ -72,6 +85,17 @@ class KsefNumber:
     @property
     def issued_for_nip(self) -> str:
         return self.value.split("-")[0]
+
+    @property
+    def assigned_on(self) -> date:
+        """The day KSeF gave the invoice this number — its date of receipt.
+
+        Read off the number rather than off a fetch timestamp, because those are
+        different facts: an invoice assigned a number in July is a July arrival
+        however long it took anyone to ask for it. The number is the only place
+        this is stated; `InvoiceMetadata.issue_date` is the seller's own date.
+        """
+        return datetime.strptime(self.value.split("-")[1], KSEF_NUMBER_DATE_FORMAT).date()
 
 
 @dataclass(frozen=True)

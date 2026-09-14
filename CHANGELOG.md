@@ -12,6 +12,26 @@ udokumentowane.
 
 ### Dodane
 
+- Widać, co doszło od ostatniego spojrzenia — a nie tylko, co jest.
+  Nowe narzędzie porównuje ostatnie dziewięćdziesiąt dni z zapisem tego,
+  co już zostało pokazane, i wypisuje wyłącznie różnicę. Tego darmowa
+  Aplikacja Podatnika nie robi: pokazuje stan, nigdy przyrost. Zapis
+  jest trwały i przeżywa restart, więc pytanie zadane w poniedziałek nie
+  zaczyna liczyć od zera we wtorek ([GH-43]).
+- Faktura, która wpadła do miesiąca już rozliczonego, przestaje być
+  niewidoczna. KSeF nie zna pojęcia zamkniętego okresu i nie powstrzyma
+  takiego napływu, więc narzędzie liczy osobno te nowe faktury, które
+  numer KSeF dostały przed bieżącym miesiącem, i podaje dni ich nadania.
+  To sygnał do sprawdzenia, nie rozstrzygnięcie — o ujęciu podatkowym
+  decyduje człowiek, nie narzędzie ([GH-43]).
+- Data otrzymania faktury czytana jest z numeru KSeF, a nie z momentu,
+  w którym akurat po nią sięgnięto. Faktura z numerem nadanym w lipcu
+  jest lipcową niezależnie od tego, kiedy ktokolwiek o nią zapytał
+  ([GH-43]).
+- Powyżej progu pięćdziesięciu nowych pozycji wiersze nie są wypisywane
+  i wtedy nic nie zostaje oznaczone jako pokazane — skoro nie było ich
+  widać pojedynczo, kolejne wywołanie je powtórzy. Odpowiedź mówi to
+  wprost ([GH-43]).
 - Miesiąc da się przekazać księgowej jednym załącznikiem: nowe
   narzędzie zapisuje zestawienie faktur zakupowych za wskazany miesiąc
   jako plik CSV w zadeklarowanym katalogu roboczym. Nazwa pliku mówi,
@@ -173,6 +193,7 @@ udokumentowane.
 [GH-39]: https://github.com/Dev10x-Guru/ksef-mcp/issues/39
 [GH-40]: https://github.com/Dev10x-Guru/ksef-mcp/issues/40
 [GH-41]: https://github.com/Dev10x-Guru/ksef-mcp/issues/41
+[GH-43]: https://github.com/Dev10x-Guru/ksef-mcp/issues/43
 [GH-57]: https://github.com/Dev10x-Guru/ksef-mcp/issues/57
 
 ## 0.1.1 — 2026-09-13
