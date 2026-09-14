@@ -20,9 +20,22 @@ z ręcznym dokańczaniem publikacji — dlatego ten wznawia od miejsca,
 w którym przerwano. Wzorzec przejęty z `bin/release.sh` w bl-zebra.
 
 Z pierwowzoru w Dev10x-Claude nie przenoszą się fazy synchronizujące
-`develop` z `main`: to repozytorium ma wyłącznie `main`. Model wersji
-roboczej `.devN` również odpada — ma sens przy rozwoju równoległym do
-wydanej gałęzi, nie przy jednej.
+`develop` z `main`: to repozytorium ma wyłącznie `main`.
+
+**Sufiks `.dev0` jest znacznikiem buildów, nie modelem wydawniczym.**
+Wydań `.devN` nie publikujemy — na PyPI trafiają wyłącznie numery czyste,
+a sufiks żyje tylko w drzewie między wydaniami. Rozróżnienie jest istotne,
+bo wcześniejsza wersja tego pliku odrzucała `.devN` w całości, mieszając
+dwie różne rzeczy: model wydawniczy (równoległy rozwój dwóch gałęzi —
+tego nadal nie robimy) i rozpoznawalność paczki zbudowanej z `main`
+pomiędzy wydaniami. Bez sufiksu wheel zbudowany z `main` niesie numer
+identyczny z wydanym na PyPI i nie da się ich odróżnić, co przy diagnozie
+błędu zgłoszonego przez użytkownika kosztuje najwięcej.
+
+Stąd `main` między wydaniami niesie `X.Y.(Z+1).dev0`, a wydanie zdejmuje
+sufiks. Sufiks niesie przy okazji odpowiedź, o którą wcześniej trzeba było
+pytać zdalnego taga: numer czysty w `pyproject.toml` znaczy „wydanie tej
+wersji jest w toku", numer z sufiksem — „między wydaniami".
 
 Uruchamiaj: `bin/release.py fixes|features|major [--dry-run]`.
 
@@ -66,9 +79,64 @@ CONFIRMATION_VARIABLE = "CONFIRM_RELEASE"
 
 RELEASE_BRANCH = "main"
 
+DEVELOPMENT_SUFFIX = ".dev0"
+
+VERSION_PATTERN = re.compile(r"^(\d+)\.(\d+)\.(\d+)(\.dev\d+)?$")
+
 
 class ReleaseRefused(RuntimeError):
     pass
+
+
+@dataclass(frozen=True)
+class Version:
+    """A released number, plus whether the tree is still working towards it."""
+
+    major: int
+    minor: int
+    patch: int
+    development: bool
+
+    def __str__(self) -> str:
+        suffix = DEVELOPMENT_SUFFIX if self.development else ""
+        return f"{self.major}.{self.minor}.{self.patch}{suffix}"
+
+    @property
+    def released(self) -> str:
+        return f"{self.major}.{self.minor}.{self.patch}"
+
+
+def parse_version(text: str) -> Version:
+    matched = VERSION_PATTERN.match(text)
+    if matched is None:
+        raise ReleaseRefused(
+            f"Nie rozumiem numeru wersji `{text}`. Oczekuję X.Y.Z albo X.Y.Z.dev0."
+        )
+    major, minor, patch, development = matched.groups()
+    return Version(
+        major=int(major),
+        minor=int(minor),
+        patch=int(patch),
+        development=development is not None,
+    )
+
+
+def version_to_release(current: Version, *, kind: str) -> str:
+    # A `.dev0` already claims the next patch number, so releasing fixes from
+    # it means dropping the suffix rather than counting one higher — otherwise
+    # every release would skip a number.
+    if kind == "patch":
+        if current.development:
+            return current.released
+        return f"{current.major}.{current.minor}.{current.patch + 1}"
+    if kind == "minor":
+        return f"{current.major}.{current.minor + 1}.0"
+    return f"{current.major + 1}.0.0"
+
+
+def next_development_version(released: str) -> str:
+    major, minor, patch = (int(part) for part in released.split("."))
+    return f"{major}.{minor}.{patch + 1}{DEVELOPMENT_SUFFIX}"
 
 
 @dataclass(frozen=True)
@@ -109,12 +177,7 @@ def read_project(root: Path) -> Project:
 
 
 def next_version(project: Project, *, kind: str) -> str:
-    major, minor, patch = (int(part) for part in project.version.split("."))
-    if kind == "major":
-        return f"{major + 1}.0.0"
-    if kind == "minor":
-        return f"{major}.{minor + 1}.0"
-    return f"{major}.{minor}.{patch + 1}"
+    return version_to_release(parse_version(project.version), kind=kind)
 
 
 def local_tag_commit(project: Project, *, tag: str) -> str | None:
@@ -175,6 +238,12 @@ def resolve_plan(project: Project, *, kind: str) -> Plan:
     # PyPI i kontrolę dziennika — i wypychało numer, którego nikt nie
     # zamierzał wydać. Tag zdalny bez lokalnego też się zdarza: świeży klon
     # po awarii. Stąd trzy stany, nie dwa.
+    current = parse_version(project.version)
+    if current.development:
+        # Between releases: nothing is half-finished, because a release always
+        # ends by putting the suffix back (see `ensure_development_bump`).
+        version = next_version(project, kind=BUMP_KINDS[kind])
+        return Plan(project=project, version=version, tag=f"v{version}", resuming=False)
     in_flight = f"v{project.version}"
     published_tag = remote_tag_commit(project, tag=in_flight)
     if published_tag is not None:
@@ -445,12 +514,74 @@ def ensure_github_release(plan: Plan) -> None:
     run(["gh", "release", "create", plan.tag, "--generate-notes"], root=plan.project.root)
 
 
+def apply_development_bump(project: Project, *, development: str) -> None:
+    run(
+        ["uv", "run", "bump-my-version", "bump", "--new-version", development],
+        root=project.root,
+    )
+    run(["git", "add", "pyproject.toml", "uv.lock", ".bumpversion.toml"], root=project.root)
+    run(["git", "commit", "-m", f"🔖 Otwiera prace nad {development}"], root=project.root)
+    run(["git", "push", "origin", RELEASE_BRANCH], root=project.root)
+
+
+def ensure_development_bump(plan: Plan) -> None:
+    """Put the suffix back, so the next wheel built from `main` says so.
+
+    Runs after the release is irreversible on purpose. It changes nothing a
+    user can see and must never be able to block the publication it follows.
+    Idempotent by reading the tree rather than trusting the plan: a rerun
+    after a failed push finds the suffix already in place and does nothing.
+    """
+    if parse_version(read_project(plan.project.root).version).development:
+        return
+    apply_development_bump(plan.project, development=next_development_version(plan.version))
+
+
+def outstanding_development_bump(project: Project) -> str | None:
+    """The number `main` should have reopened on, when it never did.
+
+    Once the suffix is the invariant, a clean number in `pyproject.toml` means
+    a release of exactly that number is in flight. If that release turns out
+    to be *finished* — tag on the remote, GitHub release present — then the
+    only step left undone is the reopening bump, which runs last and is the
+    one most likely to be lost to a dropped connection.
+
+    Without this, the next run reads the finished release as "nothing in
+    flight" and starts a new one, skipping the reopening for good and leaving
+    every wheel built from `main` indistinguishable from the published
+    package — the exact thing the suffix exists to prevent (#73).
+
+    Returns None when the tree already carries a suffix, when no release of
+    the current number reached the remote, or when one is genuinely half-done
+    — that last case is a resume, which `resolve_plan` already handles.
+    """
+    current = parse_version(project.version)
+    if current.development:
+        return None
+    tag = f"v{current.released}"
+    if remote_tag_commit(project, tag=tag) is None:
+        return None
+    if not github_release_exists(project, tag=tag):
+        return None
+    return next_development_version(current.released)
+
+
 def release(*, root: Path, kind: str, dry_run: bool) -> str:
     project = read_project(root)
-    plan = resolve_plan(project, kind=kind)
     require_clean_tree(project)
     require_release_branch(project)
     require_synced_with_remote(project)
+    # Before deciding anything, settle a reopening that never landed. Doing it
+    # here rather than inside `resolve_plan` keeps that function reading the
+    # tree as it finds it, and means the plan below is computed from a version
+    # that already holds the invariant.
+    pending = outstanding_development_bump(project)
+    if pending is not None:
+        if dry_run:
+            return f"Przebieg próbny: najpierw domknięcie {project.version} → {pending}."
+        apply_development_bump(project, development=pending)
+        project = read_project(root)
+    plan = resolve_plan(project, kind=kind)
     require_unpublished_version(plan)
     require_described_changes(plan)
     if dry_run:
@@ -462,6 +593,7 @@ def release(*, root: Path, kind: str, dry_run: bool) -> str:
     ensure_tag(plan)
     ensure_pushed(plan)
     ensure_github_release(plan)
+    ensure_development_bump(plan)
     return f"Wydano {project.name} {plan.version}. Tag {plan.tag} wypchnięty."
 
 
