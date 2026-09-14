@@ -1,9 +1,12 @@
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Final
 
 from mcp.server import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import BaseModel
 
 from ksef_mcp import config, token_store
@@ -17,6 +20,7 @@ from ksef_mcp.audit import (
     Disclosure,
     token_basis,
 )
+from ksef_mcp.ksef_port.errors import KsefPortError
 from ksef_mcp.ksef_port.types import InvoiceMetadata, Period
 from ksef_mcp.listing import DirectionListing, InvoiceLister, InvoiceListing
 from ksef_mcp.metadata import SERVER_NAME, VERSION
@@ -72,6 +76,31 @@ class SynchronisationResult(BaseModel):
 
 class NotConfigured(RuntimeError):
     pass
+
+
+@contextmanager
+def reported(operation: str) -> Iterator[None]:
+    """Name the failure to the caller instead of letting the SDK swallow it.
+
+    An exception the SDK does not recognise as anticipated reaches the client as
+    a bare `Error executing tool <name>` and its text stays in a stderr the
+    caller cannot see — which is how a schema mismatch in the limits response
+    looked like a dead server (GH-76). `ToolError` is the SDK's channel for a
+    failure we saw coming, so the reason travels with it.
+
+    Only port errors and a missing configuration pass through here. Anything
+    else is a genuine crash and keeps the generic message, because its text was
+    never written with a reader in mind. Port messages are: they name the
+    subject's problem without the NIP, the token or a line of invoice XML.
+    """
+    try:
+        yield
+    except NotConfigured as error:
+        raise ToolError(
+            f"{operation} needs configuration first. Run `ksef-mcp onboarding`. ({error})"
+        ) from error
+    except KsefPortError as error:
+        raise ToolError(f"{operation} could not finish. {error}") from error
 
 
 @server.tool()
@@ -244,7 +273,8 @@ def synchronise_invoices() -> SynchronisationResult:
     returns invoice content: an FA(2)/FA(3) document holds a counterparty's
     personal data, and reading one means opening the file this tool names.
     """
-    return synchronise()
+    with reported(SYNCHRONISATION_OPERATION):
+        return synchronise()
 
 
 class InvoiceRow(BaseModel):
@@ -404,7 +434,8 @@ def list_recent_invoices() -> InvoiceListingResult:
     Metadata only. An FA(2)/FA(3) body holds a counterparty's personal data and
     is third-party input; it never enters this answer.
     """
-    return list_invoices()
+    with reported(LISTING_OPERATION):
+        return list_invoices()
 
 
 class StatementResult(BaseModel):
@@ -538,7 +569,8 @@ def export_period_statement(
     between fields, which is what a Polish spreadsheet expects. Sums are in this
     answer, per currency, and never one figure across several of them.
     """
-    return export_statement(period=period, working_directory=working_directory)
+    with reported(STATEMENT_OPERATION):
+        return export_statement(period=period, working_directory=working_directory)
 
 
 class ReviewedInvoiceRow(InvoiceRow):
@@ -704,7 +736,8 @@ def review_new_invoices() -> InvoiceReviewResult:
     the two happened. Metadata only: an FA(2)/FA(3) body holds a counterparty's
     personal data and never enters this answer.
     """
-    return review_invoices()
+    with reported(REVIEW_OPERATION):
+        return review_invoices()
 
 
 def main() -> None:

@@ -252,3 +252,7 @@ class SessionCeilings:
 class KsefLimits:
     rates: RateLimits
     ceilings: SessionCeilings
+    # True when KSeF answered about limits in a shape we could not read and the
+    # conservative fallback is in force. The counter still refuses at the
+    # ceiling — this only says the ceiling is assumed rather than granted.
+    degraded: bool = False
