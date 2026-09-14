@@ -1,0 +1,377 @@
+"""Where invoices land, and why the file name is the whole invariant.
+
+`WpisArchiwum` is the only aggregate, its identity is the KSeF number, and the
+invariant — the same invoice is not stored twice — has no transaction to live
+in. On a filesystem `rename(2)` inside one directory is the only atomic
+primitive there is, so the invariant is enforced by writing `<KSeF number>.xml`
+through a staging file and renaming it into place (D-006). Two runs carrying
+the same invoice converge on one file because they derive the same name, not
+because a set in memory told them to.
+
+The name comes from `_metadata.json`, never from the entry name inside the
+package and never from reading the invoice. A script that guessed from file
+names reported ten and then seven missing invoices where four were missing;
+the manifest carries the KSeF numbers, so it is the input to deduplication
+rather than a substitute for it (D-005, #38).
+
+Each subject gets its own subdirectory, per environment, because a shared one
+is the main vector for mixing an accounting office's clients (D-032, D-034).
+The deduplication index is a separate file from the invoices it describes, and
+that separation is what lets the retention command delete invoice bodies
+without the next synchronisation fetching every one of them again (D-034).
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, replace
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Final
+
+from platformdirs import user_data_path
+
+from ksef_mcp.config import KsefEnvironment
+from ksef_mcp.ksef_port.errors import KsefRequestRejected
+from ksef_mcp.ksef_port.types import KsefNumber
+from ksef_mcp.metadata import SERVER_NAME
+from ksef_mcp.package import ExportPackage
+from ksef_mcp.sync_store import SUBJECT_DIRECTORY
+
+INVOICE_DIRECTORY: Final[str] = "invoices"
+
+INDEX_FILE: Final[str] = "deduplication.json"
+
+INVOICE_SUFFIX: Final[str] = ".xml"
+
+STAGING_SUFFIX: Final[str] = ".tmp"
+
+SCHEMA_VERSION: Final[int] = 1
+
+ARCHIVE_DIRECTORY_MODE: Final[int] = 0o700
+
+# Invoice bodies carry a contractor's personal data (D-011), so the files are
+# created with their final mode rather than written and then tightened.
+ARCHIVE_FILE_MODE: Final[int] = 0o600
+
+# The manifest is written by KSeF, and the spellings below are the ones seen in
+# the wild. Reading several costs nothing; guessing the KSeF number from the
+# package's own file names when none of them is present would cost correctness.
+INVOICE_LIST_KEYS: Final[tuple[str, ...]] = ("invoices", "faktury")
+
+KSEF_NUMBER_KEYS: Final[tuple[str, ...]] = ("ksefNumber", "ksef_number", "numerKSeF")
+
+FILE_NAME_KEYS: Final[tuple[str, ...]] = ("fileName", "file_name", "nazwaPliku")
+
+
+class ArchiveMetadataUnusable(RuntimeError):
+    """`_metadata.json` does not say which invoice is which.
+
+    Raised before a single file is written, so the pending export keeps its key
+    and the same package can be archived again once the manifest is understood.
+    Never carries invoice content: the message is logged, and FA(2)/FA(3) XML
+    holds personal data (D-011).
+    """
+
+
+class ArchiveIndexUnreadable(RuntimeError):
+    """The deduplication index was written by something this build cannot read."""
+
+
+@dataclass(frozen=True)
+class InvoiceIdentity:
+    """One line of the manifest: which entry of the package is which invoice."""
+
+    ksef_number: KsefNumber
+    file_name: str
+
+
+@dataclass(frozen=True)
+class IndexEntry:
+    """A KSeF number this subject has held, and the digest of what was held.
+
+    Kept apart from the invoice it describes on purpose. The entry outlives a
+    deleted body, so retention frees the disk without costing idempotence
+    (D-005, D-034).
+    """
+
+    ksef_number: str
+    content_hash: str
+    archived_at: datetime
+
+
+@dataclass(frozen=True)
+class DeduplicationIndex:
+    entries: tuple[IndexEntry, ...] = ()
+
+    @property
+    def known(self) -> frozenset[str]:
+        return frozenset(entry.ksef_number for entry in self.entries)
+
+    def with_entry(self, entry: IndexEntry) -> DeduplicationIndex:
+        return replace(self, entries=(*self.entries, entry))
+
+
+@dataclass(frozen=True)
+class ArchiveReport:
+    """What is safe to say out loud once the package is on disk — paths, never bodies."""
+
+    directory: str
+    index_path: str
+    archived: tuple[str, ...]
+    already_held: tuple[str, ...]
+
+
+def now_utc() -> datetime:
+    return datetime.now(tz=UTC)
+
+
+def digest_of(content: bytes) -> str:
+    return hashlib.sha256(content).hexdigest()
+
+
+def _stated(entry: Mapping[str, object], *, keys: tuple[str, ...]) -> object | None:
+    return next((entry[key] for key in keys if key in entry), None)
+
+
+def _listed(document: object) -> list[object]:
+    if isinstance(document, list):
+        return document
+    if isinstance(document, dict):
+        invoices = _stated(document, keys=INVOICE_LIST_KEYS)
+        if isinstance(invoices, list):
+            return invoices
+    raise ArchiveMetadataUnusable(
+        f"_metadata.json holds no list of invoices under any of "
+        f"{list(INVOICE_LIST_KEYS)}, so it names no KSeF number. Refusing to "
+        f"deduplicate on the package's own file names instead (D-005)."
+    )
+
+
+def _identity(entry: object) -> InvoiceIdentity:
+    if not isinstance(entry, dict):
+        raise ArchiveMetadataUnusable(
+            f"An entry of _metadata.json is {type(entry).__name__}, not an "
+            f"object, so it pairs no KSeF number with a file in the package."
+        )
+    number = _stated(entry, keys=KSEF_NUMBER_KEYS)
+    if number is None:
+        raise ArchiveMetadataUnusable(
+            f"An entry of _metadata.json carries no KSeF number under any of "
+            f"{list(KSEF_NUMBER_KEYS)}. That number is the identity of the "
+            f"archived invoice and nothing else can stand in for it."
+        )
+    file_name = _stated(entry, keys=FILE_NAME_KEYS)
+    if file_name is None:
+        raise ArchiveMetadataUnusable(
+            f"_metadata.json states KSeF number {number!r} without naming the "
+            f"file that carries it under any of {list(FILE_NAME_KEYS)}. Pairing "
+            f"them by position would archive one invoice under another's number."
+        )
+    try:
+        return InvoiceIdentity(ksef_number=KsefNumber(str(number)), file_name=str(file_name))
+    except KsefRequestRejected as rejection:
+        raise ArchiveMetadataUnusable(
+            f"_metadata.json offers {number!r} as a KSeF number: {rejection}"
+        ) from rejection
+
+
+def identities(metadata: bytes | None) -> tuple[InvoiceIdentity, ...]:
+    """Read the manifest into number/file pairs, or refuse to archive at all."""
+    if metadata is None:
+        raise ArchiveMetadataUnusable(
+            "The package carries no _metadata.json, and that manifest is the "
+            "only place a KSeF number comes from. Archiving by the package's "
+            "own file names would deduplicate on a name we do not control."
+        )
+    try:
+        document = json.loads(metadata)
+    except json.JSONDecodeError as error:
+        raise ArchiveMetadataUnusable(
+            f"_metadata.json is not JSON: {error.msg} at position {error.pos}."
+        ) from error
+    return tuple(_identity(entry) for entry in _listed(document))
+
+
+def _encode_index(
+    index: DeduplicationIndex,
+    *,
+    nip: str,
+    environment: KsefEnvironment,
+) -> dict[str, object]:
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "nip": nip,
+        "environment": str(environment),
+        "entries": [
+            {
+                "ksef_number": entry.ksef_number,
+                "content_hash": entry.content_hash,
+                "archived_at": entry.archived_at.isoformat(),
+            }
+            for entry in index.entries
+        ],
+    }
+
+
+def _decode_index(document: dict[str, object]) -> DeduplicationIndex:
+    found = document["schema_version"]
+    if found != SCHEMA_VERSION:
+        raise ArchiveIndexUnreadable(
+            f"The deduplication index is schema {found}, this build reads "
+            f"{SCHEMA_VERSION}. Refusing to guess: a misread index fetches "
+            f"invoices already held, or hides ones never fetched."
+        )
+    entries: list[dict[str, object]] = document["entries"]  # type: ignore[assignment]
+    return DeduplicationIndex(
+        entries=tuple(
+            IndexEntry(
+                ksef_number=str(entry["ksef_number"]),
+                content_hash=str(entry["content_hash"]),
+                archived_at=datetime.fromisoformat(str(entry["archived_at"])),
+            )
+            for entry in entries
+        )
+    )
+
+
+@dataclass(frozen=True)
+class InvoiceArchive:
+    """One subject's invoices in their own directory, with the index beside them."""
+
+    nip: str
+    environment: KsefEnvironment
+    root: Path | None = None
+    clock: Callable[[], datetime] = now_utc
+
+    @property
+    def directory(self) -> Path:
+        # The data directory, never the cache one: a disk cleaner honouring the
+        # cache convention would delete the archive the Ministry expects local
+        # business operations to run against (D-030, D-032).
+        base = user_data_path(appname=SERVER_NAME) if self.root is None else self.root
+        return base / SUBJECT_DIRECTORY / self.nip / str(self.environment)
+
+    @property
+    def invoice_directory(self) -> Path:
+        return self.directory / INVOICE_DIRECTORY
+
+    @property
+    def index_path(self) -> Path:
+        return self.directory / INDEX_FILE
+
+    def load_index(self) -> DeduplicationIndex:
+        if not self.index_path.is_file():
+            return DeduplicationIndex()
+        return _decode_index(json.loads(self.index_path.read_text(encoding="utf-8")))
+
+    def store(self, *, package: ExportPackage) -> ArchiveReport:
+        """Write every invoice the manifest names, once, and record that it was held."""
+        wanted = identities(package.metadata)
+        bodies = {document.name: document.content for document in package.documents}
+        self._reconciled(wanted=wanted, bodies=bodies, reference=package.reference)
+        index = self.load_index()
+        held = index.known
+        archived: list[str] = []
+        already_held: list[str] = []
+        self.invoice_directory.mkdir(mode=ARCHIVE_DIRECTORY_MODE, parents=True, exist_ok=True)
+        for identity in wanted:
+            number = str(identity.ksef_number)
+            if number in held:
+                already_held.append(number)
+                continue
+            content = bodies[identity.file_name]
+            written = self._written(number=number, content=content)
+            (archived if written else already_held).append(number)
+            index = index.with_entry(
+                IndexEntry(
+                    ksef_number=number,
+                    content_hash=digest_of(content),
+                    archived_at=self.clock(),
+                )
+            )
+        self._save_index(index)
+        return ArchiveReport(
+            directory=str(self.invoice_directory),
+            index_path=str(self.index_path),
+            archived=tuple(archived),
+            already_held=tuple(already_held),
+        )
+
+    def _reconciled(
+        self,
+        *,
+        wanted: tuple[InvoiceIdentity, ...],
+        bodies: Mapping[str, bytes],
+        reference: str,
+    ) -> None:
+        named = {identity.file_name for identity in wanted}
+        absent = sorted(name for name in named if name not in bodies)
+        if absent:
+            raise ArchiveMetadataUnusable(
+                f"_metadata.json of export {reference} names {absent[0]!r}, which "
+                f"the package does not carry. Refusing to archive a package that "
+                f"does not match its own manifest."
+            )
+        unnamed = sorted(name for name in bodies if name not in named)
+        if unnamed:
+            raise ArchiveMetadataUnusable(
+                f"Export {reference} carries {unnamed[0]!r}, which its "
+                f"_metadata.json does not name. Storing it would need a KSeF "
+                f"number nobody stated, and skipping it would lose an invoice."
+            )
+
+    def _written(self, *, number: str, content: bytes) -> bool:
+        # The KSeF number is validated as `<NIP>-<date>-<id>-<checksum>`, so it
+        # holds neither a separator nor a dot and cannot reach out of the
+        # directory or swallow the suffix below.
+        target = self.invoice_directory / f"{number}{INVOICE_SUFFIX}"
+        if target.exists():
+            # Never a silent overwrite (#38). The file name is the identity, so
+            # whatever is already there is this very invoice — it is reported as
+            # already held rather than replaced.
+            return False
+        staging = target.with_suffix(STAGING_SUFFIX)
+        descriptor = os.open(staging, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, ARCHIVE_FILE_MODE)
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        staging.chmod(ARCHIVE_FILE_MODE)
+        # The rename is the guardian of the invariant (D-006): a crash mid-write
+        # leaves a staging file nobody reads, never half an invoice under a name
+        # that claims to be a whole one.
+        os.replace(staging, target)
+        return True
+
+    def _save_index(self, index: DeduplicationIndex) -> None:
+        self.directory.mkdir(mode=ARCHIVE_DIRECTORY_MODE, parents=True, exist_ok=True)
+        document = _encode_index(index, nip=self.nip, environment=self.environment)
+        staging = self.index_path.with_suffix(STAGING_SUFFIX)
+        descriptor = os.open(staging, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, ARCHIVE_FILE_MODE)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(document, indent=2, ensure_ascii=False) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        staging.chmod(ARCHIVE_FILE_MODE)
+        os.replace(staging, self.index_path)
+
+
+@dataclass
+class PackageArchivist:
+    """Adapts the archive to `PackageRetriever.archive`, and keeps what it reported.
+
+    The retriever takes the archivist as an argument so the export key is
+    dropped inside the same operation that stored the invoices (D-033), and its
+    callback returns nothing. The report is still worth having, so it is kept
+    here rather than thrown away at the call boundary.
+    """
+
+    archive: InvoiceArchive
+    report: ArchiveReport | None = None
+
+    def __call__(self, package: ExportPackage) -> None:
+        self.report = self.archive.store(package=package)

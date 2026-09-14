@@ -76,10 +76,29 @@ udokumentowane.
   którejkolwiek części — nie jest rozpakowywana. Nie trafi też do
   archiwum plik, którego nazwa wskazuje poza paczkę ([GH-37]).
 
+- Faktury z pobranej paczki lądują w archiwum pod numerem KSeF —
+  `<NumerKSeF>.xml` — w podkatalogu osobnym dla każdego podmiotu i
+  środowiska. Biuro rachunkowe nie pomiesza więc faktur dwóch klientów,
+  a plik da się przekazać i zaimportować bez zgadywania, co w nim jest
+  ([GH-38]).
+- Powtórzona synchronizacja tego samego okresu nie tworzy duplikatów.
+  Rozpoznanie idzie po numerze KSeF z manifestu paczki, nie po nazwie
+  pliku — nazwy potrafiły dawać fałszywe wyniki, numer nie ([GH-38]).
+- Faktura już zapisana nie jest po cichu nadpisywana: narzędzie mówi
+  wprost, których numerów już nie pobierało ponownie ([GH-38]).
+- Pamięć o tym, co już pobrano, leży w osobnym pliku obok faktur.
+  Podatnik może więc skasować same faktury — dla oszczędności miejsca
+  albo z powodów ochrony danych — a kolejna synchronizacja i tak nie
+  ściągnie ich po raz drugi ([GH-38]).
+- Paczka, której manifest nie wiąże numeru KSeF z plikiem, nie jest
+  archiwizowana wcale, zamiast trafić do archiwum pod zgadniętą nazwą
+  ([GH-38]).
+
 [GH-33]: https://github.com/Dev10x-Guru/ksef-mcp/issues/33
 [GH-34]: https://github.com/Dev10x-Guru/ksef-mcp/issues/34
 [GH-35]: https://github.com/Dev10x-Guru/ksef-mcp/issues/35
 [GH-37]: https://github.com/Dev10x-Guru/ksef-mcp/issues/37
+[GH-38]: https://github.com/Dev10x-Guru/ksef-mcp/issues/38
 
 ## 0.1.1 — 2026-09-13
 
