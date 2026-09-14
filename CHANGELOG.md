@@ -10,6 +10,139 @@ udokumentowane.
 
 ## Bez wydania
 
+Wydanie 0.2.0 sprowadzało faktury na dysk, ale zostawiało podatnika
+z XML-em. To wydanie domyka drogę do dokumentu: faktura otwiera się
+jako PDF wygenerowany oficjalnym modułem Ministerstwa Finansów,
+bez sieci i bez wydawania godzinowego budżetu KSeF. Obok tego
+narzędzie zaczyna działać na produkcji — odczyt limitów wywracał tam
+wszystkie cztery narzędzia liczące budżet — a pierwsze uruchomienie
+prowadzi od instalacji do pierwszego pytania, zamiast kończyć się
+instrukcją do przepisania.
+
+### Dodane
+
+- Narzędzie `render_invoice_pdf` otwiera fakturę jako dokument, nie
+  jako dane. Z badania person, dosłownie: „XML to dla mnie nie jest
+  faktura". PDF powstaje oficjalnym generatorem Ministerstwa Finansów
+  uruchamianym pod Node, wyłącznie z tego, co archiwum już trzyma:
+  zero zapytań do KSeF, zero z dwudziestu na godzinę, działa bez
+  sieci. Faktura niezsynchronizowana jest odmawiana, nie dociągana —
+  inaczej odpowiedź zależałaby od budżetu, którego pytający nie widzi
+  ([GH-42]).
+- Brak Node to degradacja, nie awaria: komunikat mówi, co
+  zainstalować, i wymienia to, co działa dalej — XML, CSV, listę.
+  Wersja Node rozjechana z `.node-version` czytana jest wprost jako
+  brak `fnm env` w profilu powłoki ([GH-42]).
+- Generator jedzie w dystrybucji jako zwendorowany bundel spod portalu
+  MF, z sumą SHA-256 zapisaną obok pliku i notą licencyjną MIT.
+  Osobny test pilnuje tej sumy, żeby cicha podmiana bundla nie
+  przeszła niezauważona ([GH-42]).
+- Onboarding prowadzi podatnika od instalacji do pierwszego pytania:
+  środowisko wybiera się numerem z listy z opisem różnicy między test
+  a demo, a rejestracja serwera w kliencie MCP i instalacja skilla są
+  proponowane na miejscu, zamiast zostawać jako cztery kroki do
+  wykonania poza narzędziem ([GH-25], [GH-71], [GH-72], [GH-74]).
+- Zestawienie CSV niesie kolumnę „Waluta" tuż za kwotami, które
+  opisuje. Miesiąc z fakturą w euro obok złotówkowej dawał dotąd
+  w pliku kwoty nie do odróżnienia — a to plik, nie odpowiedź
+  narzędzia, księgowa dostaje mailem ([GH-63]).
+- `doctor` wypisuje dystrybucję, wersję, ścieżkę wykonywalną, podmiot
+  i środowisko. Przy dwóch skryptach o tej samej nazwie ścieżka jest
+  jedyną rozstrzygającą odpowiedzią, a podmiot i środowisko to jedyne
+  darmowe miejsce, gdzie da się je sprawdzić — `verify` wydaje na to
+  wywołanie do KSeF ([GH-75]).
+- D-037 zbiera w jednym miejscu rozjazdy między decyzjami a
+  wykonaniem, rozsiane dotąd po sześciu zgłoszeniach i czterech
+  ADR-ach ([GH-70]).
+
+### Zmienione
+
+- Onboarding domyślnie wskazuje środowisko testowe, więc seria
+  Enterów nigdy nie ląduje na produkcji. Sprawdzenie połączenia jest
+  proponowane na końcu, ale domyślnie odrzucane: przebieg poprawkowy
+  nie może wydawać godzinowego budżetu. Nazwy środowisk wpisane
+  słownie nadal działają ([GH-25]).
+- Zestawienie CSV ma dziesięć kolumn zamiast dziewięciu. Ostrzeżenie
+  o wielu walutach przepisane, bo mówiło nieprawdę — plik walutę
+  teraz nazywa; niezmienne zostaje to, że suma całej kolumny Brutto
+  wciąż dodawałaby waluty do siebie ([GH-63]).
+- Numer wersji na `main` między wydaniami niesie sufiks
+  `X.Y.(Z+1).dev0`, więc paczka zbudowana z gałęzi jest odróżnialna od
+  tej, która poszła na PyPI. Wydanie zdejmuje sufiks, żaden numer nie
+  jest pomijany, a na PyPI nadal trafiają numery czyste ([GH-73]).
+
+### Poprawione
+
+- Na produkcji nie działało nic, co liczy budżet. KSeF odpowiada tam
+  na `GET /v2/rate-limits` bez pola, którego model wymaga, więc odczyt
+  limitów wywracał się na walidacji i pociągał za sobą wszystkie
+  cztery narzędzia. Nieczytelna odpowiedź degraduje się teraz do
+  wartości zachowawczych zamiast przerywać operację, a `verify`
+  przechodził wcześniej, bo limitów nie czyta — jego zielony wynik
+  nigdy nie dowodził sprawności narzędzi MCP ([GH-76], [GH-70]).
+- Narzędzia MCP tłumaczą błędy na `ToolError`, bo SDK ukrywa treść
+  wyjątków nieprzewidzianych — stąd gołe „Error executing tool"
+  zamiast przyczyny ([GH-76]).
+- CI przestaje przepuszczać zepsute renderowanie: filtr ścieżek
+  obejmuje cały `src/**` wraz z shimem i bundlem, a runner dostaje
+  Node w wersji z `.node-version`. Bez tego testy renderu pomijały
+  się, a bieg świecił się na zielono dokładnie dlatego, że
+  najważniejszy test się nie wykonał ([GH-42]).
+- `bin/release.py` odmawia wydania numeru, który nosi już każdy wheel
+  zbudowany z `main` — czysty numer bez taga lokalnego i zdalnego jest
+  odtąd stanem do naprawienia, nie zaproszeniem do publikacji.
+  Odmowa nazywa obie drogi powrotu ([GH-78]).
+
+### Bezpieczeństwo
+
+- **Numer faktury nie wyprowadza już zapisu poza archiwum.** Numer
+  KSeF przychodzi od wywołującego i staje się nazwą pliku po obu
+  stronach renderu, a walidacja liczyła jedynie człony rozdzielone
+  myślnikiem — więc `../../../../tmp/x-20260817-y-56` przechodziła.
+  Numer idzie teraz przez zakotwiczony wzorzec portu, bez ukośnika
+  i kropki w alfabecie ([GH-42]).
+- **PDF powstaje pod nazwą tymczasową i trafia na miejsce dopiero po
+  `chmod 0600`.** Node tworzył go pod umaskiem procesu, więc dokument
+  z danymi kontrahenta bywał chwilę czytelny dla innych kont na
+  maszynie ([GH-42]).
+- Komunikat generatora jest ucinany do 200 znaków, a docstring
+  narzędzia mówi wprost, że próbę przeszło wyłącznie FA(3) ([GH-42]).
+- Link weryfikacyjny drukowany jest tylko na produkcji. Test i demo
+  nie mają powierzchni weryfikacyjnej, a zmyślony adres wydrukowałby
+  na dokumencie odsyłacz donikąd ([GH-42]).
+- **Wartości awaryjne limitów są realnymi liczbami, nie `None`.**
+  Licznik budżetu czyta brak sufitu jako brak ograniczenia i przestaje
+  odmawiać, więc `None` wyłączyłby po cichu ochronę przed limitem
+  Ministerstwa ([GH-76]).
+- **Współpracownik z forka dostaje ten sam przegląd co wszyscy, bez
+  wystawiania sekretów.** GitHub nie wydaje tokenu OIDC dla zdarzenia
+  `pull_request` z forka, więc oba przeglądy były dla forków pomijane.
+  Przeglądy przechodzą na `workflow_run` w kontekście repozytorium
+  bazowego; uprzywilejowany workflow pobiera gałąź bazową, nigdy head
+  PR-a, a numer zgłoszenia wiązany jest z `head_sha`, którego
+  zgłaszający nie kontroluje. `pull_request_target` odrzucony
+  świadomie ([GH-6]).
+- **README otwiera się ostrzeżeniem o niepowiązanym projekcie o tej
+  samej nazwie**, który wystawia zdalny serwer MCP pod
+  `https://ksef-mcp.pl/mcp`. Tam faktury i uwierzytelnienie
+  przechodzą przez cudzą usługę. Rozpoznawalny objaw podany wprost:
+  ten serwer działa lokalnie i o nic nie pyta w przeglądarce
+  ([GH-75]).
+- Testy `doctor` dostają jawną ścieżkę konfiguracji — dotąd sięgały do
+  prawdziwej konfiguracji osoby uruchamiającej zestaw ([GH-75]).
+
+[GH-6]: https://github.com/Dev10x-Guru/ksef-mcp/issues/6
+[GH-25]: https://github.com/Dev10x-Guru/ksef-mcp/issues/25
+[GH-63]: https://github.com/Dev10x-Guru/ksef-mcp/issues/63
+[GH-70]: https://github.com/Dev10x-Guru/ksef-mcp/issues/70
+[GH-71]: https://github.com/Dev10x-Guru/ksef-mcp/issues/71
+[GH-72]: https://github.com/Dev10x-Guru/ksef-mcp/issues/72
+[GH-73]: https://github.com/Dev10x-Guru/ksef-mcp/issues/73
+[GH-74]: https://github.com/Dev10x-Guru/ksef-mcp/issues/74
+[GH-75]: https://github.com/Dev10x-Guru/ksef-mcp/issues/75
+[GH-76]: https://github.com/Dev10x-Guru/ksef-mcp/issues/76
+[GH-78]: https://github.com/Dev10x-Guru/ksef-mcp/issues/78
+
 ## 0.2.0 — 2026-09-14
 
 
