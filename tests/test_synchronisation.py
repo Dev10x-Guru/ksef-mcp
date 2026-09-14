@@ -507,6 +507,16 @@ def test_a_refused_export_is_kept_under_its_reference(store: SyncStore, naps: li
     ]
 
 
+def test_a_refused_export_does_not_keep_its_key(store: SyncStore, naps: list[float]) -> None:
+    # The export is over, so the key opens nothing. Leaving it on disk would be
+    # exactly the entry nobody ever cleans up that D-033 refuses.
+    session = ScriptedSession(statuses=[failed()], limits=allowances())
+
+    a_synchroniser(session=session, store=store, naps=naps).run(nip=NIP, token=TOKEN)
+
+    assert [export.encryption for export in store.load().pending] == [None, None]
+
+
 def test_a_ready_package_without_a_continuation_marker_does_not_move_the_point(
     store: SyncStore, naps: list[float]
 ) -> None:

@@ -24,6 +24,7 @@ from ksef_mcp.ksef_port import (
 from ksef_mcp.sync_store import (
     SCHEMA_VERSION,
     DirectionState,
+    ExportKeyDiscarded,
     PendingExport,
     SyncState,
     SyncStateUnreadable,
@@ -247,6 +248,63 @@ def test_a_queued_export_hands_back_the_handle_the_port_needs(queued: PendingExp
 
 def test_the_handle_carries_the_key_the_package_was_minted_with(queued: PendingExport) -> None:
     assert queued.handle.encryption.key == b"k" * 32
+
+
+def test_dropping_an_export_leaves_the_continuation_points_alone(
+    populated: SyncState,
+) -> None:
+    assert populated.without_export(reference="EXP-1").directions == populated.directions
+
+
+def test_a_dropped_export_is_gone_from_the_record(populated: SyncState) -> None:
+    # Archiving drops the record, and the key goes with it (D-033).
+    assert populated.without_export(reference="EXP-1").pending == ()
+
+
+def test_dropping_an_export_nobody_recorded_changes_nothing(populated: SyncState) -> None:
+    assert populated.without_export(reference="EXP-innego") == populated
+
+
+def spent(queued: PendingExport) -> PendingExport:
+    return PendingExport(
+        reference=queued.reference,
+        direction=queued.direction,
+        started_at=queued.started_at,
+        encryption=None,
+        state=ExportState.FAILED,
+    )
+
+
+def test_an_export_without_a_key_survives_the_round_trip(
+    store: SyncStore, queued: PendingExport
+) -> None:
+    store.save(SyncState(pending=(spent(queued),)))
+
+    assert store.load().pending[0].encryption is None
+
+
+def test_an_export_without_a_key_still_writes_the_field(
+    store: SyncStore, queued: PendingExport
+) -> None:
+    # `null` rather than an absent field: a record missing the key reads as
+    # deliberate, not as a document somebody truncated.
+    store.save(SyncState(pending=(spent(queued),)))
+
+    assert (
+        json.loads(store.path.read_text(encoding="utf-8"))["pending_exports"][0]
+        | {
+            "encryption_key": None,
+            "initialisation_vector": None,
+        }
+        == json.loads(store.path.read_text(encoding="utf-8"))["pending_exports"][0]
+    )
+
+
+def test_asking_a_finished_export_for_its_handle_says_the_key_is_gone(
+    queued: PendingExport,
+) -> None:
+    with pytest.raises(ExportKeyDiscarded, match="carries no key"):
+        spent(queued).handle  # noqa: B018
 
 
 def test_an_attempt_is_recorded_with_its_timestamp() -> None:

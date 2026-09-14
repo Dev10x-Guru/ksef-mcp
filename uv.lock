@@ -404,6 +404,7 @@ name = "ksef-mcp"
 version = "0.1.1"
 source = { editable = "." }
 dependencies = [
+    { name = "cryptography" },
     { name = "keyring" },
     { name = "ksef2" },
     { name = "mcp" },
@@ -422,6 +423,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "cryptography", specifier = "==50.0.1" },
     { name = "keyring", specifier = "==25.7.0" },
     { name = "ksef2", specifier = "==0.19.0" },
     { name = "mcp", specifier = "==2.2.0" },

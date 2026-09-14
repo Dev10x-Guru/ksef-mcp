@@ -12,6 +12,15 @@ udokumentowane.
 
 ### Dodane
 
+- Gotowa paczka eksportu jest odczytywana do końca: części pobierane
+  z osobnych adresów, odszyfrowane kluczem AES-256 z inicjalizacji,
+  złożone i rozpakowane. Podatnik dostaje faktury, a nie zaszyfrowany
+  ZIP w kawałkach ([GH-37]).
+- Nieudane pobranie którejkolwiek części nie przybliża okresu do
+  „kompletnego" — paczka zostaje zapisana razem z kluczem i dokańcza ją
+  kolejny przebieg, bez wydawania drugiego z dwudziestu eksportów na
+  godzinę ([GH-37]).
+
 - Komenda `ksef-mcp skill install --scope user|project` zapisująca skill dla
   Claude Code, dzięki czemu agent od razu wie, jak korzystać z serwera:
   że odpowiada z lokalnego archiwum, że synchronizacja ma własny rytm, że
@@ -57,9 +66,20 @@ udokumentowane.
   archiwum z ewidencją nie pokaże już różnicy o grosz, której nie ma
   ([GH-35]).
 
+### Bezpieczeństwo
+
+- Klucz, którym zaszyfrowana jest paczka, znika w chwili trafienia
+  faktur do archiwum — nie zostaje na dysku ani chwili dłużej i nie
+  czeka na osobne sprzątanie. Eksport odrzucony przez KSeF również nie
+  zachowuje klucza ([GH-37]).
+- Paczka niezgodna z tym, co KSeF o niej podał — rozmiarem albo skrótem
+  którejkolwiek części — nie jest rozpakowywana. Nie trafi też do
+  archiwum plik, którego nazwa wskazuje poza paczkę ([GH-37]).
+
 [GH-33]: https://github.com/Dev10x-Guru/ksef-mcp/issues/33
 [GH-34]: https://github.com/Dev10x-Guru/ksef-mcp/issues/34
 [GH-35]: https://github.com/Dev10x-Guru/ksef-mcp/issues/35
+[GH-37]: https://github.com/Dev10x-Guru/ksef-mcp/issues/37
 
 ## 0.1.1 — 2026-09-13
 
