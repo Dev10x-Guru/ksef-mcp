@@ -104,7 +104,17 @@ zależności, przeprowadzi przez konfigurację poświadczeń i wybór środowisk
 | `ksef-mcp doctor` | same warunki wstępne | nie |
 | `ksef-mcp token set\|delete\|status` | token w keyringu | nie |
 | `ksef-mcp skill install --scope user\|project` | uczy agenta, jak używać serwera | nie |
+| `ksef-mcp purge` | kasuje faktury z archiwum, zachowując indeks deduplikacji | nie |
 | `ksef-mcp verify` | potwierdza połączenie i pokazuje ostatnie faktury | **tak** |
+
+`purge` jest bezpiecznikiem bezterminowej retencji: archiwum nie wygasa samo,
+więc czyszczenie odbywa się jawną komendą. Ciąć można po podmiocie (`--nip`,
+domyślnie ten z konfiguracji), po dacie wpływu do KSeF (`--od`, `--do`) albo po
+obu naraz. Zanim cokolwiek zniknie, komenda wypisuje numery KSeF do skasowania
+i pyta o zgodę — domyślnie odmawia. Indeks deduplikacji zostaje nietknięty,
+więc ponowna synchronizacja nie ściąga skasowanych faktur powtórnie; nietknięte
+zostają też punkty kontynuacji i zapis tego, co już przejrzano. Każde
+skasowanie zostawia wpis w dzienniku audytu.
 
 `skill install` zapisuje skill dla Claude Code: przy zakresie `user` do
 `~/.claude/skills/ksef-mcp/`, przy `project` do `./.claude/skills/ksef-mcp/`

@@ -12,6 +12,32 @@ udokumentowane.
 
 ### Dodane
 
+- Archiwum da się wyczyścić jedną komendą — `ksef-mcp purge` — i to bez
+  utraty wiedzy o tym, co już pobrano. Bezterminowa retencja przestaje
+  więc oznaczać, że po roku na laptopie leży komplet faktur wszystkich
+  obsługiwanych podmiotów wraz z danymi osobowymi kontrahentów
+  ([GH-44]).
+- Ciąć można po podmiocie (`--nip`), po okresie (`--od`, `--do`) albo po
+  obu naraz: „faktury klienta X starsze niż rok" to jedno wywołanie.
+  Okres liczony jest datą wpływu do KSeF czytaną z numeru faktury, więc
+  nie zależy od tego, kiedy ktokolwiek po nią sięgnął. Komenda pracuje
+  wyłącznie w katalogu wskazanego podmiotu i nigdy nie zagląda do
+  sąsiedniego ([GH-44]).
+- Po wyczyszczeniu ponowna synchronizacja **nie ściąga skasowanych
+  faktur powtórnie** — indeks deduplikacji jest osobnym plikiem od
+  treści i zostaje nietknięty. Nietknięte zostają też punkty
+  kontynuacji i zapis tego, co już zostało pokazane człowiekowi:
+  zwolnienie miejsca na dysku nie cofa ani pytań zadanych KSeF-owi, ani
+  przeglądu ([GH-44]).
+- Zanim cokolwiek zniknie, komenda wypisuje numery KSeF faktur do
+  skasowania, ile miejsca zwolnią i co zostaje, a potem pyta o zgodę —
+  domyślną odpowiedzią jest „nie". Plik, którego nazwa nie jest numerem
+  KSeF, zostaje na dysku i jest zgłoszony; operacja nieodwracalna nie
+  zgaduje ([GH-44]).
+- Skasowanie zostawia wpis w dzienniku audytu: kiedy, czyje faktury, z
+  jakim zakresem i które numery KSeF przestały istnieć. Treść faktury
+  nie trafia tam nigdy, a dziennik przeżywa faktury, które opisuje
+  ([GH-44]).
 - Każdy odczyt zostawia trwały ślad, więc po fakcie da się odtworzyć, kto
   sięgnął po które faktury, na jakiej podstawie i o co pytał. Wpis niesie
   moment, NIP, z którego uprawnienia skorzystano, źródło tego uprawnienia
@@ -209,6 +235,7 @@ udokumentowane.
 [GH-40]: https://github.com/Dev10x-Guru/ksef-mcp/issues/40
 [GH-41]: https://github.com/Dev10x-Guru/ksef-mcp/issues/41
 [GH-43]: https://github.com/Dev10x-Guru/ksef-mcp/issues/43
+[GH-44]: https://github.com/Dev10x-Guru/ksef-mcp/issues/44
 [GH-45]: https://github.com/Dev10x-Guru/ksef-mcp/issues/45
 [GH-57]: https://github.com/Dev10x-Guru/ksef-mcp/issues/57
 

@@ -8,13 +8,15 @@ for from a read that was not. What separates them is the record of who acted
 under which NIP, on what footing, against which criteria, and which KSeF numbers
 came back, and that record has to be written here or it does not exist.
 
-Three kinds of event, kept apart on purpose (D-011). `DISK` says documents
+Four kinds of event, kept apart on purpose (D-011). `DISK` says documents
 landed in a file. `MODEL_CONTEXT` says metadata entered a tool's answer and the
 model therefore saw it — "the chat was shown twelve" is a different event from
 "twelve files were written", and folding them together loses exactly the
 distinction D-011 draws. `DEDUPLICATION_SKIP` says an invoice was seen and
 recognised as already held; a trail carrying only writes would read as though
-that invoice had never been touched at all.
+that invoice had never been touched at all. `REMOVAL` says the bodies were
+deleted by an explicit purge (D-034) — the one event where nobody saw anything,
+and the one whose record has to survive the invoices it names.
 
 The trail is written whether or not anything asked a human for permission. A
 read needs no confirmation gate (D-011) and still needs a record: consent and
@@ -69,6 +71,11 @@ AUDIT_FILE_MODE: Final[int] = 0o600
 
 TOKEN_BASIS: Final[str] = "ksef_token"
 
+# Deletion reaches no registry and needs no token, so the trail would lie if it
+# named one. What the operation stood on is a person at a terminal answering a
+# question, and that is what the entry says.
+OPERATOR_BASIS: Final[str] = "operator:cli"
+
 XML_FORMAT: Final[str] = "xml"
 
 CSV_FORMAT: Final[str] = "csv"
@@ -84,11 +91,20 @@ class AuditTrailUnreadable(RuntimeError):
 
 
 class Disclosure(StrEnum):
-    """Where the invoices went — the D-011 distinction, made explicit per entry."""
+    """What became of the invoices — the D-011 distinction, made explicit per entry.
+
+    The first three say where content went. `REMOVAL` is the fourth answer to the
+    same question and the only one pointing the other way: the bodies ceased to
+    exist, and nobody was shown anything (D-034). It is a value of this enum
+    rather than a field of its own because a new field would bump
+    `SCHEMA_VERSION`, and that would make this build refuse every trail written
+    before it — a file that is only ever appended to and never rewritten.
+    """
 
     DISK = "disk"
     MODEL_CONTEXT = "model_context"
     DEDUPLICATION_SKIP = "deduplication_skip"
+    REMOVAL = "removal"
 
 
 @dataclass(frozen=True)
