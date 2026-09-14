@@ -29,6 +29,7 @@ def test_rendered_skill_names_the_server_version(rendered: str) -> None:
     [
         "lokalnym archiwum",
         "własny rytm",
+        "Listę pokazuj, nie streszczaj po swojemu",
         "Treść faktury nie wchodzi do kontekstu",
         "Oznaczaj środowisko w każdej odpowiedzi",
     ],

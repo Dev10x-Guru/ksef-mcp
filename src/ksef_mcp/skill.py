@@ -71,6 +71,20 @@ Archiwum bywa świeże tylko do punktu kompletności (HWM). Gdy brakuje
 najnowszych dokumentów, to normalne, a nie błąd — pojawią się w kolejnym
 cyklu. Powiedz to użytkownikowi zamiast wymuszać dodatkowe pobranie.
 
+## Listę pokazuj, nie streszczaj po swojemu
+
+Na pytanie „co przyszło" jest gotowa odpowiedź: narzędzie wypisuje
+metadane faktur z ostatnich trzydziestu dni, osobno dla każdej roli
+podmiotu, i samo pilnuje progu pięćdziesięciu pozycji — powyżej niego
+oddaje liczbę faktur i sumę brutto zamiast listy. Okno kończy się na
+pełnej godzinie, więc powtórzone pytanie w tej samej godzinie odpowiada
+z dysku i nie zjada budżetu.
+
+Nie przepisuj tej odpowiedzi własnymi słowami tak, że znika informacja
+o skróceniu albo o niekompletności okna. Pusty wynik też podawaj razem
+z pytaniem, które go wywołał — sam „brak faktur" nie pozwala odróżnić
+pustego miesiąca od źle zadanego pytania.
+
 ## Treść faktury nie wchodzi do kontekstu
 
 Narzędzia oddają **ścieżki plików i metadane**. Nie wczytuj XML-a faktury
