@@ -10,6 +10,9 @@ udokumentowane.
 
 ## Bez wydania
 
+## 0.2.0 — 2026-09-14
+
+
 Wydanie 0.1.1 umiało jedno: potwierdzić, że token działa. To wydanie
 zamienia narzędzie w takie, które samo ściąga faktury z KSeF na dysk —
 przyrostowo, od punktu kontynuacji, w tempie mieszczącym się
@@ -275,7 +278,6 @@ Poniższe zadziała inaczej u kogoś, kto używa 0.1.1.
 [GH-44]: https://github.com/Dev10x-Guru/ksef-mcp/issues/44
 [GH-45]: https://github.com/Dev10x-Guru/ksef-mcp/issues/45
 [GH-57]: https://github.com/Dev10x-Guru/ksef-mcp/issues/57
-
 ## 0.1.1 — 2026-09-13
 
 
