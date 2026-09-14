@@ -838,6 +838,13 @@ nie ma mechanizmu, który powiedziałby „czegoś brakuje".
   tego nie złapał [D-027]. Przy zmianie wersji **majora** warto obejrzeć
   wynik, nie tylko go porównać.
 - **Nota licencyjna MIT** aktualizuje się razem z bundlem.
+- **Co jeszcze trzeba przestawić — lista zamknięta, ustalona przy
+  wdrożeniu [#42]:** poza samym plikiem i notą są to `BUNDLE_NAME`
+  w `pdf.py` oraz w testach `BUNDLE_DIGEST` i literały wersji generatora.
+  Wymienione tu, bo inaczej **pierwsza legalna aktualizacja skończy się
+  czerwonymi testami, które ktoś odczyta jako regresję renderowania**,
+  a nie jako rutynową synchronizację stałych. Test sumy SHA-256 ma paść
+  przy podmianie — to jego zadanie, nie awaria.
 
 ## D-028 — Odbiorcą etapu 1 jest użytkownik techniczny; księgowa to etap późniejszy
 

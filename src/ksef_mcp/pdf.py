@@ -12,14 +12,16 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import os
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import date
 from pathlib import Path
 from typing import Final
 
 from ksef_mcp.config import KsefEnvironment
+from ksef_mcp.ksef_port.errors import KsefRequestRejected
+from ksef_mcp.ksef_port.types import KsefNumber
 from ksef_mcp.preflight import NodeReport, inspect_node
 
 BUNDLE_DIRECTORY: Final[str] = "vendor"
@@ -36,6 +38,8 @@ PDF_SUFFIX: Final[str] = ".pdf"
 
 PDF_FILE_MODE: Final[int] = 0o600
 
+STAGING_SUFFIX: Final[str] = ".tmp"
+
 RENDER_TIMEOUT_SECONDS: Final[float] = 120.0
 
 # Only production invoices are verifiable through the public portal, and the
@@ -43,9 +47,10 @@ RENDER_TIMEOUT_SECONDS: Final[float] = 120.0
 # would print a link that resolves to nothing onto a document people trust.
 VERIFICATION_HOST: Final[str] = "https://qr.ksef.mf.gov.pl/client-app/invoice"
 
-# `<NIP>-<YYYYMMDD>-<identifier>-<checksum>`, validated on the way into the
-# archive, so the two leading fields can be read positionally.
-KSEF_NUMBER_PARTS: Final[int] = 4
+# The generator's own complaints are short. A cap keeps a future build's
+# chattier message — one that might quote the document it rejected — from
+# reaching an answer that is meant to carry no invoice content at all.
+FAILURE_DETAIL_LIMIT: Final[int] = 200
 
 
 class InvoiceNotArchived(RuntimeError):
@@ -94,21 +99,26 @@ def generator_version() -> str:
     return BUNDLE_NAME.removeprefix("ksef-fe-invoice-converter.").removesuffix(".js")
 
 
-def issue_date_of(ksef_number: str) -> date:
-    parts = ksef_number.split("-")
-    if len(parts) != KSEF_NUMBER_PARTS:
+def validated(ksef_number: str) -> KsefNumber:
+    """Parse the number through the port's own type, which is the only guard here.
+
+    The number becomes a file name on both sides of the render, so this is a
+    security boundary rather than a convenience: `KsefNumber`'s pattern is
+    anchored and its alphabet is digits and letters, which is what keeps a
+    caller-supplied string from carrying `..` or an absolute path into
+    `archive_directory / name`. An earlier version of this module counted
+    hyphen-separated parts instead and let `../../tmp/x-20260817-y-56` through.
+    """
+    try:
+        return KsefNumber(ksef_number)
+    except KsefRequestRejected as rejected:
         raise InvoiceNotArchived(
-            f"{ksef_number!r} nie wygląda na numer KSeF — oczekiwano czterech "
-            f"członów rozdzielonych myślnikiem."
-        )
-    return date.fromisoformat(parts[1])
+            f"{ksef_number!r} nie jest numerem KSeF. Oczekiwano kształtu "
+            f"<NIP>-<RRRRMMDD>-<identyfikator>-<suma>."
+        ) from rejected
 
 
-def nip_of(ksef_number: str) -> str:
-    return ksef_number.split("-")[0]
-
-
-def verification_url(*, ksef_number: str, content: bytes) -> str:
+def verification_url(*, ksef_number: KsefNumber, content: bytes) -> str:
     """The link the portal checks: who issued it, when, and a digest of the bytes.
 
     The statement writes `VerificationCode` instead of this, on purpose: a link
@@ -119,8 +129,8 @@ def verification_url(*, ksef_number: str, content: bytes) -> str:
     different encoding: the portal spells the digest base64url, the code hex.
     """
     digest = base64.urlsafe_b64encode(hashlib.sha256(content).digest()).decode().rstrip("=")
-    issued = issue_date_of(ksef_number).strftime("%d-%m-%Y")
-    return f"{VERIFICATION_HOST}/{nip_of(ksef_number)}/{issued}/{digest}"
+    issued = ksef_number.assigned_on.strftime("%d-%m-%Y")
+    return f"{VERIFICATION_HOST}/{ksef_number.issued_for_nip}/{issued}/{digest}"
 
 
 def node_refusal(report: NodeReport) -> str:
@@ -161,14 +171,19 @@ def run_node(command: list[str]) -> subprocess.CompletedProcess[str]:
 
 
 def stated_failure(stderr: str) -> str:
-    """The generator's own complaint, never the document it complained about."""
+    """The generator's own complaint, never the document it complained about.
+
+    Tested against this build: a malformed document yields `Unknown XML
+    Version: undefined` and quotes nothing from it. The cap is insurance for
+    the builds that come after, since this string reaches the caller.
+    """
     for line in reversed(stderr.strip().splitlines()):
         try:
             stated = json.loads(line)
         except ValueError:
             continue
         if isinstance(stated, dict) and "error" in stated:
-            return str(stated["error"])
+            return str(stated["error"])[:FAILURE_DETAIL_LIMIT]
     return "generator nie podał powodu"
 
 
@@ -182,10 +197,7 @@ class InvoiceRenderer:
     runner: Callable[[list[str]], subprocess.CompletedProcess[str]] = run_node
     node_report: Callable[..., NodeReport] = inspect_node
 
-    def invoice_path(self, ksef_number: str) -> Path:
-        # The number is the file name, so a number that is not a number cannot
-        # reach out of the archive — but it is checked before use, not trusted.
-        issue_date_of(ksef_number)
+    def invoice_path(self, ksef_number: KsefNumber) -> Path:
         return self.archive_directory / f"{ksef_number}{INVOICE_SUFFIX}"
 
     def readable_node(self) -> NodeReport:
@@ -194,7 +206,8 @@ class InvoiceRenderer:
             raise NodeUnavailable(node_refusal(report))
         return report
 
-    def __call__(self, ksef_number: str) -> RenderedInvoice:
+    def __call__(self, asked_for: str) -> RenderedInvoice:
+        ksef_number = validated(asked_for)
         source = self.invoice_path(ksef_number)
         if not source.is_file():
             raise InvoiceNotArchived(
@@ -203,6 +216,11 @@ class InvoiceRenderer:
             )
         self.readable_node()
         target = self.working_directory / f"{ksef_number}{PDF_SUFFIX}"
+        # Written under a staging name and renamed, like every other file this
+        # package produces: Node creates it under the process umask, so a PDF
+        # carrying a counterparty's personal data would otherwise be
+        # world-readable for the moment between its write and the chmod below.
+        staging = target.with_suffix(STAGING_SUFFIX)
         # Only production documents are verifiable, so only they get a link. An
         # empty one leaves the generator's verification block off the page.
         link = (
@@ -216,8 +234,8 @@ class InvoiceRenderer:
                 str(shim_path()),
                 str(bundle_path()),
                 str(source),
-                str(target),
-                ksef_number,
+                str(staging),
+                str(ksef_number),
                 link or "",
             ]
         )
@@ -226,9 +244,10 @@ class InvoiceRenderer:
                 f"Generator Ministerstwa odrzucił fakturę {ksef_number}: "
                 f"{stated_failure(completed.stderr)}"
             )
-        target.chmod(PDF_FILE_MODE)
+        staging.chmod(PDF_FILE_MODE)
+        os.replace(staging, target)
         return RenderedInvoice(
-            ksef_number=ksef_number,
+            ksef_number=str(ksef_number),
             path=target,
             byte_count=target.stat().st_size,
             generator_version=generator_version(),

@@ -1,21 +1,21 @@
-// Uruchamia oficjalny generator MF poza przeglądarką, dla której go napisano.
+// Runs the Ministry's official generator outside the browser it was written for.
 //
-// Generator jest modułem front-endowym: rysuje PDF w całości po stronie
-// klienta, ale sięga po dokładnie jedną funkcję przeglądarki, której Node nie
-// ma — `FileReader`. Reszta tego pliku to dwie atrapy, które pozwalają modułowi
-// się załadować, oraz protokół wejścia i wyjścia (D-027).
+// The generator is a front-end module: it draws the whole PDF client-side, but
+// reaches for exactly one browser API Node does not have — `FileReader`. The
+// rest of this file is two stand-ins that let the module load, plus the input
+// and output protocol (D-027).
 //
-// Wejście: argumenty wiersza poleceń. Wyjście: PDF pod wskazaną ścieżką oraz
-// jedna linia JSON na stdout. Błąd: jedna linia JSON na stderr i kod wyjścia 1,
-// żeby strona pythonowa nie musiała zgadywać z tekstu wyjątku.
+// Input: command-line arguments. Output: a PDF at the given path and one line
+// of JSON on stdout. Failure: one line of JSON on stderr and exit code 1, so
+// the Python side never has to guess from the text of an exception.
 
 import { readFile, writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
-// `generateInvoice` czyta wejściowy `File` przez `FileReader` i nie przyjmuje
-// bajtów wprost, więc bez tej atrapy moduł ładuje się i pada dopiero przy
-// pierwszym dokumencie. Obsługiwane są oba style nasłuchu, bo biblioteka używa
-// raz `onload`, raz `addEventListener`.
+// `generateInvoice` reads its input `File` through `FileReader` and takes no
+// bytes directly, so without this stand-in the module loads and only fails on
+// the first document. Both listener styles are supported: the library uses
+// `onload` in one place and `addEventListener` in another.
 class NodeFileReader {
   constructor() {
     this.result = null;
@@ -79,9 +79,10 @@ class NodeFileReader {
   }
 }
 
-// Generator nie rysuje niczego w DOM — fonty niesie w sobie, a wynik składa
-// pdfmake. Atrapa istnieje wyłącznie po to, żeby moduł przeszedł inicjalizację,
-// dlatego każda metoda jest bezczynna, a nie udawanym drzewem dokumentu.
+// The generator draws nothing into the DOM — it carries its own fonts and hands
+// the layout to pdfmake. This stand-in exists only so the module gets through
+// initialisation, which is why every method is inert rather than a pretend
+// document tree.
 function inertElement() {
   return {
     style: {},
@@ -154,6 +155,8 @@ async function main() {
 }
 
 main().catch((cause) => {
+  // The message only, never the document: this string is read by the Python
+  // side and reaches the caller, and an invoice body must not travel with it.
   process.stderr.write(
     `${JSON.stringify({ error: cause?.message ?? String(cause) })}\n`,
   );
