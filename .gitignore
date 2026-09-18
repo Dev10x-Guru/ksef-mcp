@@ -220,6 +220,8 @@ __marimo__/
 # Dev10x session state — per-checkout, never shared
 .claude/session/
 .claude/Dev10x/
+.claude/settings.local.json.bak.*
+.claude/settings.local.lock
 
 # Scratch directory the ADR workflows write their intermediate JSON to.
 .claude-output/
