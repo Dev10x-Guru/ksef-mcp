@@ -232,10 +232,12 @@ def test_okno_pyta_o_date_wystawienia() -> None:
     assert SEPTEMBER.queried.date_type is DateType.ISSUE
 
 
-def test_okno_ma_oba_konce_zamkniete() -> None:
-    # Otwarte okno nie jest cache'owalne, więc drugie złożenie tego samego
-    # zestawienia kosztowałoby jedno z dwudziestu zapytań na godzinę.
-    assert SEPTEMBER.queried.date_to is not None
+def test_okno_konczy_sie_na_ostatnim_dniu_miesiaca() -> None:
+    # Okno zestawienia ma obejmować dokładnie miesiąc, o który zapytano.
+    # Sprawdzenie „ma koniec" byłoby od GH-84 tautologią — koniec jest wymagany
+    # przez typ — więc test pilnuje tego, co nadal może się zepsuć: którego dnia
+    # okno się kończy.
+    assert SEPTEMBER.queried.date_to.date() == date(2026, 9, 30)
 
 
 def test_domyslny_zegar_czyta_utc() -> None:

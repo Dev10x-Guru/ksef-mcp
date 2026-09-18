@@ -29,7 +29,12 @@ from ksef_mcp.listing import (
     summarise,
 )
 from ksef_mcp.metadata import SERVER_NAME, VERSION
-from ksef_mcp.pdf import InvoiceNotArchived, InvoiceRenderer
+from ksef_mcp.pdf import (
+    GeneratorFailed,
+    InvoiceNotArchived,
+    InvoiceRenderer,
+    NodeUnavailable,
+)
 from ksef_mcp.preflight import NodeReport
 from ksef_mcp.review import REVIEW_WINDOW, InvoiceReview, assess
 from ksef_mcp.server import (
@@ -183,9 +188,9 @@ def test_synchronisation_refuses_before_onboarding(monkeypatch: pytest.MonkeyPat
         synchronise()
 
 
-async def failing_call(tool: str) -> CallToolResult:
+async def failing_call(tool: str, arguments: dict[str, str] | None = None) -> CallToolResult:
     async with Client(server) as client:
-        return await client.call_tool(tool)
+        return await client.call_tool(tool, arguments)
 
 
 @pytest.fixture
@@ -239,42 +244,45 @@ async def test_a_missing_configuration_names_the_command_that_fixes_it(
     assert "ksef-mcp onboarding" in str(unconfigured_listing.content)
 
 
-@pytest.fixture
-async def unarchived_render(monkeypatch: pytest.MonkeyPatch) -> CallToolResult:
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("failure", "expected"),
+    [
+        (
+            InvoiceNotArchived("Tej faktury nie ma w archiwum. Uruchom najpierw synchronizację."),
+            "Uruchom najpierw synchronizację",
+        ),
+        (
+            WorkingDirectoryRefused("Katalog roboczy leży wewnątrz magazynu wewnętrznego."),
+            "magazynu wewnętrznego",
+        ),
+        (NodeUnavailable("Wizualizacja wymaga Node w wersji 20 lub nowszej."), "Node"),
+        (
+            GeneratorFailed("Generator odrzucił dokument: Unknown XML Version: undefined"),
+            "Unknown XML Version",
+        ),
+    ],
+)
+async def test_a_render_refusal_travels_with_its_reason(
+    monkeypatch: pytest.MonkeyPatch,
+    failure: Exception,
+    expected: str,
+) -> None:
+    """GH-84: this was the one tool outside `reported`.
+
+    Every refusal its own docstring promises — the invoice not synchronised yet,
+    the working directory declined, Node missing, the generator refusing the
+    document — reached the caller as a bare `Error executing tool`.
+    """
+
     def refuse(*, ksef_number: str, working_directory: str | None) -> RenderedInvoiceResult:
-        raise InvoiceNotArchived("Tej faktury nie ma w archiwum. Uruchom najpierw synchronizację.")
+        raise failure
 
     monkeypatch.setattr(server_module, "render_invoice", refuse)
-    async with Client(server) as client:
-        return await client.call_tool("render_invoice_pdf", {"ksef_number": RENDER_NUMBER})
 
+    answered = await failing_call("render_invoice_pdf", {"ksef_number": RENDER_NUMBER})
 
-@pytest.fixture
-async def refused_render_directory(monkeypatch: pytest.MonkeyPatch) -> CallToolResult:
-    def refuse(*, ksef_number: str, working_directory: str | None) -> RenderedInvoiceResult:
-        raise WorkingDirectoryRefused("Katalog roboczy leży wewnątrz magazynu wewnętrznego.")
-
-    monkeypatch.setattr(server_module, "render_invoice", refuse)
-    async with Client(server) as client:
-        return await client.call_tool("render_invoice_pdf", {"ksef_number": RENDER_NUMBER})
-
-
-@pytest.mark.anyio
-async def test_an_unarchived_invoice_says_so_instead_of_failing_namelessly(
-    unarchived_render: CallToolResult,
-) -> None:
-    # GH-84: `render_invoice_pdf` was the one tool outside `reported`, so the
-    # refusal its own docstring promises arrived as `Error executing tool`.
-    assert "Uruchom najpierw synchronizację" in str(unarchived_render.content)
-
-
-@pytest.mark.anyio
-async def test_a_refused_working_directory_says_which_rule_it_broke(
-    refused_render_directory: CallToolResult,
-) -> None:
-    # The second half of the same report: a directory under a synced cloud folder
-    # was declined, and the caller saw no reason either.
-    assert "magazynu wewnętrznego" in str(refused_render_directory.content)
+    assert expected in str(answered.content)
 
 
 @pytest.mark.anyio
@@ -529,24 +537,23 @@ def test_an_empty_subject_type_restates_the_question(listing: InvoiceListingResu
     assert f"NIP {NIP}" in listing.subject_types[1].message
 
 
-def test_an_open_window_is_described_without_an_end() -> None:
+def test_a_described_window_names_the_end_it_asked_about() -> None:
+    # Od GH-84 nie ma okna bez końca, więc opis zawsze ma co podać.
     described = describe_listing(
         InvoiceListing(
             nip=NIP,
             environment=KsefEnvironment.TEST,
             threshold=LISTING_THRESHOLD,
-            # Zbudowane wprost: od GH-84 synchronizacja podaje oba końce, a okno
-            # bez końca może przyjść już tylko z wpisu cache sprzed tej zmiany.
             period=Period(
                 date_from=datetime(2026, 9, 1, tzinfo=UTC),
-                date_to=None,
+                date_to=datetime(2026, 9, 14, tzinfo=UTC),
                 date_type=DateType.PERMANENT_STORAGE,
             ),
             directions=(),
         )
     )
 
-    assert described.period_to is None
+    assert described.period_to == "2026-09-14T00:00:00+00:00"
 
 
 @pytest.mark.anyio
@@ -971,15 +978,16 @@ def test_a_listing_records_a_subject_type_that_returned_nothing(
     assert (empty.subject_role, empty.document_count, empty.ksef_numbers) == ("seller", 0, ())
 
 
-def test_an_open_window_is_recorded_as_open() -> None:
-    # Jak wyżej: okno bez końca buduje się dziś wprost, nie przez synchronizację.
-    open_ended = Period(
+def test_the_recorded_window_states_both_ends() -> None:
+    # Ślad audytowy ma pozwolić odtworzyć zakres pytania, a od GH-84 zakres
+    # zawsze ma oba końce — nie ma już wpisu kończącego się na „open".
+    asked = Period(
         date_from=datetime(2026, 9, 1, tzinfo=UTC),
-        date_to=None,
+        date_to=datetime(2026, 9, 14, tzinfo=UTC),
         date_type=DateType.PERMANENT_STORAGE,
     )
 
-    assert window_criteria(open_ended).endswith("..open")
+    assert window_criteria(asked).endswith("2026-09-01T00:00:00+00:00..2026-09-14T00:00:00+00:00")
 
 
 def test_a_statement_records_the_file_it_wrote(

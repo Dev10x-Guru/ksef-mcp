@@ -264,21 +264,21 @@ def test_an_empty_answer_restates_exactly_what_was_asked(question: Question, exp
     assert expected in listed.message
 
 
-def test_an_open_ended_question_says_its_end_is_open() -> None:
+def test_a_restated_question_names_both_ends() -> None:
+    # Od GH-84 okno bez końca nie istnieje jako typ, więc nie ma już czego
+    # opisywać jako „bez końca" — pytanie zawsze podaje oba końce.
     asked = Question(
         nip=NIP,
         environment=KsefEnvironment.TEST,
         direction=InvoiceDirection.SELLER,
-        # Zbudowane wprost: od GH-84 synchronizacja podaje oba końce, a okno bez
-        # końca może przyjść już tylko z wpisu cache sprzed tej zmiany.
         period=Period(
             date_from=datetime(2026, 9, 1, tzinfo=UTC),
-            date_to=None,
+            date_to=datetime(2026, 9, 14, tzinfo=UTC),
             date_type=DateType.PERMANENT_STORAGE,
         ),
     )
 
-    assert "bez końca" in asked.restated
+    assert "od 2026-09-01T00:00:00+00:00 do 2026-09-14T00:00:00+00:00" in asked.restated
 
 
 def test_a_page_ksef_shortened_is_reported_as_incomplete(question: Question) -> None:

@@ -202,8 +202,7 @@ def trail_for(configuration: config.Configuration) -> AuditTrail:
 
 def window_criteria(period: Period) -> str:
     """The query as asked, so a reader can tell scope from happenstance."""
-    ends = "open" if period.date_to is None else period.date_to.isoformat()
-    return f"{period.date_type} {period.date_from.isoformat()}..{ends}"
+    return f"{period.date_type} {period.date_from.isoformat()}..{period.date_to.isoformat()}"
 
 
 def synchronisation_entries(
@@ -349,7 +348,7 @@ class InvoiceListingResult(BaseModel):
     environment: str
     threshold: int
     period_from: str
-    period_to: str | None
+    period_to: str
     subject_types: list[DirectionListingResult]
 
 
@@ -392,7 +391,7 @@ def describe_listing(listing: InvoiceListing) -> InvoiceListingResult:
         environment=str(listing.environment),
         threshold=listing.threshold,
         period_from=asked.date_from.isoformat(),
-        period_to=None if asked.date_to is None else asked.date_to.isoformat(),
+        period_to=asked.date_to.isoformat(),
         subject_types=[describe_direction(one) for one in listing.directions],
     )
 
@@ -682,7 +681,7 @@ def describe_review(review: InvoiceReview) -> InvoiceReviewResult:
         period_from=asked.date_from.isoformat(),
         # Both ends are closed by construction (`review_period`), which is what
         # lets the period cache answer a repeat of this question for free.
-        period_to=asked.date_to.isoformat(),  # type: ignore[union-attr]
+        period_to=asked.date_to.isoformat(),
         ledger_file=review.ledger_path,
         subject_types=[describe_review_direction(one) for one in review.directions],
     )
