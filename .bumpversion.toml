@@ -1,5 +1,5 @@
 [tool.bumpversion]
-current_version = "0.3.1.dev0"
+current_version = "0.3.1"
 allow_dirty = false
 
 # `main` carries `X.Y.Z.dev0` between releases so a wheel built from it is

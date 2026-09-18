@@ -10,6 +10,9 @@ udokumentowane.
 
 ## Bez wydania
 
+## 0.3.1 — 2026-09-18
+
+
 ### Poprawione
 
 - Pierwsza synchronizacja nowego podmiotu dochodzi do skutku. Sięgała
@@ -35,7 +38,6 @@ udokumentowane.
   pójdzie do KSeF zamiast trafić w pamięć, kosztem jednej operacji
   z dwudziestu na godzinę. Archiwum faktur i punkty kontynuacji
   synchronizacji pozostają nietknięte.
-
 ## 0.3.0 — 2026-09-14
 
 
