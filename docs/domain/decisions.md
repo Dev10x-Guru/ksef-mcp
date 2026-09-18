@@ -404,10 +404,23 @@
   - **Trzeci `except` na `httpx`** — obie biblioteki przepuszczają surowe
     błędy transportowe (DNS, connection) sprzed odpowiedzi; nie mają
     wspólnej bazy z wyjątkami SDK.
-  - Walidacja okna dat u nas. `ksef-client` wymusza maksimum **100 dni**
-    po stronie klienta; `ksef2` nie egzekwuje nic, więc przy zbyt szerokim
-    oknie dostaniemy błąd serwera zamiast czytelnego komunikatu.
-    [Verify] czy analogiczny limit istnieje po stronie API MF.
+  - Walidacja okna dat u nas. `ksef2` nie egzekwuje nic, więc przy zbyt
+    szerokim oknie dostaniemy błąd serwera zamiast czytelnego komunikatu —
+    i to po wydaniu eksportu z dwudziestu na godzinę.
+    **Limit API wynosi 3 miesiące**, nie 100 dni, jak wymusza po stronie
+    klienta `ksef-client`. Pierwotne zastrzeżenie *[Verify] czy analogiczny
+    limit istnieje po stronie API MF* rozstrzygnął pierwszy przebieg
+    produkcyjny (GH-84): `'dateRange' must not exceed 3 months`,
+    `VALIDATION_ERROR:21405`. Przyjęta wartość `ksef-client` była więc
+    **wyższa** niż rzeczywista i przepuszczała okna, które KSeF odrzuca.
+    `MAX_QUERY_WINDOW` wynosi 89 dni — dzień pod najkrótszymi trzema
+    miesiącami kalendarzowymi, bo okno mierzy się do zegara KSeF, a
+    `date_from` liczymy z własnego.
+  - Okno **zawsze ma oba końce**. Nie dlatego, że tak wygodniej: brak
+    górnego końca nie oznacza okna nieograniczonego — adapter wysyła
+    w jego miejsce „teraz" — więc `date_to=None` przenosiło okno poza
+    walidację, zamiast je poszerzać. Pułap pilnował wtedy każdego okna
+    poza tym jednym, które synchronizacja faktycznie wysyłała (GH-84).
   - `ksef2` nie zwraca sumy kontrolnej z nagłówka (`ksef-client` zwraca).
     Przy deduplikacji po numerze KSeF to nie blokada.
 

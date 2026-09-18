@@ -83,14 +83,25 @@ def cache_root() -> Path:
 
 
 def is_cacheable(period: Period) -> bool:
-    """An open-ended window names no period, so no answer to it stays true.
+    """A synchronisation window names no settled period, so no answer to it stays true.
 
-    `Period.for_synchronisation` leaves the end open on purpose: MF builds the
-    largest consistent package it can. Remembering such an answer would serve
+    Read off the date type rather than off a missing end (GH-84). A
+    synchronisation window now states both ends — it has to, or the ceiling in
+    `Period` cannot see it — but the end was never what made the answer
+    unrepeatable. `restrict_to_permanent_storage_hwm_date` lets MF stop the
+    package at the point of completeness, so what comes back is a function of
+    the registry's state and not of the window alone. Remembering it would serve
     yesterday's invoices to tomorrow's question, and the question D-021 is about
-    — "the same month again" — always has both ends.
+    — "the same month again" — is never asked this way.
+
+    This is also the predicate the adapter already keys on (`as_filters`), so
+    the two agree about what a synchronisation window is instead of testing two
+    different proxies for it.
+
+    A window with no end at all stays uncacheable too: one can only arrive by
+    decoding an entry written before the ceiling was enforced.
     """
-    return period.date_to is not None
+    return period.date_to is not None and period.date_type is not DateType.PERMANENT_STORAGE
 
 
 def cache_key(*, period: Period, direction: InvoiceDirection) -> str:

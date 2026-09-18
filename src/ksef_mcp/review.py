@@ -56,7 +56,7 @@ from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port.budget import QueryBudget
 from ksef_mcp.ksef_port.errors import KsefRequestRejected
 from ksef_mcp.ksef_port.protocol import KsefPort
-from ksef_mcp.ksef_port.types import DateType, InvoiceMetadata, Period
+from ksef_mcp.ksef_port.types import MAX_QUERY_WINDOW, DateType, InvoiceMetadata, Period
 from ksef_mcp.listing import (
     LISTING_THRESHOLD,
     CurrencyTotal,
@@ -82,12 +82,18 @@ REVIEW_DIRECTORY_MODE: Final[int] = 0o700
 # issued for (D-011), so the file is created with its final mode.
 REVIEW_FILE_MODE: Final[int] = 0o600
 
-# Dimensioned against the evidence rather than against the API. The overlooked
+# Dimensioned against the evidence, then capped by the API. The overlooked
 # invoice in the study was three months old when the comparison found it, so the
-# thirty days `list_recent_invoices` covers would have walked straight past it.
-# Ninety fits under the hundred-day ceiling the port enforces, and the same study
-# puts a full quarter at thirty-eight invoices — under the listing threshold.
-REVIEW_WINDOW: Final[timedelta] = timedelta(days=90)
+# thirty days `list_recent_invoices` covers would have walked straight past it;
+# the same study puts a full quarter at thirty-eight invoices, under the listing
+# threshold. Ninety days was the answer, chosen as "comfortably under the
+# hundred-day ceiling the port enforces" — but that ceiling was `ksef-client`'s,
+# not MF's, and the real one is three months (GH-84). The evidence and the limit
+# therefore land on the same spot, and the limit wins: the ceiling is a refusal,
+# while "three months old" was always an approximation of one observed invoice.
+# Bound to the ceiling rather than restated as a number, so the next correction
+# to the limit cannot leave this window stranded above it.
+REVIEW_WINDOW: Final[timedelta] = MAX_QUERY_WINDOW
 
 # Dated by acceptance in KSeF, not by the seller's issue date, and that is the
 # load-bearing choice. An invoice issued in March and accepted yesterday is new

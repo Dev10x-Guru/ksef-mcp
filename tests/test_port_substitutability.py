@@ -165,7 +165,10 @@ def test_the_same_allowances_read_back_either_way(port: KsefPort) -> None:
 
 
 def test_an_export_is_scheduled_and_polled_either_way(port: KsefPort) -> None:
-    window = Period.for_synchronisation(since=datetime(2026, 8, 1, tzinfo=UTC))
+    window = Period.for_synchronisation(
+        since=datetime(2026, 8, 1, tzinfo=UTC),
+        now=datetime(2026, 9, 1, tzinfo=UTC),
+    )
 
     with port.session(nip=NIP, token=TOKEN) as session:
         handle = session.start_export(period=window, direction=InvoiceDirection.BUYER)
@@ -175,7 +178,10 @@ def test_an_export_is_scheduled_and_polled_either_way(port: KsefPort) -> None:
 
 
 def test_a_part_comes_back_as_bytes_either_way(port: KsefPort) -> None:
-    window = Period.for_synchronisation(since=datetime(2026, 8, 1, tzinfo=UTC))
+    window = Period.for_synchronisation(
+        since=datetime(2026, 8, 1, tzinfo=UTC),
+        now=datetime(2026, 9, 1, tzinfo=UTC),
+    )
 
     with port.session(nip=NIP, token=TOKEN) as session:
         handle = session.start_export(period=window, direction=InvoiceDirection.BUYER)

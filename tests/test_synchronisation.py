@@ -37,6 +37,7 @@ from ksef_mcp.ksef_port import (
     RateLimits,
     SessionCeilings,
 )
+from ksef_mcp.ksef_port.types import MAX_QUERY_WINDOW
 from ksef_mcp.sync_store import DirectionState, PendingExport, SyncState, SyncStore
 from ksef_mcp.synchronisation import (
     INITIAL_LOOKBACK,
@@ -406,10 +407,21 @@ def test_the_export_window_is_pinned_to_permanent_storage(
     assert {period.date_type for _, period in session.started} == {"permanent_storage"}
 
 
-def test_the_export_window_has_no_upper_bound(
+def test_the_export_window_ends_at_the_moment_the_pass_began(
     first_pass: SynchronisationReport, session: ScriptedSession
 ) -> None:
-    assert {period.date_to for _, period in session.started} == {None}
+    # Niegdyś okno nie miało górnego końca, a ten test tego pilnował — i właśnie
+    # dlatego pułap go nie widział. Brak końca nigdy nie oznaczał okna bez
+    # ograniczenia: adapter wysyłał w jego miejsce „teraz" (GH-84).
+    assert {period.date_to for _, period in session.started} == {NOON}
+
+
+def test_every_window_of_a_pass_fits_what_ksef_answers(
+    first_pass: SynchronisationReport, session: ScriptedSession
+) -> None:
+    spans = {period.date_to - period.date_from for _, period in session.started}
+
+    assert max(spans) <= MAX_QUERY_WINDOW
 
 
 def test_a_first_run_starts_one_lookback_back(

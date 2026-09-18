@@ -26,7 +26,13 @@ from ksef_mcp.ksef_port.errors import KsefPortError
 from ksef_mcp.ksef_port.types import InvoiceMetadata, Period
 from ksef_mcp.listing import DirectionListing, InvoiceLister, InvoiceListing
 from ksef_mcp.metadata import SERVER_NAME, VERSION
-from ksef_mcp.pdf import InvoiceRenderer, RenderedInvoice
+from ksef_mcp.pdf import (
+    GeneratorFailed,
+    InvoiceNotArchived,
+    InvoiceRenderer,
+    NodeUnavailable,
+    RenderedInvoice,
+)
 from ksef_mcp.period_cache import PeriodCache
 from ksef_mcp.review import DirectionReview, InvoiceReview, InvoiceReviewer, ReviewStore
 from ksef_mcp.statement import (
@@ -34,6 +40,8 @@ from ksef_mcp.statement import (
     AccountingPeriod,
     Statement,
     StatementComposer,
+    UnreadablePeriod,
+    WorkingDirectoryRefused,
     prepare_working_directory,
 )
 from ksef_mcp.sync_store import SyncStore
@@ -84,6 +92,26 @@ class NotConfigured(RuntimeError):
     pass
 
 
+# Refusals whose text was written for the person reading it: each names
+# something the caller can act on — KSeF declining the call, a number not in the
+# archive, a directory the server will not write to, a missing Node, a month it
+# could not parse — and none carries the NIP, the token or a line of invoice XML
+# (D-011). Anything outside this tuple is a genuine crash and keeps the generic
+# message, because its text was never written with a reader in mind.
+#
+# Listed rather than caught by a shared base class, and that is deliberate:
+# membership here is a claim about a message, not about where the exception was
+# raised, so it should cost a reviewer's glance to add one.
+REFUSALS: Final[tuple[type[Exception], ...]] = (
+    KsefPortError,
+    InvoiceNotArchived,
+    NodeUnavailable,
+    GeneratorFailed,
+    WorkingDirectoryRefused,
+    UnreadablePeriod,
+)
+
+
 @contextmanager
 def reported(operation: str) -> Iterator[None]:
     """Name the failure to the caller instead of letting the SDK swallow it.
@@ -94,10 +122,11 @@ def reported(operation: str) -> Iterator[None]:
     looked like a dead server (GH-76). `ToolError` is the SDK's channel for a
     failure we saw coming, so the reason travels with it.
 
-    Only port errors and a missing configuration pass through here. Anything
-    else is a genuine crash and keeps the generic message, because its text was
-    never written with a reader in mind. Port messages are: they name the
-    subject's problem without the NIP, the token or a line of invoice XML.
+    The refusals a tool raises about its own arguments belong here as much as
+    the port's do (GH-84). Catching only the port left `render_invoice_pdf`
+    answering "Error executing tool" for an invoice that was simply not
+    synchronised yet and for a working directory it had declined — both
+    outcomes its own docstring promises to explain.
     """
     try:
         yield
@@ -105,7 +134,7 @@ def reported(operation: str) -> Iterator[None]:
         raise ToolError(
             f"{operation} needs configuration first. Run `ksef-mcp onboarding`. ({error})"
         ) from error
-    except KsefPortError as error:
+    except REFUSALS as error:
         raise ToolError(f"{operation} could not finish. {error}") from error
 
 
@@ -876,7 +905,8 @@ def render_invoice_pdf(
     been exercised end to end. Treat a refusal on an older schema as untested
     rather than impossible, and report it.
     """
-    return render_invoice(ksef_number=ksef_number, working_directory=working_directory)
+    with reported(RENDER_OPERATION):
+        return render_invoice(ksef_number=ksef_number, working_directory=working_directory)
 
 
 def main() -> None:
