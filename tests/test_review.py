@@ -180,9 +180,10 @@ def test_the_window_reaches_a_full_quarter_back() -> None:
     assert review_period(moment=ASKED_AT).date_from == ON_THE_HOUR - REVIEW_WINDOW
 
 
-def test_the_window_stops_at_what_ksef_answers() -> None:
-    # Dowody i limit wypadają w tym samym miejscu, więc okno jest związane
-    # z pułapem, a nie przepisane liczbą — inaczej rozjeżdżają się w ciszy (GH-84).
+def test_the_window_is_defined_from_the_ceiling_not_independently() -> None:
+    # Strzeże definicji, nie zachowania. Dowody i limit wypadają w tym samym
+    # miejscu, więc okno jest związane z pułapem, a nie przepisane liczbą —
+    # inaczej rozjeżdżają się w ciszy (GH-84).
     assert REVIEW_WINDOW == MAX_QUERY_WINDOW
 
 

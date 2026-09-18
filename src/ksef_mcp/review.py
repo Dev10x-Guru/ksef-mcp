@@ -86,14 +86,12 @@ REVIEW_FILE_MODE: Final[int] = 0o600
 # invoice in the study was three months old when the comparison found it, so the
 # thirty days `list_recent_invoices` covers would have walked straight past it;
 # the same study puts a full quarter at thirty-eight invoices, under the listing
-# threshold. Ninety days was the answer, chosen as "comfortably under the
-# hundred-day ceiling the port enforces" — but that ceiling was `ksef-client`'s,
-# not MF's, and the real one is three months (GH-84). The evidence and the limit
-# therefore land on the same spot, and the limit wins: the ceiling is a refusal,
-# while "three months old" was always an approximation of one observed invoice.
-# Bound to the ceiling rather than restated as a number, so the next correction
-# to the limit cannot leave this window stranded above it.
-REVIEW_WINDOW: Final[timedelta] = MAX_QUERY_WINDOW
+# threshold. Ninety days is that evidence, and it stays written here as its own
+# decision — the cap is a separate fact, and folding the two into one constant
+# would let a future change to MF's limit silently redefine what "new since last
+# time" means. Today the cap binds, because ninety days is one day over what
+# KSeF answers (GH-84).
+REVIEW_WINDOW: Final[timedelta] = min(timedelta(days=90), MAX_QUERY_WINDOW)
 
 # Dated by acceptance in KSeF, not by the seller's issue date, and that is the
 # load-bearing choice. An invoice issued in March and accepted yesterday is new

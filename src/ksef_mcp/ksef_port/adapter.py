@@ -1,7 +1,6 @@
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Final
 
@@ -138,10 +137,14 @@ def as_filters(*, period: Period, direction: InvoiceDirection) -> InvoicesFilter
         role=direction.value,
         date_type=period.date_type.value,
         date_from=period.date_from,
-        # The SDK has no way to omit the upper bound, so an open period becomes
-        # "now" plus the HWM restriction: KSeF then still stops the package at
-        # the point of completeness and picks the window itself (D-031 §4).
-        date_to=period.date_to or datetime.now(tz=UTC),
+        # Both ends come from the `Period`, and neither is invented here. This
+        # line used to read `period.date_to or datetime.now(tz=UTC)`, which is
+        # where the hundred-day window acquired the end the ceiling had never
+        # measured (GH-84). The SDK has no way to omit an upper bound anyway, so
+        # the substitution bought nothing and hid the span; the HWM restriction
+        # below is what actually lets KSeF stop the package where it likes
+        # (D-031 §4).
+        date_to=period.date_to,
         restrict_to_permanent_storage_hwm_date=synchronising or None,
     )
 

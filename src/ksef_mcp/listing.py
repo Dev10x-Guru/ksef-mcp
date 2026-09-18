@@ -80,16 +80,14 @@ def now_utc() -> datetime:
 def listing_period(*, moment: datetime) -> Period:
     """Thirty days ending on the hour — closed, so asking twice costs once.
 
-    `is_cacheable` refuses a synchronisation window, because MF stops the
-    package where it likes and nothing about an answer to it stays true. A
-    listing dated the same way would inherit that refusal; asked again five
-    minutes later it would spend a second of twenty metadata queries an hour,
-    times four subject types. Rounding the end down to the hour makes the window
-    an identity the
-    cache can match, and bounds staleness at the same hour KSeF settles its own
-    allowance in. What it costs is visible rather than hidden: invoices from the
-    hour in progress are outside the window, and the restated question says so
-    by naming both ends.
+    A listing dated like a synchronisation window would inherit the refusal
+    `is_cacheable` documents, and asked again five minutes later would spend a
+    second of twenty metadata queries an hour, times four subject types.
+    Rounding the end down to the hour makes the window an identity the cache can
+    match, and bounds staleness at the same hour KSeF settles its own allowance
+    in. What it costs is visible rather than hidden: invoices from the hour in
+    progress are outside the window, and the restated question says so by naming
+    both ends.
     """
     ends = moment.astimezone(UTC).replace(minute=0, second=0, microsecond=0)
     return Period(date_from=ends - LISTING_WINDOW, date_to=ends, date_type=DateType.ISSUE)
@@ -145,11 +143,11 @@ class Question:
 
     @property
     def restated(self) -> str:
-        ends = "bez końca" if self.period.date_to is None else self.period.date_to.isoformat()
         return (
             f"NIP {self.nip}, środowisko {self.environment}, "
             f"rola podmiotu: {DIRECTION_LABELS[self.direction]}, "
-            f"okres od {self.period.date_from.isoformat()} do {ends} "
+            f"okres od {self.period.date_from.isoformat()} "
+            f"do {self.period.date_to.isoformat()} "
             f"wg {DATE_TYPE_LABELS[self.period.date_type]}"
         )
 

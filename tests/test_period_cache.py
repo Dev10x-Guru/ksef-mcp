@@ -63,14 +63,6 @@ SYNCHRONISATION = Period.for_synchronisation(
     now=datetime(2026, 9, 14, 6, 0, tzinfo=UTC),
 )
 
-# Wariant bez końca zostaje jako osobna atrapa: przychodzi już tylko z wpisu
-# zapisanego, zanim pułap zaczął obowiązywać, i też nie może trafić do cache.
-OPEN_ENDED = Period(
-    date_from=datetime(2026, 9, 1, tzinfo=UTC),
-    date_to=None,
-    date_type=DateType.PERMANENT_STORAGE,
-)
-
 ASKED_AT = datetime(2026, 9, 14, 6, 0, tzinfo=UTC)
 
 GENEROUS = OperationLimit(per_second=None, per_minute=None, per_hour=20)
@@ -241,19 +233,19 @@ def test_the_key_names_the_subject_type_it_belongs_to() -> None:
     assert cache_key(period=SEPTEMBER, direction=InvoiceDirection.BUYER).startswith("buyer-")
 
 
-def test_an_open_window_still_has_a_key_to_look_up_by() -> None:
-    assert cache_key(period=OPEN_ENDED, direction=InvoiceDirection.BUYER).startswith("buyer-")
+def test_a_synchronisation_window_still_has_a_key_to_look_up_by() -> None:
+    assert cache_key(period=SYNCHRONISATION, direction=InvoiceDirection.BUYER).startswith("buyer-")
 
 
-def test_an_open_window_and_a_closed_one_are_different_questions() -> None:
-    assert cache_key(period=OPEN_ENDED, direction=InvoiceDirection.BUYER) != cache_key(
+def test_two_windows_dated_differently_are_different_questions() -> None:
+    assert cache_key(period=SYNCHRONISATION, direction=InvoiceDirection.BUYER) != cache_key(
         period=SEPTEMBER, direction=InvoiceDirection.BUYER
     )
 
 
 @pytest.mark.parametrize(
     ("period", "expected"),
-    [(SEPTEMBER, True), (OPEN_ENDED, False), (SYNCHRONISATION, False)],
+    [(SEPTEMBER, True), (SYNCHRONISATION, False)],
 )
 def test_only_a_settled_period_is_worth_remembering(period: Period, expected: bool) -> None:
     assert is_cacheable(period) is expected
@@ -261,22 +253,36 @@ def test_only_a_settled_period_is_worth_remembering(period: Period, expected: bo
 
 def test_a_synchronisation_window_is_refused_although_it_states_both_ends() -> None:
     """GH-84: the refusal follows the date type, not a missing end."""
-    assert SYNCHRONISATION.date_to is not None
     assert is_cacheable(SYNCHRONISATION) is False
 
 
-def test_an_open_window_leaves_nothing_behind(cache: PeriodCache, page: MetadataPage) -> None:
-    cache.remember(period=OPEN_ENDED, direction=InvoiceDirection.BUYER, page=page)
-
-    assert cache.remembered(period=OPEN_ENDED, direction=InvoiceDirection.BUYER) is None
-
-
-def test_an_open_window_is_still_stamped_for_the_caller_to_report(
+def test_a_synchronisation_window_leaves_nothing_behind(
     cache: PeriodCache, page: MetadataPage
 ) -> None:
-    stamped = cache.remember(period=OPEN_ENDED, direction=InvoiceDirection.BUYER, page=page)
+    cache.remember(period=SYNCHRONISATION, direction=InvoiceDirection.BUYER, page=page)
+
+    assert cache.remembered(period=SYNCHRONISATION, direction=InvoiceDirection.BUYER) is None
+
+
+def test_a_synchronisation_window_is_still_stamped_for_the_caller_to_report(
+    cache: PeriodCache, page: MetadataPage
+) -> None:
+    stamped = cache.remember(period=SYNCHRONISATION, direction=InvoiceDirection.BUYER, page=page)
 
     assert stamped.queried_at == ASKED_AT
+
+
+def test_an_entry_written_before_the_ceiling_is_a_miss_not_a_crash(
+    cache: PeriodCache, page: MetadataPage
+) -> None:
+    """GH-84: a stored window with no end can no longer become a Period."""
+    cache.remember(period=SEPTEMBER, direction=InvoiceDirection.BUYER, page=page)
+    path = cache.path_for(period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["period"]["date_to"] = None
+    path.write_text(json.dumps(document), encoding="utf-8")
+
+    assert cache.remembered(period=SEPTEMBER, direction=InvoiceDirection.BUYER) is None
 
 
 def test_the_default_clock_stamps_a_moment_with_a_timezone(
@@ -467,11 +473,11 @@ def test_the_same_period_for_another_subject_type_is_paid_for_separately(
     assert len(session.asked) == 2
 
 
-def test_an_open_window_is_asked_about_every_time(
+def test_a_synchronisation_window_is_asked_about_every_time(
     reader: PeriodMetadataReader, session: CountingSession
 ) -> None:
-    reader.read(session=session, period=OPEN_ENDED, direction=InvoiceDirection.BUYER)
-    reader.read(session=session, period=OPEN_ENDED, direction=InvoiceDirection.BUYER)
+    reader.read(session=session, period=SYNCHRONISATION, direction=InvoiceDirection.BUYER)
+    reader.read(session=session, period=SYNCHRONISATION, direction=InvoiceDirection.BUYER)
 
     assert len(session.asked) == 2
 

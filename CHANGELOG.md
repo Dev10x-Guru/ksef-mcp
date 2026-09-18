@@ -10,6 +10,32 @@ udokumentowane.
 
 ## Bez wydania
 
+### Poprawione
+
+- Pierwsza synchronizacja nowego podmiotu dochodzi do skutku. Sięgała
+  wstecz o sto dni, a KSeF odpowiada na okna do trzech miesięcy, więc
+  każdy pierwszy przebieg wracał z błędem walidacji, archiwum zostawało
+  puste, a wizualizacja PDF odmawiała potem każdego numeru. Pułap okna
+  jest teraz limitem API, nie ograniczeniem biblioteki klienckiej, a
+  podmiot, który nie synchronizował się dłużej, nadrabia kolejnymi
+  przebiegami zamiast prosić o okno nie do odpowiedzenia (GH-84).
+- `review_new_invoices` pytało o okno dziewięćdziesięciodniowe, czyli
+  również ponad limit. Okno przeglądu trzyma się teraz tego samego
+  pułapu (GH-84).
+- `render_invoice_pdf` mówi, co poszło nie tak. Faktura spoza archiwum,
+  odrzucony katalog roboczy, brak Node i odmowa generatora docierały do
+  klienta jako gołe „Error executing tool" — mimo że opis narzędzia
+  obiecywał każdy z tych komunikatów (GH-84).
+
+### Uwaga o aktualizacji
+
+- Pamięć podręczna okresów zaczyna się od nowa. Zapis okna zmienił
+  format, więc wersja schematu poszła w górę i wpisy sprzed aktualizacji
+  są pomijane. Skutek jest jednorazowy: pierwsze pytanie po aktualizacji
+  pójdzie do KSeF zamiast trafić w pamięć, kosztem jednej operacji
+  z dwudziestu na godzinę. Archiwum faktur i punkty kontynuacji
+  synchronizacji pozostają nietknięte.
+
 ## 0.3.0 — 2026-09-14
 
 

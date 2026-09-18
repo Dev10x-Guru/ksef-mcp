@@ -22,13 +22,12 @@ KSEF_NUMBER_DATE_FORMAT: Final[str] = "%Y%m%d"
 # window comes back as a server error spent from a 20-per-hour budget; the port
 # refuses it for free instead (D-017).
 #
-# The number is the API's, not a client library's. D-017 carried the 100 days
-# `ksef-client` caps at, with a `[Verify]` against MF — and the first production
-# run answered it: `'dateRange' must not exceed 3 months`
-# (VALIDATION_ERROR:21405, GH-84). The shortest three calendar months run to 90
-# days, and the one day below that is deliberate: an open window is measured to
-# KSeF's clock while `date_from` comes from ours, so a ceiling sitting exactly
-# on the limit fails on skew and latency alone.
+# The number is the API's, not a client library's: MF answers windows up to
+# three months, where D-017 had recorded the hundred days `ksef-client` caps at
+# and a `[Verify]` against MF that the first production run settled (GH-84).
+# The shortest three calendar months run to ninety days; the day below that is
+# for skew, since the window is measured against KSeF's clock while `date_from`
+# comes from ours.
 MAX_QUERY_WINDOW: Final[timedelta] = timedelta(days=89)
 
 # The API floor is 10 and the ceiling 250. Always the ceiling: naive paging at
@@ -118,13 +117,20 @@ class SubjectContext:
 
 @dataclass(frozen=True)
 class Period:
+    """A window with both ends, because an optional end is an unmeasured one.
+
+    An absent `date_to` never meant an unbounded request — the adapter puts
+    KSeF's `now` in its place — so it only moved the window past the ceiling
+    below. A type that cannot express the unmeasured shape cannot leak it past
+    a guard either, which is why the end is required rather than the guard
+    taught to measure an open window against the clock (GH-84).
+    """
+
     date_from: datetime
-    date_to: datetime | None
+    date_to: datetime
     date_type: DateType
 
     def __post_init__(self) -> None:
-        if self.date_to is None:
-            return
         if self.date_to < self.date_from:
             raise KsefRequestRejected("The window ends before it starts.")
         if self.date_to - self.date_from > MAX_QUERY_WINDOW:
@@ -139,14 +145,6 @@ class Period:
 
         PermanentStorage by construction: any other date type makes incremental
         fetching unpredictable (D-031).
-
-        The end is stated rather than left open, and that is the whole of GH-84.
-        An open window is not unbounded on the wire — the adapter sends KSeF's
-        `now` in its place — so leaving `date_to` unset only put the window past
-        `__post_init__`, which returns early on `None`. The ceiling then guarded
-        every window except the one synchronisation actually sends, and a first
-        run reaching back further than KSeF answers was rejected as
-        VALIDATION_ERROR:21405 with the export already spent.
 
         A point further back than the ceiling gets a catch-up window instead of
         a refusal: the pass asks for the ceiling's worth from where it stands,

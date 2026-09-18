@@ -113,9 +113,9 @@ def test_a_point_older_than_the_ceiling_catches_up_rather_than_reaching_back() -
     assert period.date_to == stale + MAX_QUERY_WINDOW
 
 
-def test_the_first_lookback_can_never_outgrow_the_ceiling() -> None:
-    """The two constants are one decision; drifting them apart is the GH-84 bug."""
-    assert INITIAL_LOOKBACK <= MAX_QUERY_WINDOW
+def test_the_first_lookback_is_defined_from_the_ceiling_not_independently() -> None:
+    """Strzeże definicji, nie zachowania: rozjazd tych dwóch stałych to błąd GH-84."""
+    assert INITIAL_LOOKBACK == MAX_QUERY_WINDOW
 
 
 @pytest.mark.parametrize(

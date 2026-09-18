@@ -58,7 +58,11 @@ CACHE_FILE_SUFFIX: Final[str] = ".json"
 
 STAGING_SUFFIX: Final[str] = ".tmp"
 
-SCHEMA_VERSION: Final[int] = 1
+# Raised to 2 when a window's end stopped being nullable (GH-84). The version
+# check is the searchable mechanism for "this entry predates a format change";
+# leaning on the decoder's exception instead would make a format change
+# indistinguishable from a truncated file.
+SCHEMA_VERSION: Final[int] = 2
 
 CACHE_DIRECTORY_MODE: Final[int] = 0o700
 
@@ -85,23 +89,17 @@ def cache_root() -> Path:
 def is_cacheable(period: Period) -> bool:
     """A synchronisation window names no settled period, so no answer to it stays true.
 
-    Read off the date type rather than off a missing end (GH-84). A
-    synchronisation window now states both ends — it has to, or the ceiling in
-    `Period` cannot see it — but the end was never what made the answer
-    unrepeatable. `restrict_to_permanent_storage_hwm_date` lets MF stop the
-    package at the point of completeness, so what comes back is a function of
-    the registry's state and not of the window alone. Remembering it would serve
-    yesterday's invoices to tomorrow's question, and the question D-021 is about
-    — "the same month again" — is never asked this way.
+    `restrict_to_permanent_storage_hwm_date` lets MF stop the package at the
+    point of completeness, so what comes back is a function of the registry's
+    state and not of the window alone. Remembering it would serve yesterday's
+    invoices to tomorrow's question, and the question D-021 is about — "the same
+    month again" — is never asked this way.
 
-    This is also the predicate the adapter already keys on (`as_filters`), so
+    Keyed on the date type, which is the predicate `as_filters` already uses, so
     the two agree about what a synchronisation window is instead of testing two
     different proxies for it.
-
-    A window with no end at all stays uncacheable too: one can only arrive by
-    decoding an entry written before the ceiling was enforced.
     """
-    return period.date_to is not None and period.date_type is not DateType.PERMANENT_STORAGE
+    return period.date_type is not DateType.PERMANENT_STORAGE
 
 
 def cache_key(*, period: Period, direction: InvoiceDirection) -> str:
@@ -111,8 +109,7 @@ def cache_key(*, period: Period, direction: InvoiceDirection) -> str:
     invoice and buyer on the next: one key for both would serve a buyer's answer
     to a seller's question and report a month as empty (D-031 §5).
     """
-    ends = "open" if period.date_to is None else period.date_to.isoformat()
-    spelling = f"{period.date_type}|{period.date_from.isoformat()}|{ends}"
+    spelling = f"{period.date_type}|{period.date_from.isoformat()}|{period.date_to.isoformat()}"
     digest = hashlib.sha256(spelling.encode("utf-8")).hexdigest()[:KEY_LENGTH]
     return f"{direction}-{digest}"
 
@@ -182,6 +179,20 @@ def _decode_moment(stored: object) -> datetime | None:
     return None if stored is None else datetime.fromisoformat(str(stored))
 
 
+def _decode_end(stored: object) -> datetime:
+    """A window's end, refusing the entry rather than letting `None` travel.
+
+    The schema bump above is what actually retires the entries that predate a
+    required end. This stays as the backstop for a hand-edited or
+    version-forged document, and says so instead of surfacing as an incidental
+    `TypeError` from a comparison deeper in.
+    """
+    moment = _decode_moment(stored)
+    if moment is None:
+        raise ValueError("Cached window has no end; the entry predates GH-84.")
+    return moment
+
+
 def _encode(
     remembered: CachedPeriod,
     *,
@@ -196,7 +207,7 @@ def _encode(
         "queried_at": remembered.queried_at.isoformat(),
         "period": {
             "date_from": remembered.period.date_from.isoformat(),
-            "date_to": _encode_moment(remembered.period.date_to),
+            "date_to": remembered.period.date_to.isoformat(),
             "date_type": str(remembered.period.date_type),
         },
         "page": {
@@ -215,7 +226,7 @@ def _decode(document: dict[str, object]) -> CachedPeriod:
     return CachedPeriod(
         period=Period(
             date_from=datetime.fromisoformat(str(period["date_from"])),
-            date_to=_decode_moment(period["date_to"]),
+            date_to=_decode_end(period["date_to"]),
             date_type=DateType(period["date_type"]),
         ),
         direction=InvoiceDirection(document["direction"]),
