@@ -161,9 +161,9 @@ def test_the_window_is_dated_by_the_issue_date_the_taxpayer_asks_in() -> None:
 
 
 def test_the_window_has_both_ends_so_the_period_cache_can_keep_it() -> None:
-    # Okno otwarte (Period.for_synchronisation) jest z definicji niecacheowalne,
-    # więc każde powtórzone pytanie kosztowałoby jedno zapytanie na typ podmiotu.
-    assert listing_period(moment=ASKED_AT).date_to is not None
+    # Okno datowane jak synchronizacja jest z definicji niecacheowalne, więc
+    # każde powtórzone pytanie kosztowałoby jedno zapytanie na typ podmiotu.
+    assert listing_period(moment=ASKED_AT).date_type is not DateType.PERMANENT_STORAGE
 
 
 @pytest.mark.parametrize(
@@ -269,7 +269,13 @@ def test_an_open_ended_question_says_its_end_is_open() -> None:
         nip=NIP,
         environment=KsefEnvironment.TEST,
         direction=InvoiceDirection.SELLER,
-        period=Period.for_synchronisation(since=datetime(2026, 9, 1, tzinfo=UTC)),
+        # Zbudowane wprost: od GH-84 synchronizacja podaje oba końce, a okno bez
+        # końca może przyjść już tylko z wpisu cache sprzed tej zmiany.
+        period=Period(
+            date_from=datetime(2026, 9, 1, tzinfo=UTC),
+            date_to=None,
+            date_type=DateType.PERMANENT_STORAGE,
+        ),
     )
 
     assert "bez końca" in asked.restated

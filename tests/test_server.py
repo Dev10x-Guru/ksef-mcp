@@ -31,7 +31,7 @@ from ksef_mcp.listing import (
 from ksef_mcp.metadata import SERVER_NAME, VERSION
 from ksef_mcp.pdf import InvoiceNotArchived, InvoiceRenderer
 from ksef_mcp.preflight import NodeReport
-from ksef_mcp.review import InvoiceReview, assess
+from ksef_mcp.review import REVIEW_WINDOW, InvoiceReview, assess
 from ksef_mcp.server import (
     InvoiceListingResult,
     InvoiceReviewResult,
@@ -50,7 +50,7 @@ from ksef_mcp.server import (
     synchronise,
     window_criteria,
 )
-from ksef_mcp.statement import AccountingPeriod, Statement
+from ksef_mcp.statement import AccountingPeriod, Statement, WorkingDirectoryRefused
 from ksef_mcp.synchronisation import DirectionReport, SynchronisationReport, SyncOutcome
 from synthetic import synthetic_fa3_invoice, synthetic_metadata
 
@@ -237,6 +237,44 @@ async def test_a_missing_configuration_names_the_command_that_fixes_it(
     unconfigured_listing: CallToolResult,
 ) -> None:
     assert "ksef-mcp onboarding" in str(unconfigured_listing.content)
+
+
+@pytest.fixture
+async def unarchived_render(monkeypatch: pytest.MonkeyPatch) -> CallToolResult:
+    def refuse(*, ksef_number: str, working_directory: str | None) -> RenderedInvoiceResult:
+        raise InvoiceNotArchived("Tej faktury nie ma w archiwum. Uruchom najpierw synchronizację.")
+
+    monkeypatch.setattr(server_module, "render_invoice", refuse)
+    async with Client(server) as client:
+        return await client.call_tool("render_invoice_pdf", {"ksef_number": RENDER_NUMBER})
+
+
+@pytest.fixture
+async def refused_render_directory(monkeypatch: pytest.MonkeyPatch) -> CallToolResult:
+    def refuse(*, ksef_number: str, working_directory: str | None) -> RenderedInvoiceResult:
+        raise WorkingDirectoryRefused("Katalog roboczy leży wewnątrz magazynu wewnętrznego.")
+
+    monkeypatch.setattr(server_module, "render_invoice", refuse)
+    async with Client(server) as client:
+        return await client.call_tool("render_invoice_pdf", {"ksef_number": RENDER_NUMBER})
+
+
+@pytest.mark.anyio
+async def test_an_unarchived_invoice_says_so_instead_of_failing_namelessly(
+    unarchived_render: CallToolResult,
+) -> None:
+    # GH-84: `render_invoice_pdf` was the one tool outside `reported`, so the
+    # refusal its own docstring promises arrived as `Error executing tool`.
+    assert "Uruchom najpierw synchronizację" in str(unarchived_render.content)
+
+
+@pytest.mark.anyio
+async def test_a_refused_working_directory_says_which_rule_it_broke(
+    refused_render_directory: CallToolResult,
+) -> None:
+    # The second half of the same report: a directory under a synced cloud folder
+    # was declined, and the caller saw no reason either.
+    assert "magazynu wewnętrznego" in str(refused_render_directory.content)
 
 
 @pytest.mark.anyio
@@ -497,7 +535,13 @@ def test_an_open_window_is_described_without_an_end() -> None:
             nip=NIP,
             environment=KsefEnvironment.TEST,
             threshold=LISTING_THRESHOLD,
-            period=Period.for_synchronisation(since=datetime(2026, 9, 1, tzinfo=UTC)),
+            # Zbudowane wprost: od GH-84 synchronizacja podaje oba końce, a okno
+            # bez końca może przyjść już tylko z wpisu cache sprzed tej zmiany.
+            period=Period(
+                date_from=datetime(2026, 9, 1, tzinfo=UTC),
+                date_to=None,
+                date_type=DateType.PERMANENT_STORAGE,
+            ),
             directions=(),
         )
     )
@@ -662,9 +706,12 @@ async def test_the_statement_tool_answers_with_a_path_but_no_invoice(composing: 
     assert called.structured_content["path"] == STATEMENT_PATH
 
 
+REVIEW_ENDS = datetime(2026, 9, 14, 7, tzinfo=UTC)
+
+# Początek wyprowadzony z REVIEW_WINDOW, nie przepisany liczbą (GH-84).
 REVIEW_PERIOD = Period(
-    date_from=datetime(2026, 6, 16, 7, tzinfo=UTC),
-    date_to=datetime(2026, 9, 14, 7, tzinfo=UTC),
+    date_from=REVIEW_ENDS - REVIEW_WINDOW,
+    date_to=REVIEW_ENDS,
     date_type=DateType.INVOICING,
 )
 
@@ -925,7 +972,12 @@ def test_a_listing_records_a_subject_type_that_returned_nothing(
 
 
 def test_an_open_window_is_recorded_as_open() -> None:
-    open_ended = Period.for_synchronisation(since=datetime(2026, 9, 1, tzinfo=UTC))
+    # Jak wyżej: okno bez końca buduje się dziś wprost, nie przez synchronizację.
+    open_ended = Period(
+        date_from=datetime(2026, 9, 1, tzinfo=UTC),
+        date_to=None,
+        date_type=DateType.PERMANENT_STORAGE,
+    )
 
     assert window_criteria(open_ended).endswith("..open")
 

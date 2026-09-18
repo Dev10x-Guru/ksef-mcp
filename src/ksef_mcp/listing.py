@@ -80,11 +80,12 @@ def now_utc() -> datetime:
 def listing_period(*, moment: datetime) -> Period:
     """Thirty days ending on the hour — closed, so asking twice costs once.
 
-    `Period.for_synchronisation` leaves the end open because MF decides how far
-    a package reaches, and `is_cacheable` refuses such a window: nothing about
-    an answer to it stays true. A listing asked again five minutes later would
-    then spend a second of twenty metadata queries an hour, times four subject
-    types. Rounding the end down to the hour makes the window an identity the
+    `is_cacheable` refuses a synchronisation window, because MF stops the
+    package where it likes and nothing about an answer to it stays true. A
+    listing dated the same way would inherit that refusal; asked again five
+    minutes later it would spend a second of twenty metadata queries an hour,
+    times four subject types. Rounding the end down to the hour makes the window
+    an identity the
     cache can match, and bounds staleness at the same hour KSeF settles its own
     allowance in. What it costs is visible rather than hidden: invoices from the
     hour in progress are outside the window, and the restated question says so

@@ -56,7 +56,20 @@ AUGUST = Period(
     date_type=DateType.ISSUE,
 )
 
-OPEN_ENDED = Period.for_synchronisation(since=datetime(2026, 9, 1, tzinfo=UTC))
+# Okno synchronizacji — od GH-84 z oboma końcami. Niecacheowalne nie dlatego, że
+# nie ma końca, tylko dlatego, że MF zatrzymuje paczkę tam, gdzie zechce.
+SYNCHRONISATION = Period.for_synchronisation(
+    since=datetime(2026, 9, 1, tzinfo=UTC),
+    now=datetime(2026, 9, 14, 6, 0, tzinfo=UTC),
+)
+
+# Wariant bez końca zostaje jako osobna atrapa: przychodzi już tylko z wpisu
+# zapisanego, zanim pułap zaczął obowiązywać, i też nie może trafić do cache.
+OPEN_ENDED = Period(
+    date_from=datetime(2026, 9, 1, tzinfo=UTC),
+    date_to=None,
+    date_type=DateType.PERMANENT_STORAGE,
+)
 
 ASKED_AT = datetime(2026, 9, 14, 6, 0, tzinfo=UTC)
 
@@ -240,10 +253,16 @@ def test_an_open_window_and_a_closed_one_are_different_questions() -> None:
 
 @pytest.mark.parametrize(
     ("period", "expected"),
-    [(SEPTEMBER, True), (OPEN_ENDED, False)],
+    [(SEPTEMBER, True), (OPEN_ENDED, False), (SYNCHRONISATION, False)],
 )
-def test_only_a_window_with_both_ends_names_a_period(period: Period, expected: bool) -> None:
+def test_only_a_settled_period_is_worth_remembering(period: Period, expected: bool) -> None:
     assert is_cacheable(period) is expected
+
+
+def test_a_synchronisation_window_is_refused_although_it_states_both_ends() -> None:
+    """GH-84: the refusal follows the date type, not a missing end."""
+    assert SYNCHRONISATION.date_to is not None
+    assert is_cacheable(SYNCHRONISATION) is False
 
 
 def test_an_open_window_leaves_nothing_behind(cache: PeriodCache, page: MetadataPage) -> None:

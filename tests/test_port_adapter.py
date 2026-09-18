@@ -231,12 +231,15 @@ def test_the_direction_reaches_the_sdk_as_a_role(session: KsefSession, plan: Pla
     assert plan.service.metadata_calls[0][0].role == "seller"
 
 
-def test_an_open_ended_window_asks_ksef_to_stop_at_the_high_water_mark(
+def test_a_synchronisation_window_asks_ksef_to_stop_at_the_high_water_mark(
     session: KsefSession,
     plan: Plan,
 ) -> None:
     session.query_metadata(
-        period=Period.for_synchronisation(since=datetime(2026, 8, 1, tzinfo=UTC)),
+        period=Period.for_synchronisation(
+            since=datetime(2026, 8, 1, tzinfo=UTC),
+            now=datetime(2026, 9, 1, tzinfo=UTC),
+        ),
         direction=InvoiceDirection.BUYER,
     )
     sent = plan.service.metadata_calls[0][0]

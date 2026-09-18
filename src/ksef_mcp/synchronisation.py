@@ -33,6 +33,7 @@ from ksef_mcp.ksef_port.budget import Operation, QueryBudget
 from ksef_mcp.ksef_port.errors import KsefPortError, KsefRequestRejected
 from ksef_mcp.ksef_port.protocol import KsefPort, KsefSession
 from ksef_mcp.ksef_port.types import (
+    MAX_QUERY_WINDOW,
     ContinuationPoint,
     ExportState,
     ExportStatus,
@@ -80,10 +81,16 @@ MINIMUM_INTERVAL: Final[timedelta] = timedelta(minutes=15)
 
 OCCASIONAL_INTERVAL: Final[timedelta] = timedelta(days=1)
 
-# How far back a first run reaches. The window's end is KSeF's to choose, so
-# this only says where the sequence starts; a subject with older invoices
-# catches up over the following runs rather than in one oversized package.
-INITIAL_LOOKBACK: Final[timedelta] = timedelta(days=100)
+# How far back a first run reaches. This only says where the sequence starts; a
+# subject with older invoices catches up over the following runs rather than in
+# one oversized package.
+#
+# The ceiling itself, not a number that happens to sit under it (GH-84). The two
+# were written independently and then drifted apart from the same value, so
+# every first run asked for a window KSeF refuses outright — the drift was
+# invisible precisely because the two constants looked equal. Reaching as far
+# back as one window allows is also the most a first run can usefully do.
+INITIAL_LOOKBACK: Final[timedelta] = MAX_QUERY_WINDOW
 
 # An export is queued, so waiting for it inside one call is the wrong shape: a
 # tool that blocks for minutes looks hung to the agent and to the person. Poll a
@@ -306,7 +313,10 @@ class Synchroniser:
                 reached=opening.reached,
             )
         handle = session.start_export(
-            period=Period.for_synchronisation(since=opening.reached),
+            # The pass's own `moment`, not a second reading of the clock: the
+            # window's two ends have to come from one instant, or a slow run
+            # widens the very span the ceiling is there to bound.
+            period=Period.for_synchronisation(since=opening.reached, now=moment),
             direction=direction,
         )
         queued = PendingExport(

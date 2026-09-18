@@ -12,7 +12,8 @@ from ksef_mcp.ksef_port import (
     Period,
     SubjectContext,
 )
-from ksef_mcp.ksef_port.types import WIRE_SUBJECT_TYPES
+from ksef_mcp.ksef_port.types import MAX_QUERY_WINDOW, WIRE_SUBJECT_TYPES
+from ksef_mcp.synchronisation import INITIAL_LOOKBACK
 from synthetic import synthetic_metadata
 
 VALID_NUMBER = "1234567890-20260901-0100AB12CD34-56"
@@ -71,23 +72,50 @@ def test_a_window_that_ends_before_it_starts_is_refused() -> None:
 
 def test_a_window_wider_than_ksef_answers_is_refused_without_spending_a_call() -> None:
     with pytest.raises(KsefRequestRejected):
-        Period(date_from=NOON, date_to=NOON + timedelta(days=101), date_type=DateType.ISSUE)
+        Period(
+            date_from=NOON,
+            date_to=NOON + MAX_QUERY_WINDOW + timedelta(days=1),
+            date_type=DateType.ISSUE,
+        )
 
 
 def test_a_window_at_the_ceiling_is_accepted() -> None:
     period = Period(
         date_from=NOON,
-        date_to=NOON + timedelta(days=100),
+        date_to=NOON + MAX_QUERY_WINDOW,
         date_type=DateType.ISSUE,
     )
 
     assert period.date_type is DateType.ISSUE
 
 
-def test_synchronisation_pins_permanent_storage_and_leaves_the_end_open() -> None:
-    period = Period.for_synchronisation(since=NOON)
+def test_synchronisation_pins_permanent_storage() -> None:
+    period = Period.for_synchronisation(since=NOON, now=NOON)
 
-    assert (period.date_type, period.date_to) == (DateType.PERMANENT_STORAGE, None)
+    assert period.date_type is DateType.PERMANENT_STORAGE
+
+
+def test_the_first_window_of_a_new_subject_fits_what_ksef_answers() -> None:
+    """GH-84: the window a first run sends is the one that used to be unmeasured."""
+    period = Period.for_synchronisation(since=NOON - INITIAL_LOOKBACK, now=NOON)
+
+    assert period.date_to == NOON
+    assert period.date_to - period.date_from <= MAX_QUERY_WINDOW
+
+
+def test_a_point_older_than_the_ceiling_catches_up_rather_than_reaching_back() -> None:
+    """A subject dormant for a year asks for a legal window, not an illegal one."""
+    stale = NOON - timedelta(days=365)
+
+    period = Period.for_synchronisation(since=stale, now=NOON)
+
+    assert period.date_from == stale
+    assert period.date_to == stale + MAX_QUERY_WINDOW
+
+
+def test_the_first_lookback_can_never_outgrow_the_ceiling() -> None:
+    """The two constants are one decision; drifting them apart is the GH-84 bug."""
+    assert INITIAL_LOOKBACK <= MAX_QUERY_WINDOW
 
 
 @pytest.mark.parametrize(

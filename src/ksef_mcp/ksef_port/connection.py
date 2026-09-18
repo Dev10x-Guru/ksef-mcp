@@ -31,9 +31,15 @@ def check_connection(
     Deliberately the smallest thing the port can do: confirming the token works
     must not cost an export from an allowance of twenty per hour.
     """
+    # Both ends stated, from one reading of the clock. An unstated end is not an
+    # unbounded one — the adapter sends "now" in its place — so leaving it unset
+    # only moved the window past the ceiling check (GH-84). Thirty days clears
+    # that ceiling today; saying so explicitly is what keeps a caller's wider
+    # `window` from repeating the same slip.
+    moment = datetime.now(tz=UTC)
     period = Period(
-        date_from=datetime.now(tz=UTC) - window,
-        date_to=None,
+        date_from=moment - window,
+        date_to=moment,
         date_type=DateType.ISSUE,
     )
     with port.session(nip=nip, token=token) as session:

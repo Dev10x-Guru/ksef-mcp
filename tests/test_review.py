@@ -15,7 +15,7 @@ zostawia tę decyzję człowiekowi.
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Final
 
@@ -35,6 +35,7 @@ from ksef_mcp.ksef_port import (
     RateLimits,
     SessionCeilings,
 )
+from ksef_mcp.ksef_port.types import MAX_QUERY_WINDOW
 from ksef_mcp.listing import LISTING_THRESHOLD, Question
 from ksef_mcp.metadata import SERVER_NAME
 from ksef_mcp.period_cache import PeriodCache
@@ -67,8 +68,10 @@ EXHAUSTED: Final[OperationLimit] = OperationLimit(per_second=None, per_minute=No
 # Ta faktura jest sednem zgłoszenia: numer nadany 7 lipca, wykryta we wrześniu.
 IN_JULY = "1234567890-20260707-0100AB12CD77-56"
 
+# Wyprowadzone z REVIEW_WINDOW, nie przepisane liczbą: przepisana data rozjeżdża
+# się z oknem przy pierwszej zmianie pułapu i milczy o tym (GH-84).
 WINDOW = Period(
-    date_from=datetime(2026, 6, 16, 7, tzinfo=UTC),
+    date_from=ON_THE_HOUR - REVIEW_WINDOW,
     date_to=ON_THE_HOUR,
     date_type=DateType.INVOICING,
 )
@@ -171,14 +174,22 @@ def reviewer(session: RecordingSession, cache: PeriodCache, store: ReviewStore) 
     )
 
 
-def test_the_window_reaches_ninety_days_back() -> None:
+def test_the_window_reaches_a_full_quarter_back() -> None:
     # Przeoczona faktura miała trzy miesiące; okno trzydziestodniowe z listy
     # by jej nie objęło.
     assert review_period(moment=ASKED_AT).date_from == ON_THE_HOUR - REVIEW_WINDOW
 
 
-def test_the_window_is_ninety_days_long() -> None:
-    assert REVIEW_WINDOW == timedelta(days=90)
+def test_the_window_stops_at_what_ksef_answers() -> None:
+    # Dowody i limit wypadają w tym samym miejscu, więc okno jest związane
+    # z pułapem, a nie przepisane liczbą — inaczej rozjeżdżają się w ciszy (GH-84).
+    assert REVIEW_WINDOW == MAX_QUERY_WINDOW
+
+
+def test_the_window_still_reaches_the_invoice_the_study_found() -> None:
+    # Sedno D-025: numer nadany 7 lipca, wykryty we wrześniu. Skrócenie okna do
+    # pułapu nie może wypchnąć tej faktury poza zakres.
+    assert review_period(moment=ASKED_AT).date_from < datetime(2026, 7, 7, tzinfo=UTC)
 
 
 def test_the_window_ends_on_the_hour_so_a_repeat_costs_nothing() -> None:
