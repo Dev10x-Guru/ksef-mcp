@@ -1,0 +1,45 @@
+version: 2
+
+updates:
+  # `uv`, not `pip`: the pins that matter live in `uv.lock`, and the `pip`
+  # ecosystem does not read it — it would open pull requests against
+  # `pyproject.toml` alone and leave the lock file behind, which is the one
+  # file the wheel is actually built from.
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    # gitlint runs on every commit including Dependabot's, and its title
+    # regex admits a closed set of gitmoji that does not contain ⬆️. A
+    # default prefix would turn each bot pull request red on Git Checks
+    # before a human ever looked at the diff.
+    commit-message:
+      prefix: "🔧"
+    # Only the development group is batched. A runtime dependency keeps a
+    # pull request of its own on purpose: `cryptography` guards the keys to
+    # export packages carrying personal data, and its bump must not arrive
+    # folded into a `ruff` bump, where the reviewer reads one diff and sees
+    # cosmetics.
+    groups:
+      narzedzia-deweloperskie:
+        dependency-type: "development"
+        patterns:
+          - "*"
+
+  # The actions are pinned to commit SHAs (#107), which is exactly the pin a
+  # human stops refreshing by hand. Grouped into one pull request: a SHA bump
+  # carries no judgement call, so splitting them buys only noise.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "🔧"
+    groups:
+      akcje-github:
+        patterns:
+          - "*"

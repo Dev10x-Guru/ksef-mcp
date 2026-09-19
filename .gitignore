@@ -225,3 +225,7 @@ __marimo__/
 
 # Scratch directory the ADR workflows write their intermediate JSON to.
 .claude-output/
+
+# Derived from uv.lock by the dependency audit; the lock file is the source
+# of truth, so a committed copy could only ever go stale and disagree.
+requirements-audit.txt

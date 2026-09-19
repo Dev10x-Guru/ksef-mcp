@@ -1,0 +1,59 @@
+name: Dependency audit
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+# A vulnerability appears without anybody touching this repository, so the
+# schedule — not the pull-request trigger — is the reason this workflow
+# exists. The path filter only shortens the feedback loop for a lock file
+# that changes in a pull request.
+on:
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/dependency-audit.yml"
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize, ready_for_review]
+    paths:
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/dependency-audit.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  pip-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          enable-cache: true
+
+      # `--frozen` is what makes this an audit of the lock file rather than of
+      # a fresh resolution: without it a vulnerable pin could be silently
+      # resolved away here and still be what the taxpayer installs. Hashes are
+      # dropped because pip-audit reads names and versions, and the project is
+      # itself excluded — auditing our own unpublished revision says nothing.
+      - name: Export the locked dependency set
+        run: >
+          uv export --frozen --all-groups --no-hashes --no-emit-project
+          --format requirements-txt -o requirements-audit.txt
+
+      # `--no-deps` tells pip-audit the file is already the complete closure,
+      # so it audits exactly the pins uv resolved instead of re-resolving them
+      # and auditing a set nobody will ever install.
+      - name: Audit the locked dependencies
+        run: >
+          uv run pip-audit --requirement requirements-audit.txt --no-deps
+          --progress-spinner off
