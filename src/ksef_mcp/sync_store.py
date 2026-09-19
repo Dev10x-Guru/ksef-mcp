@@ -41,6 +41,12 @@ SCHEMA_VERSION: Final[int] = 1
 
 STATE_DIRECTORY_MODE: Final[int] = 0o700
 
+# How many finished exports the journal below keeps. The whole document is read
+# and written on every pass, so an unbounded journal turns one refused export
+# into a file that grows for as long as the subject is synchronised. Only the
+# recent references are ever the ones somebody asks about.
+SETTLED_JOURNAL_LIMIT: Final[int] = 50
+
 # The file carries the AES key of every queued export (D-033), so it is created
 # with its final mode rather than written and then tightened.
 STATE_FILE_MODE: Final[int] = 0o600
@@ -85,6 +91,16 @@ class PendingExport:
     covering_from: datetime | None = None
 
     @property
+    def finished(self) -> bool:
+        """Whether no later pass can carry this export any further.
+
+        `READY` is not finished: the package exists and still has to be fetched
+        and archived, and the record is what keeps its key. Only a refusal ends
+        an export where it stands.
+        """
+        return self.state is ExportState.FAILED
+
+    @property
     def handle(self) -> ExportHandle:
         if self.encryption is None:
             raise ExportKeyDiscarded(
@@ -112,8 +128,23 @@ class DirectionState:
 
 @dataclass(frozen=True)
 class SyncState:
+    """What a subject owes KSeF, and what it has stopped owing.
+
+    Two tuples rather than one, because they answer different questions.
+    `pending` is the work queue: everything a subject type is still waiting on,
+    and the only thing a pass consults before deciding what to ask for next.
+    `settled` is the journal: exports that ended and can never be continued.
+
+    One tuple held both, and a refused export then sat at the head of the queue
+    forever — `pending_for` reads the queue, so the subject type asked for a new
+    package every fifteen minutes and collected none of them (GH-94). A dead
+    letter belongs in a journal; leaving it in the work queue is what made the
+    server look, to the Ministry, like a client working around its allowance.
+    """
+
     directions: dict[InvoiceDirection, DirectionState] = field(default_factory=dict)
     pending: tuple[PendingExport, ...] = ()
+    settled: tuple[PendingExport, ...] = ()
 
     def pending_for(self, direction: InvoiceDirection) -> PendingExport | None:
         return next((export for export in self.pending if export.direction == direction), None)
@@ -123,6 +154,20 @@ class SyncState:
 
     def with_pending(self, export: PendingExport) -> SyncState:
         return replace(self, pending=(*self.without_pending(reference=export.reference), export))
+
+    def with_settled(self, export: PendingExport) -> SyncState:
+        """Take a finished export off the queue and write it into the journal.
+
+        Kept rather than dropped: a reference nobody can explain later is worse
+        than one marked as the failure it was. Kept *here* rather than in
+        `pending`, because a record that can never be continued would otherwise
+        keep answering "what is this subject type waiting on" for good.
+        """
+        return replace(
+            self,
+            pending=self.without_pending(reference=export.reference),
+            settled=(*self.settled, export)[-SETTLED_JOURNAL_LIMIT:],
+        )
 
     def without_export(self, *, reference: str) -> SyncState:
         return replace(self, pending=self.without_pending(reference=reference))
@@ -224,6 +269,7 @@ def _encode(state: SyncState, *, nip: str, environment: KsefEnvironment) -> dict
             for direction, stored in state.directions.items()
         },
         "pending_exports": [_encode_pending(export) for export in state.pending],
+        "settled_exports": [_encode_pending(export) for export in state.settled],
     }
 
 
@@ -245,12 +291,25 @@ def _decode(document: dict[str, object]) -> SyncState:
         )
     points: dict[str, dict[str, object]] = document["continuation_points"]  # type: ignore[assignment]
     exports: list[dict[str, object]] = document["pending_exports"]  # type: ignore[assignment]
+    # `.get`, not `[...]`, for the same reason `covering_from` uses it: a record
+    # written before the journal existed is still this schema, and an older
+    # reader simply ignores the key — neither direction needs a version bump.
+    settled: list[dict[str, object]] = document.get("settled_exports", [])  # type: ignore[assignment]
+    queued = tuple(_decode_pending(export) for export in exports)
     return SyncState(
         directions={
             InvoiceDirection(direction): _decode_direction(stored)
             for direction, stored in points.items()
         },
-        pending=tuple(_decode_pending(export) for export in exports),
+        # A document written before the journal existed keeps its finished
+        # exports in the queue — that is the deadlock GH-94 reports. They move
+        # across on the first read rather than waiting for a pass to trip over
+        # them, so the queue means one thing whatever wrote the file.
+        pending=tuple(export for export in queued if not export.finished),
+        settled=(
+            *(_decode_pending(export) for export in settled),
+            *(export for export in queued if export.finished),
+        )[-SETTLED_JOURNAL_LIMIT:],
     )
 
 
