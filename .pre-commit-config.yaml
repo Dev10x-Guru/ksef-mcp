@@ -26,6 +26,20 @@ repos:
         args: [--fix]
       - id: ruff-format
 
+  # Nota licencyjna zapisuje rozmiar i skrót zwendorowanego generatora MF, a
+  # portal Ministerstwa dwukrotnie zerwał transfer w połowie. Ten hook liczy
+  # jedno i drugie, więc obcięty plik zatrzymuje się na commicie, a nie u
+  # podatnika. `always_run`, bo notę można przepisać bez dotykania bundla —
+  # i wtedy niezgodność jest właśnie tym, co trzeba zobaczyć.
+  - repo: local
+    hooks:
+      - id: vendor-bundle
+        name: zwendorowany bundel MF zgodny z notą licencyjną
+        entry: bin/vendor_bundle.py
+        language: script
+        pass_filenames: false
+        always_run: true
+
   # Local half of the commit-message contract; the other half is the gitlint
   # step in .github/workflows/git.yml. Edit .gitlint and that step together.
   - repo: https://github.com/jorisroovers/gitlint
