@@ -10,6 +10,29 @@ udokumentowane.
 
 ## Bez wydania
 
+### Poprawione
+
+- Odrzucony eksport przestaje blokować swój typ podmiotu. Gdy KSeF odmówił
+  zbudowania paczki, jej wpis zostawał w kolejce roboczej na zawsze —
+  a kolejka rozstrzyga, o co prosić dalej, więc ten typ podmiotu zamawiał
+  nową paczkę co piętnaście minut i nie odbierał żadnej. Bez końca i bez
+  śladu w wyniku. Odmowa idzie teraz do dziennika: odnośnik zostaje, żeby
+  dało się go później wyjaśnić, ale nie udaje już pracy do dokończenia.
+  Plik zapisany przez wcześniejszą wersję rozplątuje się sam przy
+  pierwszym odczycie (GH-94).
+- Odmowa limitem nie unieważnia odpowiedzi, które już kosztowały budżet.
+  Wypisanie faktur i przegląd nowych pytają KSeF osobno o każdy z czterech
+  typów podmiotu; odpowiedź 429 w połowie tej pętli przerywała całość,
+  więc przepadały odpowiedzi opłacone z dwudziestu zapytań na godzinę.
+  Teraz odmowę dostaje ten jeden typ podmiotu, reszta wyniku zostaje,
+  a komunikat podaje czas oczekiwania, o ile KSeF sam go wskazał —
+  nigdy zgadywany (GH-95).
+- Klucz do paczki przyjętej przez KSeF nie ginie przez awarię przy innym
+  typie podmiotu. Stan synchronizacji zapisywał się dopiero po obsłużeniu
+  wszystkich czterech typów, więc błąd przy ostatnim zabierał klucz AES
+  paczki zamówionej przy pierwszym — a takiej paczki nie da się odszyfrować
+  już nigdy. Stan idzie na dysk po każdym typie podmiotu (GH-96).
+
 ## 0.3.3 — 2026-09-19
 
 
