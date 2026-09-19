@@ -63,6 +63,7 @@ from ksef_mcp.ksef_port import (
     KsefSession,
     KsefUnreachable,
     Operation,
+    PackageLinkExpired,
     Period,
     QueryBudget,
 )
@@ -551,14 +552,29 @@ def test_a_package_part_arrives_encrypted_and_untouched(
     assert session.fetch_part(handle=handle, part=PART) == b"\x00encrypted"
 
 
-def test_an_expired_package_link_is_a_refusal_not_a_dead_network(
-    session: KsefSession,
-) -> None:
-    session.transport = answering(lambda request: httpx.Response(403))
+@pytest.mark.parametrize("status", [403, 410])
+def test_an_expired_package_link_says_so_by_type(session: KsefSession, status: int) -> None:
+    # Its own type because it is the one refusal waiting does not mend: the
+    # caller has to tell it apart to know that asking KSeF again is the move
+    # (GH-93).
+    session.transport = answering(lambda request: httpx.Response(status))
     handle = session.start_export(period=WINDOW, direction=InvoiceDirection.BUYER)
 
-    with pytest.raises(KsefRefused):
+    with pytest.raises(PackageLinkExpired):
         session.fetch_part(handle=handle, part=PART)
+
+
+def test_storage_refusing_for_another_reason_stays_an_ordinary_refusal(
+    session: KsefSession,
+) -> None:
+    # A 500 from storage is an outage, and an outage does heal by waiting —
+    # reading it as an expiry would drop a package that is still there.
+    session.transport = answering(lambda request: httpx.Response(500))
+    handle = session.start_export(period=WINDOW, direction=InvoiceDirection.BUYER)
+
+    with pytest.raises(KsefRefused) as refusal:
+        session.fetch_part(handle=handle, part=PART)
+    assert isinstance(refusal.value, PackageLinkExpired) is False
 
 
 def test_storage_that_cannot_be_reached_says_so(session: KsefSession) -> None:

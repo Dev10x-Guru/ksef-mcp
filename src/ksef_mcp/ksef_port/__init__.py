@@ -7,6 +7,7 @@ from ksef_mcp.ksef_port.errors import (
     KsefRefused,
     KsefRequestRejected,
     KsefUnreachable,
+    PackageLinkExpired,
 )
 from ksef_mcp.ksef_port.protocol import KsefPort, KsefSession
 from ksef_mcp.ksef_port.retry import NO_AUTOMATIC_RETRY, RetryPolicy
@@ -55,6 +56,7 @@ __all__ = [
     "MetadataPage",
     "Operation",
     "OperationLimit",
+    "PackageLinkExpired",
     "Period",
     "QueryBudget",
     "RateLimits",

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Final
@@ -30,7 +30,11 @@ from ksef_mcp.archive import (
     PackageArchivist,
 )
 from ksef_mcp.ksef_port.budget import Operation, QueryBudget
-from ksef_mcp.ksef_port.errors import KsefPortError, KsefRequestRejected
+from ksef_mcp.ksef_port.errors import (
+    KsefPortError,
+    KsefRequestRejected,
+    PackageLinkExpired,
+)
 from ksef_mcp.ksef_port.protocol import KsefPort, KsefSession
 from ksef_mcp.ksef_port.types import (
     MAX_QUERY_WINDOW,
@@ -105,6 +109,10 @@ POLL_INTERVAL: Final[timedelta] = timedelta(seconds=10)
 # described, a manifest that names no KSeF number, an unreadable index, and a
 # record whose key is already gone. Each of them leaves the pending record where
 # it is, so the list is the definition of "retry next pass", not of "give up".
+#
+# `PackageLinkExpired` is deliberately absent even though it is a
+# `KsefPortError`: waiting is exactly what does not help it (GH-93). It is
+# caught ahead of this list and answered by asking KSeF for the export again.
 ARCHIVING_FAILURES: Final[tuple[type[Exception], ...]] = (
     KsefPortError,
     PackageUnreadable,
@@ -122,6 +130,7 @@ class SyncOutcome(StrEnum):
     NOT_DUE = "not_due"
     BUDGET_SPENT = "budget_spent"
     INCONCLUSIVE = "inconclusive"
+    RECOVERED = "recovered"
 
 
 @dataclass(frozen=True)
@@ -190,6 +199,23 @@ def advance(point: ContinuationPoint, *, status: ExportStatus) -> ContinuationPo
     )
 
 
+def rolled_back_to(export: PendingExport, *, stored: DirectionState | None) -> datetime:
+    """Where a subject type's point goes once an export is confirmed unreachable.
+
+    A record that kept the window start it asked for goes back to exactly that.
+    One written before that field existed goes back a whole window from when the
+    export was queued — the direction to err in, because a range already held
+    costs one export and deduplication by KSeF number throws the duplicates away
+    (D-005), while too short a reach loses invoices nothing asks for again.
+
+    Never forward. A subject type dormant for longer than the ceiling stands
+    further back than one window reaches, and letting the guess pull it up to
+    meet would skip precisely the invoices this rollback exists to recover.
+    """
+    remembered = export.covering_from or export.started_at - MAX_QUERY_WINDOW
+    return remembered if stored is None else min(remembered, stored.reached)
+
+
 @dataclass(frozen=True)
 class Synchroniser:
     """One pass over every subject type, from "ask KSeF" to "the file is on disk".
@@ -251,6 +277,39 @@ class Synchroniser:
         state: SyncState,
         direction: InvoiceDirection,
     ) -> tuple[SyncState, DirectionReport]:
+        state, report = self._attempt(
+            session=session,
+            budget=budget,
+            retriever=retriever,
+            state=state,
+            direction=direction,
+        )
+        if report.outcome is not SyncOutcome.RECOVERED:
+            return state, report
+        # The lost package is off the record and the point is back before the
+        # window it covered, so this subject type is asking KSeF for nothing and
+        # owed a window. Asking for it now rather than next pass is what makes
+        # the recovery one run instead of two. It cannot recur: the second
+        # attempt finds no queued export, and `is_due` and the export budget
+        # still gate whatever it does next.
+        state, resumed = self._attempt(
+            session=session,
+            budget=budget,
+            retriever=retriever,
+            state=state,
+            direction=direction,
+        )
+        return state, replace(resumed, detail=f"{report.detail} {resumed.detail}")
+
+    def _attempt(
+        self,
+        *,
+        session: KsefSession,
+        budget: QueryBudget,
+        retriever: PackageRetriever,
+        state: SyncState,
+        direction: InvoiceDirection,
+    ) -> tuple[SyncState, DirectionReport]:
         queued = state.pending_for(direction)
         stored = state.directions.get(direction)
         if queued is not None and queued.state is ExportState.RUNNING:
@@ -266,6 +325,8 @@ class Synchroniser:
             # it costs neither an export nor a status query, so it goes first —
             # and until it lands, this subject type asks KSeF for nothing new.
             return self._archive(
+                session=session,
+                budget=budget,
                 retriever=retriever,
                 state=state,
                 export=queued,
@@ -325,6 +386,10 @@ class Synchroniser:
             started_at=moment,
             encryption=handle.encryption,
             state=ExportState.RUNNING,
+            # Where the point stood before this export moved it. Kept with the
+            # export rather than beside the point, because it is only ever read
+            # to undo this one export, and it dies with it (GH-93).
+            covering_from=opening.reached,
         )
         # The attempt is recorded before the package is, so a run that dies
         # while polling still holds the fifteen-minute floor open.
@@ -388,11 +453,20 @@ class Synchroniser:
                 outcome=SyncOutcome.FAILED,
                 detail=f"KSeF odrzucił eksport {export.reference}.",
             )
-        return self._complete(retriever=retriever, state=state, export=export, status=status)
+        return self._complete(
+            session=session,
+            budget=budget,
+            retriever=retriever,
+            state=state,
+            export=export,
+            status=status,
+        )
 
     def _complete(
         self,
         *,
+        session: KsefSession,
+        budget: QueryBudget,
         retriever: PackageRetriever,
         state: SyncState,
         export: PendingExport,
@@ -411,10 +485,15 @@ class Synchroniser:
             state=ExportState.READY,
             parts=status.parts,
             invoice_count=status.invoice_count,
+            # Carried, not recomputed: the window this export asked for is a fact
+            # about the export, and the point has already moved past it by now.
+            covering_from=export.covering_from,
         )
         carrying = state.with_pending(ready)
         if moved is None:
             return self._archive(
+                session=session,
+                budget=budget,
                 retriever=retriever,
                 state=carrying,
                 export=ready,
@@ -429,6 +508,8 @@ class Synchroniser:
         # point ahead of a package nobody recorded would declare a period
         # complete that was never fetched.
         return self._archive(
+            session=session,
+            budget=budget,
             retriever=retriever,
             state=carrying.with_direction(
                 export.direction,
@@ -443,12 +524,15 @@ class Synchroniser:
     def _archive(
         self,
         *,
+        session: KsefSession,
+        budget: QueryBudget,
         retriever: PackageRetriever,
         state: SyncState,
         export: PendingExport,
         settled: SyncOutcome,
         detail: str,
         reached: datetime | None,
+        renewed: bool = False,
     ) -> tuple[SyncState, DirectionReport]:
         """Fetch the parts, store the invoices, and let the key go with them.
 
@@ -469,24 +553,29 @@ class Synchroniser:
         archivist = PackageArchivist(archive=self.archive)
         try:
             retriever.archive(export=export, archivist=archivist)
+        except PackageLinkExpired as expiry:
+            # Ahead of the list below, because this is the one refusal waiting
+            # does not mend. Once already renewed, there is nothing further to
+            # ask KSeF in this pass, so it falls back to the same report.
+            if renewed:
+                return state, self._stalled(export=export, failure=expiry, reached=reached)
+            return self._renew(
+                session=session,
+                budget=budget,
+                retriever=retriever,
+                state=state,
+                export=export,
+                expiry=expiry,
+                settled=settled,
+                detail=detail,
+                reached=reached,
+            )
         except ARCHIVING_FAILURES as failure:
             # The record keeps its key and its parts (ADR-104 §2), and the
             # continuation point stays exactly where the package itself put it:
             # it moves on what KSeF confirmed, never on whether this run managed
-            # to write the files (ADR-103 §3). The message names the failure,
-            # never the invoice — these exceptions carry no package content
-            # (D-011).
-            return state, DirectionReport(
-                direction=export.direction,
-                outcome=SyncOutcome.NOT_ARCHIVED,
-                detail=(
-                    f"Paczka {export.reference} czeka na dysku z kluczem, "
-                    f"bo archiwizacja się nie udała: {failure}"
-                ),
-                invoice_count=export.invoice_count,
-                part_count=len(export.parts),
-                reached=reached,
-            )
+            # to write the files (ADR-103 §3).
+            return state, self._stalled(export=export, failure=failure, reached=reached)
         stored = archivist.reported
         return self.store.load(), DirectionReport(
             direction=export.direction,
@@ -498,6 +587,109 @@ class Synchroniser:
             archived=stored.archived,
             already_held=stored.already_held,
             archive_directory=stored.directory,
+        )
+
+    def _stalled(
+        self,
+        *,
+        export: PendingExport,
+        failure: Exception,
+        reached: datetime | None,
+    ) -> DirectionReport:
+        """The window is still owed and the record on disk is what says so.
+
+        The message names the failure, never the invoice — these exceptions
+        carry no package content (D-011).
+        """
+        return DirectionReport(
+            direction=export.direction,
+            outcome=SyncOutcome.NOT_ARCHIVED,
+            detail=(
+                f"Paczka {export.reference} czeka na dysku z kluczem, "
+                f"bo archiwizacja się nie udała: {failure}"
+            ),
+            invoice_count=export.invoice_count,
+            part_count=len(export.parts),
+            reached=reached,
+        )
+
+    def _renew(
+        self,
+        *,
+        session: KsefSession,
+        budget: QueryBudget,
+        retriever: PackageRetriever,
+        state: SyncState,
+        export: PendingExport,
+        expiry: PackageLinkExpired,
+        settled: SyncOutcome,
+        detail: str,
+        reached: datetime | None,
+    ) -> tuple[SyncState, DirectionReport]:
+        """Ask KSeF for the export again before concluding the package is lost.
+
+        A presigned link dies on a clock of its own, so the parts on record can
+        be unusable while the export behind them is perfectly alive. Asking
+        costs a status query and not an export — by far the cheaper question,
+        and the only one that can hand back working links.
+        """
+        try:
+            budget.spend(Operation.EXPORT_STATUS)
+        except KsefRequestRejected:
+            # No allowance left to ask with. The record keeps its key and its
+            # parts, so the next pass asks instead of guessing now.
+            return state, self._stalled(export=export, failure=expiry, reached=reached)
+        try:
+            status = session.check_export(handle=export.handle)
+        except KsefPortError:
+            return self._abandon(state=state, export=export, expiry=expiry)
+        if status.state is not ExportState.READY or not status.parts:
+            return self._abandon(state=state, export=export, expiry=expiry)
+        renewed = replace(export, parts=status.parts)
+        return self._archive(
+            session=session,
+            budget=budget,
+            retriever=retriever,
+            state=state.with_pending(renewed),
+            export=renewed,
+            settled=settled,
+            detail=detail,
+            reached=reached,
+            renewed=True,
+        )
+
+    def _abandon(
+        self,
+        *,
+        state: SyncState,
+        export: PendingExport,
+        expiry: PackageLinkExpired,
+    ) -> tuple[SyncState, DirectionReport]:
+        """Take a lost export off the record and put the point back before it.
+
+        This is the only place the continuation point moves backwards, and it
+        moves only for an export KSeF itself no longer serves. Leaving the
+        record in place instead would hold the subject type against a door that
+        will not open again, with the point already past the window behind it —
+        the deadlock GH-93 was reported from.
+        """
+        stored = state.directions.get(export.direction)
+        returned = rolled_back_to(export, stored=stored)
+        return state.without_export(reference=export.reference).with_direction(
+            export.direction,
+            DirectionState(
+                reached=returned,
+                attempted_at=None if stored is None else stored.attempted_at,
+            ),
+        ), DirectionReport(
+            direction=export.direction,
+            outcome=SyncOutcome.RECOVERED,
+            detail=(
+                f"Odnośniki do paczki {export.reference} wygasły, a KSeF nie "
+                f"podaje już jej części; wpis zdjęty, punkt kontynuacji "
+                f"cofnięty na {returned.isoformat()}."
+            ),
+            reached=returned,
         )
 
     def _poll(

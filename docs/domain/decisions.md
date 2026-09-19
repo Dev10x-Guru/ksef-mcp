@@ -1236,6 +1236,16 @@ pozwala skasować treść bez utraty idempotencji.
   już obok w postaci jawnej.
 - **Niezmiennik:** klucz nie przeżywa zakończonego eksportu. Kasowanie
   jest częścią operacji archiwizacji, nie osobnym sprzątaniem.
+- **Korekta wykonania (GH-93):** rekord oczekującego eksportu przeżywa
+  awarię po to, żeby kolejny przebieg dokończył paczkę — a to działa
+  wyłącznie dopóki odnośniki do części jeszcze żyją. Presigned link
+  wygasa na własnym zegarze, niezależnym od eksportu, więc „zostawiamy
+  na później" bywa odpowiedzią na pytanie, które później już nie istnieje.
+  Rekord nosi teraz początek okna, o które poprosił (`covering_from`),
+  a odmowa z wygasłym odnośnikiem najpierw odpytuje KSeF o status
+  eksportu. Dopiero eksport, którego KSeF już nie podaje, jest zdejmowany
+  z rekordu — wraz z cofnięciem punktu kontynuacji przed okno, które
+  przepadło. To jedyne miejsce, w którym punkt cofa się wstecz.
 
 ## D-034 — Archiwum bezterminowe, czyszczone jawną komendą
 
