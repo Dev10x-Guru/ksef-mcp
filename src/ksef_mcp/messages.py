@@ -117,6 +117,22 @@ def describe_subject(configuration: Configuration | None) -> tuple[str, ...]:
     )
 
 
+def describe_rejected_nip() -> str:
+    """Says what is expected, and never repeats what was typed (D-011)."""
+    return (
+        "NIP to dziesięć cyfr. Myślniki, spacje i prefiks PL możesz zostawić — "
+        "pomijam je — ale reszta musi być cyframi."
+    )
+
+
+def describe_refused_nip() -> str:
+    """The purge variant: the refusal has to say that nothing was touched."""
+    return (
+        "Nie rozpoznaję tego zapisu jako NIP-u, więc nie ruszam żadnego katalogu. "
+        + describe_rejected_nip()
+    )
+
+
 def describe_environment_choices() -> tuple[str, ...]:
     """The difference between test and demo is not obvious from the names."""
     return (

@@ -34,7 +34,6 @@ from ksef_mcp.ksef_port.types import (
     Period,
     RateLimits,
     SessionCeilings,
-    SubjectContext,
 )
 
 __all__ = [
@@ -72,6 +71,5 @@ __all__ = [
     "RefusalBreaker",
     "RetryPolicy",
     "SessionCeilings",
-    "SubjectContext",
     "check_connection",
 ]

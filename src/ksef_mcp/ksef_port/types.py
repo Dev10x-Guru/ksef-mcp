@@ -105,17 +105,6 @@ class KsefNumber:
 
 
 @dataclass(frozen=True)
-class SubjectContext:
-    """Which taxpayer we act as. A property of the credential, not of a query."""
-
-    nip: str
-
-    def __post_init__(self) -> None:
-        if not self.nip.isdigit() or len(self.nip) != 10:
-            raise KsefRequestRejected(f"A NIP is ten digits, got {len(self.nip)} characters.")
-
-
-@dataclass(frozen=True)
 class Period:
     """A window with both ends, because an optional end is an unmeasured one.
 

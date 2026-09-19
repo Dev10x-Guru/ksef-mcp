@@ -4,7 +4,7 @@ import argparse
 import getpass
 import shutil
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
@@ -15,6 +15,7 @@ from ksef_mcp.archive import InvoiceArchive
 from ksef_mcp.audit import OPERATOR_BASIS, AuditTrail, Authorisation
 from ksef_mcp.config import Configuration, KsefEnvironment
 from ksef_mcp.metadata import SERVER_NAME, VERSION
+from ksef_mcp.paths import Nip, NipRejected
 from ksef_mcp.period_cache import MeteredPeriods, PeriodCache
 from ksef_mcp.retention import (
     ArchivePurge,
@@ -45,6 +46,8 @@ EXIT_SKILL_KEPT: Final[int] = 5
 EXIT_PURGE_DECLINED: Final[int] = 6
 
 EXIT_INVALID_WINDOW: Final[int] = 7
+
+EXIT_INVALID_NIP: Final[int] = 8
 
 AFFIRMATIVE_ANSWERS: Final[frozenset[str]] = frozenset({"t", "tak"})
 
@@ -78,6 +81,21 @@ def ask_secret_required(console: Console, *, prompt: str) -> str:
         if answer:
             return answer
         console.write("Token jest wymagany.")
+
+
+def ask_nip(console: Console) -> Nip:
+    """Settle the spelling here, once, before anything is keyed by it.
+
+    The same number written `123-456-32-18` and `1234563218` used to give the
+    taxpayer two archives and two keyring entries, silently (GH-111). The
+    onboarding prompt is where a human spelling enters the process, so it is
+    where the spelling stops being a variable.
+    """
+    while True:
+        try:
+            return Nip.parsed(ask_required(console, prompt="NIP podmiotu"))
+        except NipRejected:
+            console.write(messages.describe_rejected_nip())
 
 
 def preferred_backend_index(report: preflight.KeyringReport) -> int:
@@ -278,7 +296,7 @@ def run_onboarding(
         console.write("interaktywny prompt zawiesiłby transport MCP. Przerywam.")
         return EXIT_UNUSABLE_KEYRING
     console.write("")
-    nip = ask_required(console, prompt="NIP podmiotu")
+    nip = str(ask_nip(console))
     backend = choose_keyring_backend(console, keyring_report)
     environment = choose_environment(console)
     explain_token_step(console)
@@ -323,10 +341,17 @@ def run_verify(console: Console, *, configuration_file: Path | None) -> int:
     from ksef_mcp import ksef_port
     from ksef_mcp.ksef_port.adapter import Ksef2Port
 
-    configuration = config.load_configuration(path=configuration_file)
-    if configuration is None:
+    loaded = config.load_configuration(path=configuration_file)
+    if loaded is None:
         console.write("Brak konfiguracji. Uruchom najpierw: ksef-mcp onboarding")
         return EXIT_NOT_CONFIGURED
+    # The same spelling the MCP tools resolve to, so `verify` reads the cache
+    # and spends the allowance of the subject those tools work as (GH-98).
+    try:
+        configuration = replace(loaded, nip=str(Nip.parsed(loaded.nip)))
+    except NipRejected:
+        console.write(messages.describe_rejected_nip())
+        return EXIT_INVALID_NIP
     stored = token_store.read_token(nip=configuration.nip)
     if stored is None:
         console.write(
@@ -496,12 +521,20 @@ def run_purge(
     if configuration is None:
         console.write("Brak konfiguracji. Uruchom najpierw: ksef-mcp onboarding")
         return EXIT_NOT_CONFIGURED
+    # Before the window and before anything is planned: this value becomes a
+    # path segment and this command deletes files, so `--nip ../../..` has to
+    # die at the boundary rather than be caught by the confirmation prompt.
+    # Confirming is a guard against a mistake, never against bad input (GH-112).
+    try:
+        subject = str(Nip.parsed(configuration.nip if nip is None else nip))
+    except NipRejected:
+        console.write(messages.describe_refused_nip())
+        return EXIT_INVALID_NIP
     try:
         window = PurgeWindow(received_from=received_from, received_to=received_to)
     except PurgeWindowInverted as inverted:
         console.write(str(inverted))
         return EXIT_INVALID_WINDOW
-    subject = configuration.nip if nip is None else nip
     archive = InvoiceArchive(nip=subject, environment=configuration.environment)
     purge = ArchivePurge(archive=archive)
     plan = purge.plan(window=window)
@@ -658,7 +691,15 @@ def dispatch(
             "delete": run_token_delete,
             "status": run_token_status,
         }
-        return handlers[arguments.token_command](console, nip=arguments.nip)
+        # The same normalisation the archive gets, for the same reason: this
+        # value is the keyring key, so two spellings would store two tokens for
+        # one taxpayer and the second one would look like a token that vanished.
+        try:
+            subject = str(Nip.parsed(arguments.nip))
+        except NipRejected:
+            console.write(messages.describe_rejected_nip())
+            return EXIT_INVALID_NIP
+        return handlers[arguments.token_command](console, nip=subject)
     run_mcp_server()
     return EXIT_OK
 

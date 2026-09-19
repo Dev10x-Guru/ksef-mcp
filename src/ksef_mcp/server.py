@@ -1,5 +1,6 @@
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import replace
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
@@ -27,6 +28,7 @@ from ksef_mcp.ksef_port.errors import KsefPortError
 from ksef_mcp.ksef_port.types import InvoiceMetadata, Period
 from ksef_mcp.listing import DirectionListing, InvoiceLister, InvoiceListing
 from ksef_mcp.metadata import SERVER_NAME, VERSION
+from ksef_mcp.paths import Nip, NipRejected
 from ksef_mcp.pdf import (
     GeneratorFailed,
     InvoiceNotArchived,
@@ -110,6 +112,7 @@ REFUSALS: Final[tuple[type[Exception], ...]] = (
     GeneratorFailed,
     WorkingDirectoryRefused,
     UnreadablePeriod,
+    NipRejected,
 )
 
 
@@ -171,11 +174,23 @@ def describe(
     )
 
 
-def authenticated_subject() -> tuple[config.Configuration, token_store.StoredToken]:
-    """Which taxpayer we act as, and the secret that proves it. Never logged."""
+def configured_subject() -> config.Configuration:
+    """The configuration, with the NIP read in the one spelling we store it under.
+
+    Normalised here rather than in `load_configuration`, which is a leaf every
+    other module reads and must not learn about subject identity (GH-111). One
+    spelling settled once is what keeps the keyring key and the directory name
+    from drifting apart when the file was written with a grouped NIP.
+    """
     configuration = config.load_configuration()
     if configuration is None:
         raise NotConfigured("Brak konfiguracji. Uruchom najpierw: ksef-mcp onboarding")
+    return replace(configuration, nip=Nip.parsed(configuration.nip).value)
+
+
+def authenticated_subject() -> tuple[config.Configuration, token_store.StoredToken]:
+    """Which taxpayer we act as, and the secret that proves it. Never logged."""
+    configuration = configured_subject()
     stored = token_store.read_token(nip=configuration.nip)
     if stored is None:
         raise NotConfigured(
@@ -838,9 +853,7 @@ def render_entries(
 
 
 def render_invoice(*, ksef_number: str, working_directory: str | None) -> RenderedInvoiceResult:
-    configuration = config.load_configuration()
-    if configuration is None:
-        raise NotConfigured("Brak konfiguracji. Uruchom najpierw: ksef-mcp onboarding")
+    configuration = configured_subject()
     directory = (
         configuration.invoice_directory
         if working_directory is None
