@@ -299,15 +299,23 @@ class InvoiceReview:
     directions: tuple[DirectionReview, ...]
 
 
-def _incompleteness(complete: bool) -> str:
+def _incompleteness(complete: bool, *, budget_bound: bool) -> str:
     if complete:
         return ""
     # Worse here than in a plain listing: an incomplete window means the answer
     # "nothing new" can be wrong, and this tool exists to be trusted on exactly
-    # that sentence.
+    # that sentence. The reader now pages the window to completion, so an
+    # incomplete one has exactly two causes left, and they are different news:
+    # a spent allowance is worth waiting out, a KSeF-side cut is not.
+    if budget_bound:
+        return (
+            " Nie dociągnąłem wszystkich stron okna: skończył się godzinowy "
+            "przydział zapytań o metadane. Reszta dojdzie przy kolejnym "
+            "wywołaniu — brak nowych pozycji nie dowodzi, że ich nie ma."
+        )
     return (
-        " KSeF nie oddał całego okna w jednej odpowiedzi, więc ta odpowiedź nie "
-        "jest kompletem — brak nowych pozycji nie dowodzi, że ich nie ma."
+        " KSeF nie oddał całego okna, więc ta odpowiedź nie jest kompletem — "
+        "brak nowych pozycji nie dowodzi, że ich nie ma."
     )
 
 
@@ -337,6 +345,7 @@ def assess(
     invoices: tuple[InvoiceMetadata, ...],
     reviewed: frozenset[str],
     complete: bool,
+    budget_bound: bool,
     moment: datetime,
     queried_at: datetime,
     from_cache: bool,
@@ -354,7 +363,7 @@ def assess(
             outcome=ReviewOutcome.NOTHING_NEW,
             message=(
                 f"Nic nowego od ostatniego przeglądu. Pytanie brzmiało — "
-                f"{question.restated}.{_incompleteness(complete)}"
+                f"{question.restated}.{_incompleteness(complete, budget_bound=budget_bound)}"
             ),
             new_invoices=(),
             new_count=0,
@@ -377,7 +386,7 @@ def assess(
                 f"niż próg {LISTING_THRESHOLD}. Brutto {describe_totals(totals)}. "
                 f"Nie zapisuję ich jako pokazanych — nie zobaczyłaś ich pojedynczo, "
                 f"więc kolejne wywołanie je powtórzy. Pytanie brzmiało — "
-                f"{question.restated}.{_incompleteness(complete)}"
+                f"{question.restated}.{_incompleteness(complete, budget_bound=budget_bound)}"
                 f"{_earlier_months_phrase(earlier)}"
             ),
             new_invoices=(),
@@ -395,19 +404,22 @@ def assess(
         message=(
             f"{invoices_phrase(count)} od ostatniego przeglądu, brutto "
             f"{describe_totals(totals)}. {_ledger_note(complete)}"
-            f"{_earlier_months_phrase(earlier)}{_incompleteness(complete)}"
+            f"{_earlier_months_phrase(earlier)}"
+            f"{_incompleteness(complete, budget_bound=budget_bound)}"
         ),
         new_invoices=fresh,
         new_count=count,
         earlier_months=earlier,
         gross_totals=totals,
         complete=complete,
-        # Only a complete window may be recorded as reviewed, for the reason the
-        # branch above already gives in its own words: what KSeF left out of the
-        # answer was never shown to anybody. Recording the part that fit lets the
-        # ninety-day window slide past the rest, and the invoice of the seventh of
-        # July — the one this module exists for — would be lost the way the manual
-        # archive lost it.
+        # The one safeguard, kept on purpose where there could have been two.
+        # `PeriodMetadataReader` now pages the window to completion, which closes
+        # the common case at the source — but it stops when the allowance runs
+        # out and it cannot undo a cut KSeF made itself, so `complete=False` is
+        # still reachable and this condition is still live, not dead weight.
+        # Recording the part that fit lets the ninety-day window slide past the
+        # rest, and the invoice of the seventh of July — the one this module
+        # exists for — would be lost the way the manual archive lost it.
         marked=complete,
         queried_at=queried_at,
         from_cache=from_cache,
@@ -483,6 +495,7 @@ class InvoiceReviewer:
                     invoices=answer.page.invoices,
                     reviewed=reviewed,
                     complete=not (answer.page.has_more or answer.page.truncated),
+                    budget_bound=answer.page.budget_bound,
                     moment=moment,
                     queried_at=answer.queried_at,
                     from_cache=answer.from_cache,

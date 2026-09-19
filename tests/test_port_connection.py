@@ -73,7 +73,13 @@ class CountingSession:
     def read_limits(self) -> KsefLimits:
         return limits(self.allowance)
 
-    def query_metadata(self, *, period: Period, direction: InvoiceDirection) -> MetadataPage:
+    def query_metadata(
+        self,
+        *,
+        period: Period,
+        direction: InvoiceDirection,
+        page_offset: int = 0,
+    ) -> MetadataPage:
         self.queries.append((period, direction))
         return MetadataPage(
             invoices=tuple(self.invoices),

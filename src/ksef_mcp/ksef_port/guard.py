@@ -83,8 +83,15 @@ class GuardedSession:
         *,
         period: Period,
         direction: InvoiceDirection,
+        page_offset: int = 0,
     ) -> MetadataPage:
-        return self._guarded(lambda: self.inner.query_metadata(period=period, direction=direction))
+        return self._guarded(
+            lambda: self.inner.query_metadata(
+                period=period,
+                direction=direction,
+                page_offset=page_offset,
+            )
+        )
 
     def start_export(
         self,

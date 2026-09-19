@@ -121,7 +121,13 @@ class ScriptedSession:
     def read_limits(self) -> KsefLimits:
         raise AssertionError("Odczyt paczki nie pyta o limity.")
 
-    def query_metadata(self, *, period: Period, direction: InvoiceDirection) -> MetadataPage:
+    def query_metadata(
+        self,
+        *,
+        period: Period,
+        direction: InvoiceDirection,
+        page_offset: int = 0,
+    ) -> MetadataPage:
         raise AssertionError("Odczyt paczki nie odpytuje metadanych.")
 
     def start_export(self, *, period: Period, direction: InvoiceDirection) -> ExportHandle:

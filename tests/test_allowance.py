@@ -92,7 +92,13 @@ class CountingSession:
         self.reads += 1
         return self.limits
 
-    def query_metadata(self, *, period: Period, direction: InvoiceDirection) -> MetadataPage:
+    def query_metadata(
+        self,
+        *,
+        period: Period,
+        direction: InvoiceDirection,
+        page_offset: int = 0,
+    ) -> MetadataPage:
         raise AssertionError("sięgnięto do KSeF")
 
     def start_export(self, *, period: Period, direction: InvoiceDirection) -> ExportHandle:

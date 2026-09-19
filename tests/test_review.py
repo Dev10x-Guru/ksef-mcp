@@ -120,6 +120,7 @@ class RecordingSession:
     page: MetadataPage
     allowance: OperationLimit = GENEROUS
     asked: list[InvoiceDirection] = field(default_factory=list)
+    offsets: list[int] = field(default_factory=list)
     # What KSeF itself answers for a given subject type, so a test can put a
     # real 429 in the middle of the loop and ask what the earlier types kept.
     refusals: dict[InvoiceDirection, Exception] = field(default_factory=dict)
@@ -127,8 +128,15 @@ class RecordingSession:
     def read_limits(self) -> KsefLimits:
         return limits(self.allowance)
 
-    def query_metadata(self, *, period: Period, direction: InvoiceDirection) -> MetadataPage:
+    def query_metadata(
+        self,
+        *,
+        period: Period,
+        direction: InvoiceDirection,
+        page_offset: int = 0,
+    ) -> MetadataPage:
         self.asked.append(direction)
+        self.offsets.append(page_offset)
         refusal = self.refusals.get(direction)
         if refusal is not None:
             raise refusal
@@ -327,12 +335,14 @@ def assessed(
     *,
     reviewed: frozenset[str] = frozenset(),
     complete: bool = True,
+    budget_bound: bool = False,
 ) -> DirectionReview:
     return assess(
         question=question,
         invoices=invoices,
         reviewed=reviewed,
         complete=complete,
+        budget_bound=budget_bound,
         moment=ASKED_AT,
         queried_at=ASKED_AT,
         from_cache=False,

@@ -279,12 +279,15 @@ class Ksef2Session:
         *,
         period: Period,
         direction: InvoiceDirection,
+        page_offset: int = 0,
     ) -> MetadataPage:
         # Descending, because the SDK sorts ascending by default and the last
         # page is not the newest one — taking the head of page one would
         # quietly show the oldest invoices in the window. `page_size` is the
         # API ceiling and not a parameter anybody may tune (D-010).
-        params = InvoiceMetadataParams(page_size=PAGE_SIZE, sort_order="desc")
+        params = InvoiceMetadataParams(page_size=PAGE_SIZE, sort_order="desc").with_page_offset(
+            page_offset
+        )
         with translated():
             page = self.authenticated.invoices.query_metadata(
                 filters=as_filters(period=period, direction=direction),
@@ -295,6 +298,7 @@ class Ksef2Session:
             has_more=page.has_more,
             truncated=page.is_truncated,
             hwm_date=page.permanent_storage_hwm_date,
+            page_offset=page_offset,
         )
 
     def start_export(

@@ -102,6 +102,7 @@ class RecordingSession:
     page: MetadataPage
     allowance: OperationLimit = GENEROUS
     asked: list[InvoiceDirection] = field(default_factory=list)
+    offsets: list[int] = field(default_factory=list)
     # What KSeF itself answers for a given subject type. Keyed, because the
     # whole question of GH-95 is what happens to the types asked *before* the
     # one that is refused.
@@ -110,8 +111,15 @@ class RecordingSession:
     def read_limits(self) -> KsefLimits:
         return limits(self.allowance)
 
-    def query_metadata(self, *, period: Period, direction: InvoiceDirection) -> MetadataPage:
+    def query_metadata(
+        self,
+        *,
+        period: Period,
+        direction: InvoiceDirection,
+        page_offset: int = 0,
+    ) -> MetadataPage:
         self.asked.append(direction)
+        self.offsets.append(page_offset)
         refusal = self.refusals.get(direction)
         if refusal is not None:
             raise refusal

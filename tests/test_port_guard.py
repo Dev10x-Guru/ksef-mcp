@@ -80,7 +80,13 @@ class ScriptedSession:
         self._answer("read_limits")
         raise AssertionError("test nie potrzebuje limitów")
 
-    def query_metadata(self, *, period: Period, direction: InvoiceDirection) -> MetadataPage:
+    def query_metadata(
+        self,
+        *,
+        period: Period,
+        direction: InvoiceDirection,
+        page_offset: int = 0,
+    ) -> MetadataPage:
         self._answer("query_metadata")
         return MetadataPage(invoices=(), has_more=False, truncated=False, hwm_date=None)
 

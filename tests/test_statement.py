@@ -116,13 +116,24 @@ class RecordingSession:
 
     page: MetadataPage
     asked: list[InvoiceDirection] = field(default_factory=list)
+    offsets: list[int] = field(default_factory=list)
+    # Pages beyond the first, keyed by their zero-based number, so a test can
+    # put a real second page behind a `has_more` instead of miming one.
+    further: dict[int, MetadataPage] = field(default_factory=dict)
 
     def read_limits(self) -> KsefLimits:
         return limits()
 
-    def query_metadata(self, *, period: Period, direction: InvoiceDirection) -> MetadataPage:
+    def query_metadata(
+        self,
+        *,
+        period: Period,
+        direction: InvoiceDirection,
+        page_offset: int = 0,
+    ) -> MetadataPage:
         self.asked.append(direction)
-        return self.page
+        self.offsets.append(page_offset)
+        return self.further.get(page_offset, self.page)
 
 
 @dataclass

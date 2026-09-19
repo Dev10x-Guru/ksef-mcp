@@ -19,6 +19,16 @@ udokumentowane.
   przesuwało się ponad resztą i te faktury nie wracały. Dopóki odpowiedź
   nie jest kompletem, nic nie idzie do rejestru: przegląd powtórzy te
   pozycje, zamiast po cichu je zgubić (GH-180).
+- Miesiąc z setkami faktur wraca w całości, a nie w kawałku, który zmieścił
+  się na jednej stronie. KSeF oddaje metadane po dwieście pięćdziesiąt
+  pozycji i mówi, że ma więcej — narzędzie to raportowało i nie umiało o tę
+  resztę poprosić. Teraz dociąga kolejne strony, płacąc za każdą z tego
+  samego godzinowego przydziału, który liczy się między wywołaniami, i
+  zatrzymuje się na rezerwie, żeby starczyło na pozostałe typy podmiotu.
+  Gdy okno mimo to nie jest kompletem, odpowiedź mówi, czy zabrakło
+  przydziału — wtedy warto ponowić za godzinę — czy uciął je sam KSeF.
+  Niekompletnego okna narzędzie nie zapamiętuje, więc kolejne wywołanie
+  dokończy je zamiast podać z dysku to, co zdążyło dojść (GH-182).
 
 ## 0.3.4 — 2026-09-19
 

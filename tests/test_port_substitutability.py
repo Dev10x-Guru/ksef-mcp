@@ -73,7 +73,13 @@ class InMemoryKsefSession:
             ),
         )
 
-    def query_metadata(self, *, period: Period, direction: InvoiceDirection) -> MetadataPage:
+    def query_metadata(
+        self,
+        *,
+        period: Period,
+        direction: InvoiceDirection,
+        page_offset: int = 0,
+    ) -> MetadataPage:
         return MetadataPage(
             invoices=tuple(self.invoices),
             has_more=False,
