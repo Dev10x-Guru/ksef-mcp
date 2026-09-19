@@ -9,7 +9,6 @@ against an allowance of twenty exports an hour (D-032).
 from __future__ import annotations
 
 import base64
-import json
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
@@ -29,7 +28,7 @@ from ksef_mcp.ksef_port.types import (
     SubjectRole,
 )
 from ksef_mcp.paths import SubjectScope
-from ksef_mcp.storage import exclusive_write, json_written_atomically, require_schema
+from ksef_mcp.storage import JsonDocumentStore, SchemaMismatch, exclusive_write
 
 STATE_FILE: Final[str] = "synchronisation.json"
 
@@ -393,14 +392,17 @@ def _decode_subject_role(stored: dict[str, object]) -> SubjectRoleState:
     )
 
 
+STATE_DOCUMENT: Final = JsonDocumentStore(
+    schema_version=SCHEMA_VERSION,
+    file_mode=STATE_FILE_MODE,
+    named="Synchronisation state",
+    on_mismatch=SchemaMismatch.REFUSE,
+    refused_as=SyncStateUnreadable,
+    consequence="a misread continuation point skips invoices nothing asks for again.",
+)
+
+
 def _decode(document: dict[str, object]) -> SyncState:
-    require_schema(
-        document,
-        expected=SCHEMA_VERSION,
-        named="Synchronisation state",
-        refused_as=SyncStateUnreadable,
-        consequence=("a misread continuation point skips invoices nothing asks for again."),
-    )
     points: dict[str, dict[str, object]] = document["continuation_points"]  # type: ignore[assignment]
     exports: list[dict[str, object]] = document["pending_exports"]  # type: ignore[assignment]
     # `.get`, not `[...]`, for the same reason `covering_from` uses it: a record
@@ -453,9 +455,10 @@ class SyncStore:
         return self.directory / STATE_FILE
 
     def load(self) -> SyncState:
-        if not self.path.is_file():
+        document = STATE_DOCUMENT.load(self.path)
+        if document is None:
             return SyncState()
-        return _decode(json.loads(self.path.read_text(encoding="utf-8")))
+        return _decode(document)
 
     @contextmanager
     def exclusively(self) -> Iterator[None]:
@@ -483,8 +486,4 @@ class SyncStore:
             # point would cost the full resynchronisation this file exists to
             # prevent. The staging name is unique and the directory entry is
             # persisted after the swap (ADR-107 §3, §4).
-            return json_written_atomically(
-                self.path,
-                document=document,
-                file_mode=STATE_FILE_MODE,
-            )
+            return STATE_DOCUMENT.save(self.path, document=document)

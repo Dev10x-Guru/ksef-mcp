@@ -35,6 +35,8 @@ import tempfile
 import threading
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
+from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import Final
 
@@ -206,3 +208,69 @@ def json_written_atomically(
     """
     content = json.dumps(document, indent=DOCUMENT_INDENT, ensure_ascii=False) + "\n"
     return written_atomically(target, content=content.encode("utf-8"), file_mode=file_mode)
+
+
+class SchemaMismatch(StrEnum):
+    """What a store does when the document on disk is not the schema it reads.
+
+    Two answers, and the difference between them is deliberate rather than
+    historical. `REFUSE` is for anything a taxpayer's position depends on: a
+    continuation point, a review ledger, a deduplication index. Guessing at one
+    of those skips invoices or repeats them, and neither failure announces
+    itself. `MISS` is for roots that are reconstructible by construction — the
+    period cache, the allowance counters — where refusing to answer because a
+    document is a version old would turn a saving into an outage.
+
+    Named here so the next store picks its policy on purpose instead of
+    inheriting whichever one its author happened to copy (GH-146).
+    """
+
+    REFUSE = "refuse"
+    MISS = "miss"
+
+
+@dataclass(frozen=True, kw_only=True)
+class JsonDocumentStore:
+    """One store's reading policy: which schema it claims, and what a mismatch means.
+
+    Deliberately holds no path. The stores above pick their file from the
+    subject and the environment, and a policy that also knew the path would have
+    to be rebuilt for every read — this way it is a module-level constant that
+    says, in one place, what the file is and how wrong it is allowed to be.
+
+    `refused_as` and `consequence` speak only under `REFUSE`; a `MISS` store
+    raises nothing and so names nothing.
+    """
+
+    schema_version: int
+    file_mode: int
+    named: str
+    on_mismatch: SchemaMismatch = SchemaMismatch.REFUSE
+    refused_as: type[KsefMcpError] = KsefMcpError
+    consequence: str = ""
+
+    def load(self, path: Path) -> dict[str, object] | None:
+        """The stored document, or `None` when there is none this build can read.
+
+        An absent file and — under `MISS` — an unreadable version arrive as the
+        same `None`, because every caller answers them the same way: with the
+        empty aggregate it would have started from anyway.
+        """
+        if not path.is_file():
+            return None
+        document: dict[str, object] = json.loads(path.read_text(encoding="utf-8"))
+        if self.on_mismatch is SchemaMismatch.MISS:
+            if document.get("schema_version") != self.schema_version:
+                return None
+            return document
+        require_schema(
+            document,
+            expected=self.schema_version,
+            named=self.named,
+            refused_as=self.refused_as,
+            consequence=self.consequence,
+        )
+        return document
+
+    def save(self, path: Path, *, document: Mapping[str, object]) -> Path:
+        return json_written_atomically(path, document=document, file_mode=self.file_mode)

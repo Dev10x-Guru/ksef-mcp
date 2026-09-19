@@ -41,7 +41,6 @@ belongs to a period. That judgement is the accountant's (ST-4).
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
@@ -74,7 +73,7 @@ from ksef_mcp.listing import (
 )
 from ksef_mcp.paths import SubjectScope
 from ksef_mcp.period_cache import PeriodCache, PeriodMetadataReader
-from ksef_mcp.storage import exclusive_write, json_written_atomically, require_schema
+from ksef_mcp.storage import JsonDocumentStore, SchemaMismatch, exclusive_write
 from ksef_mcp.synchronisation import SYNCHRONISED_SUBJECT_ROLES
 
 REVIEW_FILE: Final[str] = "review.json"
@@ -169,16 +168,19 @@ def _encode(ledger: ReviewLedger, *, nip: str, environment: KsefEnvironment) -> 
     }
 
 
+REVIEW_DOCUMENT: Final = JsonDocumentStore(
+    schema_version=SCHEMA_VERSION,
+    file_mode=REVIEW_FILE_MODE,
+    named="The review ledger",
+    on_mismatch=SchemaMismatch.REFUSE,
+    refused_as=ReviewLedgerUnreadable,
+    consequence=(
+        "a misread ledger either repeats invoices already reviewed or hides one never shown."
+    ),
+)
+
+
 def _decode(document: dict[str, object]) -> ReviewLedger:
-    require_schema(
-        document,
-        expected=SCHEMA_VERSION,
-        named="The review ledger",
-        refused_as=ReviewLedgerUnreadable,
-        consequence=(
-            "a misread ledger either repeats invoices already reviewed or hides one never shown."
-        ),
-    )
     entries: list[dict[str, object]] = document["entries"]  # type: ignore[assignment]
     return ReviewLedger(
         entries=tuple(
@@ -215,9 +217,10 @@ class ReviewStore:
         return self.directory / REVIEW_FILE
 
     def load(self) -> ReviewLedger:
-        if not self.path.is_file():
+        document = REVIEW_DOCUMENT.load(self.path)
+        if document is None:
             return ReviewLedger()
-        return _decode(json.loads(self.path.read_text(encoding="utf-8")))
+        return _decode(document)
 
     @contextmanager
     def exclusively(self) -> Iterator[None]:
@@ -244,11 +247,7 @@ class ReviewStore:
             # temp → rename (D-006). A half-written ledger read back as empty
             # would replay every invoice ever reviewed, and the interrupted
             # write would have destroyed the good one to do it.
-            return json_written_atomically(
-                self.path,
-                document=document,
-                file_mode=REVIEW_FILE_MODE,
-            )
+            return REVIEW_DOCUMENT.save(self.path, document=document)
 
 
 class ReviewOutcome(StrEnum):
