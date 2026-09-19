@@ -35,6 +35,7 @@ from ksef_mcp.ksef_port import (
     RateLimits,
     SessionCeilings,
 )
+from ksef_mcp.paths import SUBJECT_DIRECTORY
 from ksef_mcp.period_cache import PeriodCache
 from ksef_mcp.statement import (
     COLUMNS,
@@ -60,7 +61,6 @@ from ksef_mcp.statement import (
     verification_code,
     write_statement,
 )
-from ksef_mcp.sync_store import SUBJECT_DIRECTORY
 from synthetic import SELLER_NIP, synthetic_body, synthetic_metadata, synthetic_number
 
 NIP = "1234567890"

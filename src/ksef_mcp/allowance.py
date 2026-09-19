@@ -24,17 +24,14 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Final
 
-from platformdirs import user_cache_path, user_data_path
-
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port.budget import HOUR, Operation, QueryBudget
 from ksef_mcp.ksef_port.errors import KsefRequestRejected
 from ksef_mcp.ksef_port.guard import GuardedSession
 from ksef_mcp.ksef_port.protocol import KsefSession
 from ksef_mcp.ksef_port.types import KsefLimits, OperationLimit, RateLimits, SessionCeilings
-from ksef_mcp.metadata import SERVER_NAME
+from ksef_mcp.paths import SubjectScope
 from ksef_mcp.storage import written_atomically
-from ksef_mcp.sync_store import SUBJECT_DIRECTORY
 
 LEDGER_FILE: Final[str] = "budget.json"
 
@@ -102,8 +99,8 @@ class BudgetLedger:
 
     @property
     def path(self) -> Path:
-        base = user_data_path(appname=SERVER_NAME) if self.root is None else self.root
-        return base / SUBJECT_DIRECTORY / self.nip / str(self.environment) / LEDGER_FILE
+        scope = SubjectScope.parsed(nip=self.nip, environment=self.environment)
+        return scope.data_root(override=self.root) / LEDGER_FILE
 
     def load(self) -> dict[Operation, tuple[datetime, ...]]:
         """What is still inside the hour. Anything older is not worth carrying.
@@ -190,8 +187,8 @@ class LimitsCache:
 
     @property
     def path(self) -> Path:
-        base = user_cache_path(appname=SERVER_NAME) if self.root is None else self.root
-        return base / SUBJECT_DIRECTORY / self.nip / str(self.environment) / LIMITS_FILE
+        scope = SubjectScope.parsed(nip=self.nip, environment=self.environment)
+        return scope.cache_root(override=self.root) / LIMITS_FILE
 
     def remembered(self) -> KsefLimits | None:
         if not self.path.is_file():
@@ -289,8 +286,8 @@ class RefusalLedger:
 
     @property
     def path(self) -> Path:
-        base = user_data_path(appname=SERVER_NAME) if self.root is None else self.root
-        return base / SUBJECT_DIRECTORY / self.nip / str(self.environment) / REFUSALS_FILE
+        scope = SubjectScope.parsed(nip=self.nip, environment=self.environment)
+        return scope.data_root(override=self.root) / REFUSALS_FILE
 
     def load(self) -> RefusalRun:
         if not self.path.is_file():

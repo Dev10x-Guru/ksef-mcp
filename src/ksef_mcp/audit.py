@@ -58,12 +58,9 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Final
 
-from platformdirs import user_data_path
-
 from ksef_mcp.config import KsefEnvironment
-from ksef_mcp.metadata import SERVER_NAME
+from ksef_mcp.paths import SubjectScope
 from ksef_mcp.storage import exclusive_write
-from ksef_mcp.sync_store import SUBJECT_DIRECTORY
 
 AUDIT_FILE: Final[str] = "audit.jsonl"
 
@@ -238,8 +235,8 @@ class AuditTrail:
         # environment like everything beside it, because one accounting office's
         # clients sharing a trail is the mixing vector D-034 names — here it
         # would also be the leak the trail exists to prove did not happen.
-        base = user_data_path(appname=SERVER_NAME) if self.root is None else self.root
-        return base / SUBJECT_DIRECTORY / self.nip / str(self.environment)
+        scope = SubjectScope.parsed(nip=self.nip, environment=self.environment)
+        return scope.data_root(override=self.root)
 
     @property
     def path(self) -> Path:

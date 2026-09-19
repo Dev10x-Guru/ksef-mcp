@@ -900,8 +900,8 @@ async def test_the_review_tool_hands_back_what_is_new(reviewing: None) -> None:
 
 
 @pytest.fixture
-def trail(audit_root: Path) -> AuditTrail:
-    return AuditTrail(nip=NIP, environment=KsefEnvironment.TEST, root=audit_root)
+def trail(subject_data_root: Path) -> AuditTrail:
+    return AuditTrail(nip=NIP, environment=KsefEnvironment.TEST, root=subject_data_root)
 
 
 def recorded_reads(trail: AuditTrail) -> tuple[AuditEntry, ...]:
