@@ -54,13 +54,15 @@ from platformdirs import user_data_path
 
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port.budget import QueryBudget
-from ksef_mcp.ksef_port.errors import KsefRequestRejected
 from ksef_mcp.ksef_port.protocol import KsefPort
 from ksef_mcp.ksef_port.types import MAX_QUERY_WINDOW, DateType, InvoiceMetadata, Period
 from ksef_mcp.listing import (
+    ALLOWANCE_REFUSALS,
     LISTING_THRESHOLD,
+    AllowanceRefusal,
     CurrencyTotal,
     Question,
+    describe_refusal,
     describe_totals,
     gross_totals,
     invoices_phrase,
@@ -381,13 +383,13 @@ def assess(
     )
 
 
-def unasked(*, question: Question, refusal: KsefRequestRejected) -> DirectionReview:
+def unasked(*, question: Question, refusal: AllowanceRefusal) -> DirectionReview:
     return DirectionReview(
         question=question,
         outcome=ReviewOutcome.BUDGET_SPENT,
         message=(
             f"Nie odpytałem KSeF-u o ten typ podmiotu, więc nie wiem, czy coś "
-            f"doszło: {refusal} Pytanie brzmiało — {question.restated}."
+            f"doszło: {describe_refusal(refusal)} Pytanie brzmiało — {question.restated}."
         ),
         new_invoices=(),
         new_count=0,
@@ -435,10 +437,12 @@ class InvoiceReviewer:
                 )
                 try:
                     answer = reader.read(session=session, period=period, direction=direction)
-                except KsefRequestRejected as refusal:
+                except ALLOWANCE_REFUSALS as refusal:
                     # One exhausted subject type must not take the other three
                     # with it, and its own answer says the delta is unknown
-                    # rather than empty.
+                    # rather than empty. A real 429 belongs here too: losing the
+                    # whole review over it would also lose what the ledger was
+                    # about to be told (GH-95).
                     reviews.append(unasked(question=question, refusal=refusal))
                     continue
                 review = assess(

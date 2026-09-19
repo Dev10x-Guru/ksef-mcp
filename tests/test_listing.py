@@ -24,7 +24,10 @@ from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port import (
     DateType,
     InvoiceDirection,
+    KsefAuthenticationFailed,
     KsefLimits,
+    KsefRateLimited,
+    KsefUnreachable,
     MetadataPage,
     OperationLimit,
     Period,
@@ -95,12 +98,19 @@ class RecordingSession:
     page: MetadataPage
     allowance: OperationLimit = GENEROUS
     asked: list[InvoiceDirection] = field(default_factory=list)
+    # What KSeF itself answers for a given subject type. Keyed, because the
+    # whole question of GH-95 is what happens to the types asked *before* the
+    # one that is refused.
+    refusals: dict[InvoiceDirection, Exception] = field(default_factory=dict)
 
     def read_limits(self) -> KsefLimits:
         return limits(self.allowance)
 
     def query_metadata(self, *, period: Period, direction: InvoiceDirection) -> MetadataPage:
         self.asked.append(direction)
+        refusal = self.refusals.get(direction)
+        if refusal is not None:
+            raise refusal
         return self.page
 
 
@@ -395,6 +405,71 @@ def test_a_spent_allowance_reports_no_moment_of_asking(cache: PeriodCache) -> No
     )
 
     assert lister.run(nip=NIP, token="tajny-token").directions[0].queried_at is None
+
+
+def a_lister_meeting(refusal: Exception, *, cache: PeriodCache) -> InvoiceLister:
+    """A lister whose second subject type runs into `refusal` and whose first does not."""
+    return InvoiceLister(
+        port=RecordingPort(
+            session_object=RecordingSession(
+                page=page_of(2),
+                refusals={InvoiceDirection.BUYER: refusal},
+            )
+        ),
+        cache=cache,
+        clock=lambda: ASKED_AT,
+    )
+
+
+def test_a_rate_limit_on_one_subject_type_keeps_the_answers_already_paid_for(
+    cache: PeriodCache,
+) -> None:
+    # GH-95. A real 429 is a sibling of the local refusal rather than a
+    # subclass, so it used to sail through the `except` and out of `run` —
+    # taking with it the seller's answer, which had already cost one of twenty
+    # metadata queries an hour.
+    lister = a_lister_meeting(KsefRateLimited("KSeF odmówił: 429.", retry_after=None), cache=cache)
+
+    assert [one.outcome for one in lister.run(nip=NIP, token="tajny-token").directions] == [
+        ListingOutcome.LISTED,
+        ListingOutcome.BUDGET_SPENT,
+        ListingOutcome.LISTED,
+        ListingOutcome.LISTED,
+    ]
+
+
+def test_a_rate_limit_passes_on_the_wait_ksef_itself_asked_for(cache: PeriodCache) -> None:
+    # KSeF's own number, never one of ours: a guessed pause is the pattern the
+    # Ministry answers with a lengthening block (D-017).
+    lister = a_lister_meeting(KsefRateLimited("KSeF odmówił: 429.", retry_after=90), cache=cache)
+
+    assert "odczekanie 90 s" in lister.run(nip=NIP, token="tajny-token").directions[1].message
+
+
+def test_a_rate_limit_without_a_wait_promises_nothing_about_waiting(cache: PeriodCache) -> None:
+    lister = a_lister_meeting(KsefRateLimited("KSeF odmówił: 429.", retry_after=None), cache=cache)
+
+    assert "odczekanie" not in lister.run(nip=NIP, token="tajny-token").directions[1].message
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        KsefUnreachable("Brak odpowiedzi z KSeF-u."),
+        KsefAuthenticationFailed("KSeF nie uznał tego tokenu."),
+    ],
+    ids=["unreachable", "rejected-credential"],
+)
+def test_a_failure_that_is_not_about_the_allowance_is_not_reported_as_one(
+    failure: Exception, cache: PeriodCache
+) -> None:
+    # The `except` names two refusals and only two. Widening it to
+    # `KsefPortError` would answer a dead network or a rejected credential with
+    # a cheerful partial listing, which is worse than no listing at all.
+    lister = a_lister_meeting(failure, cache=cache)
+
+    with pytest.raises(type(failure)):
+        lister.run(nip=NIP, token="tajny-token")
 
 
 def test_the_default_clock_reads_utc() -> None:

@@ -29,6 +29,7 @@ from ksef_mcp.ksef_port import (
     InvoiceMetadata,
     KsefLimits,
     KsefNumber,
+    KsefRateLimited,
     MetadataPage,
     OperationLimit,
     Period,
@@ -115,12 +116,18 @@ class RecordingSession:
     page: MetadataPage
     allowance: OperationLimit = GENEROUS
     asked: list[InvoiceDirection] = field(default_factory=list)
+    # What KSeF itself answers for a given subject type, so a test can put a
+    # real 429 in the middle of the loop and ask what the earlier types kept.
+    refusals: dict[InvoiceDirection, Exception] = field(default_factory=dict)
 
     def read_limits(self) -> KsefLimits:
         return limits(self.allowance)
 
     def query_metadata(self, *, period: Period, direction: InvoiceDirection) -> MetadataPage:
         self.asked.append(direction)
+        refusal = self.refusals.get(direction)
+        if refusal is not None:
+            raise refusal
         return self.page
 
 
@@ -462,6 +469,56 @@ def test_an_unfetched_subject_type_reports_the_delta_as_unknown(
     assert [one.outcome for one in reviewer.run(nip=NIP, token="tajny-token").directions] == [
         ReviewOutcome.BUDGET_SPENT
     ] * 4
+
+
+def a_reviewer_meeting(
+    refusal: Exception,
+    *,
+    cache: PeriodCache,
+    store: ReviewStore,
+) -> InvoiceReviewer:
+    """A reviewer whose second subject type runs into `refusal` and whose first does not."""
+    return InvoiceReviewer(
+        port=RecordingPort(
+            session_object=RecordingSession(
+                page=page_of((arrived(IN_JULY),)),
+                refusals={InvoiceDirection.BUYER: refusal},
+            )
+        ),
+        cache=cache,
+        store=store,
+        clock=lambda: ASKED_AT,
+    )
+
+
+def test_a_rate_limit_on_one_subject_type_keeps_the_rest_of_the_review(
+    cache: PeriodCache, store: ReviewStore
+) -> None:
+    # GH-95, the review side. Losing the whole pass to a 429 would also lose
+    # what the ledger was about to be told about the types already read.
+    reviewer = a_reviewer_meeting(
+        KsefRateLimited("KSeF odmówił: 429.", retry_after=None), cache=cache, store=store
+    )
+
+    assert [one.outcome for one in reviewer.run(nip=NIP, token="tajny-token").directions] == [
+        ReviewOutcome.REPORTED,
+        ReviewOutcome.BUDGET_SPENT,
+        ReviewOutcome.REPORTED,
+        ReviewOutcome.REPORTED,
+    ]
+
+
+def test_a_rate_limited_subject_type_says_it_does_not_know(
+    cache: PeriodCache, store: ReviewStore
+) -> None:
+    reviewer = a_reviewer_meeting(
+        KsefRateLimited("KSeF odmówił: 429.", retry_after=None), cache=cache, store=store
+    )
+
+    assert (
+        "nie wiem, czy coś doszło"
+        in reviewer.run(nip=NIP, token="tajny-token").directions[1].message
+    )
 
 
 def test_an_unfetched_subject_type_does_not_claim_anything_was_shown(

@@ -30,7 +30,7 @@ from typing import Final
 
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port.budget import QueryBudget
-from ksef_mcp.ksef_port.errors import KsefRequestRejected
+from ksef_mcp.ksef_port.errors import KsefPortError, KsefRateLimited, KsefRequestRejected
 from ksef_mcp.ksef_port.protocol import KsefPort
 from ksef_mcp.ksef_port.types import (
     DateType,
@@ -64,6 +64,23 @@ DATE_TYPE_LABELS: Final[dict[DateType, str]] = {
     DateType.INVOICING: "data przyjęcia w KSeF",
     DateType.PERMANENT_STORAGE: "data trwałego zapisu",
 }
+
+
+# Two refusals, one consequence for the caller: this subject type went unasked,
+# and the answers the allowance already bought stay. They are siblings and not
+# parent and child in `ksef_port.errors`, so both have to be named — the local
+# counter declining, and KSeF itself answering 429.
+#
+# Exactly these two. Widening to `KsefPortError` would swallow `KsefUnreachable`
+# and `KsefAuthenticationFailed`, reporting a dead network or a rejected
+# credential as "that subject type declined" and returning a cheerful partial
+# answer where the caller needs to know nothing was asked at all.
+AllowanceRefusal = KsefRequestRejected | KsefRateLimited
+
+ALLOWANCE_REFUSALS: Final[tuple[type[KsefPortError], ...]] = (
+    KsefRequestRejected,
+    KsefRateLimited,
+)
 
 
 class ListingOutcome(StrEnum):
@@ -252,12 +269,24 @@ def summarise(
     )
 
 
-def refused(*, question: Question, refusal: KsefRequestRejected) -> DirectionListing:
+def describe_refusal(refusal: AllowanceRefusal) -> str:
+    """The refusal in words, carrying KSeF's own wait when it gave one.
+
+    Never a wait of this project's invention. Guessing how long to hold off is
+    the pattern the Ministry answers with a lengthening block (D-017), so when
+    the 429 came without `Retry-After`, the answer says nothing about waiting.
+    """
+    if not isinstance(refusal, KsefRateLimited) or refusal.retry_after is None:
+        return str(refusal)
+    return f"{refusal} KSeF prosi o odczekanie {refusal.retry_after} s."
+
+
+def refused(*, question: Question, refusal: AllowanceRefusal) -> DirectionListing:
     return DirectionListing(
         question=question,
         outcome=ListingOutcome.BUDGET_SPENT,
         message=(
-            f"Nie odpytałem KSeF-u o ten typ podmiotu: {refusal} "
+            f"Nie odpytałem KSeF-u o ten typ podmiotu: {describe_refusal(refusal)} "
             f"Pytanie brzmiało — {question.restated}."
         ),
         invoices=(),
@@ -299,10 +328,11 @@ class InvoiceLister:
                 )
                 try:
                     answer = reader.read(session=session, period=period, direction=direction)
-                except KsefRequestRejected as refusal:
+                except ALLOWANCE_REFUSALS as refusal:
                     # One exhausted subject type must not take the other three
                     # with it: the answers already gathered are the ones the
-                    # allowance was spent on.
+                    # allowance was spent on. A real 429 costs the most to
+                    # reach and used to be the one that threw them away (GH-95).
                     listings.append(refused(question=question, refusal=refusal))
                     continue
                 listings.append(
