@@ -47,10 +47,28 @@ RENDER_TIMEOUT_SECONDS: Final[float] = 120.0
 # would print a link that resolves to nothing onto a document people trust.
 VERIFICATION_HOST: Final[str] = "https://qr.ksef.mf.gov.pl/client-app/invoice"
 
-# The generator's own complaints are short. A cap keeps a future build's
-# chattier message — one that might quote the document it rejected — from
-# reaching an answer that is meant to carry no invoice content at all.
+# The generator's own complaints are short. A cap keeps a chatty message from
+# reaching an answer that is meant to carry no invoice content at all — but a
+# cap bounds how much of a quotation travels, never whether one can (GH-85).
 FAILURE_DETAIL_LIMIT: Final[int] = 200
+
+# How long a run copied out of the invoice has to be before it is redacted.
+#
+# Not a guess: build 1.1.39 quotes the document today. `Unknown XML Version:
+# FA (3)` echoes the form code it read, and the XML parser answers a malformed
+# file with `Char: e` — one byte taken straight from it. Neither is personal
+# data, but both prove the message is a channel out of the document, and D-011
+# does not bend for an artefact we do not control (D-027 lets it be swapped).
+#
+# Six is where the two demands meet. Below it the guard would eat the
+# generator's own words — the invoice carries `Data`, `NIP`, `Nazwa`, and any
+# message using them would come back unreadable. At six and above nothing the
+# build says today is touched, while a NIP (ten digits), a counterparty's name
+# and an invoice number all are. A single echoed character survives, and that
+# is the accepted residue: a leak has to carry meaning to be one.
+QUOTABLE_RUN_LIMIT: Final[int] = 6
+
+REDACTED: Final[str] = "[…]"
 
 
 class InvoiceNotArchived(RuntimeError):
@@ -170,12 +188,42 @@ def run_node(command: list[str]) -> subprocess.CompletedProcess[str]:
     )
 
 
-def stated_failure(stderr: str) -> str:
+def without_quotations(stated: str, *, document: str) -> str:
+    """Replace everything the complaint copied out of the invoice it refused.
+
+    Read left to right, taking the longest run that also occurs in the
+    document. A run at or over `QUOTABLE_RUN_LIMIT` is somebody's data and is
+    replaced; anything shorter is a coincidence of letters and is kept, which
+    is what leaves the generator's own sentences intact.
+
+    Comparing against the document rather than against a list of permitted
+    message shapes is the choice this makes. A permitted-shapes list has to
+    predict what the next build will say, and predicting wrongly either lets a
+    quotation through or silences a real diagnosis; the document is the one
+    thing we can compare against that we already hold.
+    """
+    kept: list[str] = []
+    index = 0
+    while index < len(stated):
+        run = 0
+        while index + run < len(stated) and stated[index : index + run + 1] in document:
+            run += 1
+        if run < QUOTABLE_RUN_LIMIT:
+            kept.append(stated[index])
+            index += 1
+            continue
+        if not kept or kept[-1] != REDACTED:
+            kept.append(REDACTED)
+        index += run
+    return "".join(kept)
+
+
+def stated_failure(stderr: str, *, document: str) -> str:
     """The generator's own complaint, never the document it complained about.
 
-    Tested against this build: a malformed document yields `Unknown XML
-    Version: undefined` and quotes nothing from it. The cap is insurance for
-    the builds that come after, since this string reaches the caller.
+    The complaint is somebody else's text on its way to the caller, so it is
+    stripped of the document first and capped second — capping first would cut
+    a quotation in half and leave the half that fits (GH-85).
     """
     for line in reversed(stderr.strip().splitlines()):
         try:
@@ -183,7 +231,8 @@ def stated_failure(stderr: str) -> str:
         except ValueError:
             continue
         if isinstance(stated, dict) and "error" in stated:
-            return str(stated["error"])[:FAILURE_DETAIL_LIMIT]
+            guarded = without_quotations(str(stated["error"]), document=document)
+            return guarded[:FAILURE_DETAIL_LIMIT]
     return "generator nie podał powodu"
 
 
@@ -240,9 +289,14 @@ class InvoiceRenderer:
             ]
         )
         if completed.returncode != 0:
+            # The document is read again here rather than carried down from
+            # above: the copy above exists only on production, where the
+            # verification link needs it, and a refusal has to be guarded on
+            # every environment. This is the error path, so the second read
+            # costs nothing anyone waits on.
             raise GeneratorFailed(
                 f"Generator Ministerstwa odrzucił fakturę {ksef_number}: "
-                f"{stated_failure(completed.stderr)}"
+                f"{stated_failure(completed.stderr, document=source.read_text(encoding='utf-8'))}"
             )
         staging.chmod(PDF_FILE_MODE)
         os.replace(staging, target)

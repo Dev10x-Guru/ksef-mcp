@@ -155,8 +155,12 @@ async function main() {
 }
 
 main().catch((cause) => {
-  // The message only, never the document: this string is read by the Python
-  // side and reaches the caller, and an invoice body must not travel with it.
+  // The message only — but the message is not ours, and it does quote the
+  // document: this build answers a wrong form code with `Unknown XML Version:
+  // FA (99)` and a malformed file with `Char: e`, both read out of the file it
+  // refused. Nothing can be enforced here, because the text arrives already
+  // written; the Python side strips the quotations before the string reaches
+  // the caller (`stated_failure`, GH-85).
   process.stderr.write(
     `${JSON.stringify({ error: cause?.message ?? String(cause) })}\n`,
   );
