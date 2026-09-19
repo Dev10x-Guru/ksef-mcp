@@ -111,12 +111,14 @@ class Plan:
         authentication_error: Exception | None = None,
         call_error: Exception | None = None,
         limits: object | None = None,
+        further: dict[int, FakeMetadataPage] | None = None,
     ) -> None:
         self.limits = limits if limits is not None else FakeLimitsClient()
         self.service = FakeInvoicesService(
             page=list(page if page is not None else [sdk_metadata(1), sdk_metadata(2)]),
             status=status if status is not None else ready_status(),
             error=call_error,
+            further=dict(further or {}),
         )
         self.authentication_error = authentication_error
         self.built: list[FakeSdkClient] = []
@@ -298,6 +300,127 @@ def test_a_page_carries_the_high_water_mark_the_next_window_starts_from(
     page = session.query_metadata(period=WINDOW, direction=InvoiceDirection.BUYER)
 
     assert page.hwm_date == HWM
+
+
+@pytest.fixture
+def paged(monkeypatch: pytest.MonkeyPatch) -> Plan:
+    """A window KSeF hands over in two pages, the way a busy month comes back."""
+    prepared = Plan(
+        further={
+            1: FakeMetadataPage(
+                invoices=[sdk_metadata(3)],
+                has_more=False,
+                is_truncated=False,
+                permanent_storage_hwm_date=HWM,
+            )
+        }
+    )
+    prepared.install(monkeypatch)
+    return prepared
+
+
+@pytest.fixture
+def paged_session(paged: Plan, port: Ksef2Port) -> Iterator[KsefSession]:
+    with port.session(nip=NIP, token=TOKEN) as opened:
+        yield opened
+
+
+@pytest.fixture
+def stopped(monkeypatch: pytest.MonkeyPatch) -> Plan:
+    """A package MF stopped at the point of completeness, not a full window."""
+    prepared = Plan(
+        further={
+            0: FakeMetadataPage(
+                invoices=[sdk_metadata(1)],
+                has_more=False,
+                is_truncated=True,
+                permanent_storage_hwm_date=HWM,
+            )
+        }
+    )
+    prepared.install(monkeypatch)
+    return prepared
+
+
+@pytest.fixture
+def stopped_session(stopped: Plan, port: Ksef2Port) -> Iterator[KsefSession]:
+    with port.session(nip=NIP, token=TOKEN) as opened:
+        yield opened
+
+
+def test_the_first_page_is_asked_for_by_the_number_zero(session: KsefSession, plan: Plan) -> None:
+    session.query_metadata(period=WINDOW, direction=InvoiceDirection.BUYER)
+
+    assert plan.service.metadata_calls[0][1].page_offset == 0
+
+
+def test_a_first_page_reports_the_continuation_behind_it(paged_session: KsefSession) -> None:
+    page = paged_session.query_metadata(period=WINDOW, direction=InvoiceDirection.BUYER)
+
+    assert page.has_more is True
+
+
+def test_the_page_number_asked_for_reaches_the_sdk(paged_session: KsefSession, paged: Plan) -> None:
+    paged_session.query_metadata(
+        period=WINDOW,
+        direction=InvoiceDirection.BUYER,
+        page_offset=1,
+    )
+
+    assert paged.service.metadata_calls[0][1].page_offset == 1
+
+
+def test_a_page_says_which_number_it_came_back_from(paged_session: KsefSession) -> None:
+    page = paged_session.query_metadata(
+        period=WINDOW,
+        direction=InvoiceDirection.BUYER,
+        page_offset=1,
+    )
+
+    assert page.page_offset == 1
+
+
+def test_the_page_behind_the_first_brings_what_the_first_left_out(
+    paged_session: KsefSession,
+) -> None:
+    page = paged_session.query_metadata(
+        period=WINDOW,
+        direction=InvoiceDirection.BUYER,
+        page_offset=1,
+    )
+
+    assert str(page.invoices[0].ksef_number).endswith("03-56")
+
+
+def test_the_last_page_of_a_window_stops_reporting_more(paged_session: KsefSession) -> None:
+    page = paged_session.query_metadata(
+        period=WINDOW,
+        direction=InvoiceDirection.BUYER,
+        page_offset=1,
+    )
+
+    assert page.has_more is False
+
+
+def test_a_further_page_is_still_asked_for_at_the_ceiling_size_and_newest_first(
+    paged_session: KsefSession, paged: Plan
+) -> None:
+    paged_session.query_metadata(
+        period=WINDOW,
+        direction=InvoiceDirection.BUYER,
+        page_offset=1,
+    )
+    sent = paged.service.metadata_calls[0][1]
+
+    assert (sent.page_size, sent.sort_order) == (PAGE_SIZE, "desc")
+
+
+def test_a_package_ksef_cut_short_arrives_marked_as_cut_short(
+    stopped_session: KsefSession,
+) -> None:
+    page = stopped_session.query_metadata(period=WINDOW, direction=InvoiceDirection.BUYER)
+
+    assert page.truncated is True
 
 
 def test_the_limits_the_budget_spends_against_come_from_ksef(session: KsefSession) -> None:

@@ -205,6 +205,10 @@ class FakeInvoicesService:
     page: list[FakeMetadata]
     status: FakeExportStatusResponse
     error: Exception | None = None
+    # Pages beyond the first, keyed by their zero-based number. Without them
+    # this double answered `has_more=False` to every question, so the adapter's
+    # translation of pagination was the one path no test ever walked (GH-179).
+    further: dict[int, FakeMetadataPage] = field(default_factory=dict)
     metadata_calls: list[object] = field(default_factory=list)
     export_calls: list[object] = field(default_factory=list)
     downloaded: list[str] = field(default_factory=list)
@@ -212,9 +216,14 @@ class FakeInvoicesService:
     def query_metadata(self, *, filters: object, params: object) -> FakeMetadataPage:
         self._fail_if_planned()
         self.metadata_calls.append((filters, params))
+        planned = self.further.get(getattr(params, "page_offset", 0))
+        if planned is not None:
+            return planned
         return FakeMetadataPage(
             invoices=list(self.page),
-            has_more=False,
+            # A first page says there is more exactly when a continuation was
+            # scripted, so a test states the shape of the window in one place.
+            has_more=bool(self.further),
             is_truncated=False,
             permanent_storage_hwm_date=HWM,
         )
