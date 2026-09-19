@@ -631,6 +631,31 @@ def test_the_index_refuses_a_second_entry_for_a_number_it_already_holds() -> Non
         DeduplicationIndex().with_entry(entry).with_entry(entry)
 
 
+def test_the_index_refuses_a_repeat_inside_one_batch_as_firmly_as_across_two() -> None:
+    """Adding a session at once must not soften the refusal that adding one at a time gives."""
+    entry = IndexEntry(
+        ksef_number=str(synthetic_number(1)),
+        content_hash=digest_of(a_body(1)),
+        archived_at=ARCHIVED_AT,
+    )
+
+    with pytest.raises(IndexEntryAlreadyHeld, match="already holds"):
+        DeduplicationIndex().extended((entry, entry))
+
+
+def test_a_whole_session_of_invoices_reaches_the_index_in_one_extension() -> None:
+    entries = tuple(
+        IndexEntry(
+            ksef_number=str(synthetic_number(number)),
+            content_hash=digest_of(a_body(number)),
+            archived_at=ARCHIVED_AT,
+        )
+        for number in range(1, 4)
+    )
+
+    assert DeduplicationIndex().extended(entries).entries == entries
+
+
 def test_an_index_naming_one_invoice_twice_is_refused_rather_than_carried_forward(
     archive: InvoiceArchive, stored: ArchiveReport
 ) -> None:

@@ -49,6 +49,12 @@ udokumentowane.
 
 ### Poprawione
 
+- Synchronizacja sesji z dużą liczbą faktur nie przepisuje już całej
+  historii archiwum przy każdej pojedynczej fakturze. Indeks rośnie przez
+  całe życie archiwum i celowo nie jest przycinany, więc przy suficie
+  10 000 faktur na sesję koszt narastał z każdą kolejną synchronizacją —
+  a płaciło się go tak samo przy odczycie indeksu, jak przy zapisie
+  (GH-147).
 - Niedostępny KSeF ani odmowa uwierzytelnienia nie zostaną już po cichu
   zamienione na „nie ma tego w podręcznej pamięci". Pamięć okresów
   celowo traktuje uszkodzony wpis jako chybienie, bo da się go odtworzyć
