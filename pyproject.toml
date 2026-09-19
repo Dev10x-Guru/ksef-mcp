@@ -41,6 +41,23 @@ Issues = "https://github.com/Dev10x-Guru/ksef-mcp/issues"
 [project.scripts]
 ksef-mcp = "ksef_mcp.cli:main"
 
+# Hatchling selects files by asking the VCS what is ignored, so until this
+# list existed the presence of the Node shim and the Ministry's renderer in
+# the distribution rested on `.gitignore` alone. A later `*.js` or
+# `package.json` entry there would empty them out of the wheel without
+# failing anything: the install succeeds, the import succeeds, the suite is
+# green, and `render_invoice_pdf` breaks in the user's hands. `artifacts`
+# overrides the ignore rules, and it sits under `[tool.hatch.build]` rather
+# than under a target because `uv build` builds the wheel out of the sdist —
+# a resource missing from the sdist is missing from the wheel too (#106).
+[tool.hatch.build]
+artifacts = [
+    "src/ksef_mcp/node/render.mjs",
+    "src/ksef_mcp/vendor/ksef-fe-invoice-converter.*.js",
+    "src/ksef_mcp/vendor/package.json",
+    "src/ksef_mcp/vendor/LICENCJA-MF.md",
+]
+
 # Stated rather than inferred from the distribution name: a rename that
 # breaks the inference fails the build instead of shipping an empty wheel.
 [tool.hatch.build.targets.wheel]

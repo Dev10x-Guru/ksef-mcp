@@ -10,6 +10,18 @@ udokumentowane.
 
 ## Bez wydania
 
+### Bezpieczeństwo
+
+- Paczka z PyPI nie zgubi po cichu generatora PDF. Pliki, których
+  renderowanie potrzebuje — shim Node i zwendorowany generator
+  Ministerstwa — jechały w dystrybucji tylko dlatego, że nikt nie wymienił
+  ich w `.gitignore`. Dopisanie tam kiedykolwiek `*.js` albo `package.json`
+  wypadłoby je z koła, a instalacja, import i wszystkie testy nadal by
+  przeszły: awarię zobaczyłby dopiero podatnik przy pierwszej próbie
+  wydrukowania faktury. Manifest wymienia teraz te pliki wprost, a test
+  buduje paczkę i zagląda do archiwum, zamiast wierzyć manifestowi na
+  słowo (GH-106).
+
 ### Poprawione
 
 - Dwa klienty MCP na jeden podmiot przestają gubić sobie nawzajem zapisy.
