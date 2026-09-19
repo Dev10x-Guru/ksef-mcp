@@ -9,13 +9,14 @@ from conftest import in_another_thread
 from ksef_mcp.audit import (
     AUDIT_FILE,
     XML_FORMAT,
+    AuditedOperation,
     AuditEntry,
     AuditTrail,
     AuditTrailUnreadable,
     Authorisation,
+    AuthorisationBasis,
     Disclosure,
     now_utc,
-    token_basis,
 )
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.token_store import TokenSource
@@ -34,7 +35,8 @@ def authorisation() -> Authorisation:
     return Authorisation(
         nip=NIP,
         environment=KsefEnvironment.TEST,
-        basis=token_basis(TokenSource.KEYRING),
+        basis=AuthorisationBasis.KSEF_TOKEN,
+        source=str(TokenSource.KEYRING),
     )
 
 
@@ -46,7 +48,7 @@ def written_entry(
 ) -> AuditEntry:
     return AuditEntry(
         recorded_at=MOMENT,
-        operation="synchronise_invoices",
+        operation=AuditedOperation.SYNCHRONISATION,
         authorisation=authorisation,
         disclosure=disclosure,
         subject_role="buyer",
@@ -174,7 +176,7 @@ def test_an_entry_without_a_role_or_a_file_reads_back_as_such(
         (
             AuditEntry(
                 recorded_at=MOMENT,
-                operation="list_recent_invoices",
+                operation=AuditedOperation.LISTING,
                 authorisation=authorisation,
                 disclosure=Disclosure.MODEL_CONTEXT,
                 subject_role=None,
@@ -188,6 +190,42 @@ def test_an_entry_without_a_role_or_a_file_reads_back_as_such(
     )
 
     assert (trail.entries()[0].subject_role, trail.entries()[0].output_path) == (None, None)
+
+
+@pytest.mark.parametrize(
+    ("basis", "source", "spelled"),
+    [
+        (AuthorisationBasis.KSEF_TOKEN, "keyring", "ksef_token:keyring"),
+        (AuthorisationBasis.OPERATOR, None, "operator:cli"),
+        (AuthorisationBasis.ARCHIVE, None, "archiwum_lokalne"),
+    ],
+    ids=["token-with-its-source", "operator-carrying-a-colon", "archive"],
+)
+def test_a_footing_reads_back_as_the_one_that_was_written(
+    trail: AuditTrail,
+    basis: AuthorisationBasis,
+    source: str | None,
+    spelled: str,
+) -> None:
+    """The spelling on disk is unchanged, so no `SCHEMA_VERSION` bump was owed."""
+    written = Authorisation(
+        nip=NIP,
+        environment=KsefEnvironment.TEST,
+        basis=basis,
+        source=source,
+    )
+    recorded_path = trail.record((written_entry(written),))
+    read_back = trail.entries()[0].authorisation
+
+    assert (
+        first_line(recorded_path)["authorisation_basis"],
+        read_back.basis,
+        read_back.source,
+    ) == (
+        spelled,
+        basis,
+        source,
+    )
 
 
 def test_a_line_from_another_schema_is_refused_rather_than_guessed_at(

@@ -74,23 +74,16 @@ AUDIT_DIRECTORY_MODE: Final[int] = 0o700
 # written first and tightened after.
 AUDIT_FILE_MODE: Final[int] = 0o600
 
-TOKEN_BASIS: Final[str] = "ksef_token"
-
-# Deletion reaches no registry and needs no token, so the trail would lie if it
-# named one. What the operation stood on is a person at a terminal answering a
-# question, and that is what the entry says.
-OPERATOR_BASIS: Final[str] = "operator:cli"
-
 XML_FORMAT: Final[str] = "xml"
 
 CSV_FORMAT: Final[str] = "csv"
 
 PDF_FORMAT: Final[str] = "pdf"
 
-# A read that needed no token: the invoice was already held, so there is no
-# secret to name a source for. Spelled out rather than left blank, because a
-# blank basis reads like a field nobody filled in.
-ARCHIVE_BASIS: Final[str] = "archiwum_lokalne"
+# What separates the source of a token from the basis itself in a recorded
+# entry. The separator is part of the spelling already on disk, so it is named
+# here rather than repeated inside a format string.
+BASIS_SOURCE_SEPARATOR: Final[str] = ":"
 
 
 class AuditTrailUnreadable(KsefMcpError):
@@ -119,18 +112,62 @@ class Disclosure(StrEnum):
     REMOVAL = "removal"
 
 
+class AuthorisationBasis(StrEnum):
+    """What a read stood on. Three footings, and no fourth invented by a typo.
+
+    A free `str` let a misspelled basis into the evidence without a word: the
+    entry parsed, the trail read back, and the footing it named existed nowhere.
+    The values are the ones already written to disk, so an enum here reads every
+    trail this build has ever appended to and needs no `SCHEMA_VERSION` bump.
+
+    `KSEF_TOKEN` is the only one that takes a source beside it — which keyring
+    entry or environment variable the proof came from, never the proof.
+    `OPERATOR` is deletion: it reaches no registry and needs no token, so a
+    trail naming one would lie; what it stood on is a person at a terminal
+    answering a question. `ARCHIVE` is a read that needed no token because the
+    invoice was already held — spelled out rather than left blank, because a
+    blank basis reads like a field nobody filled in.
+    """
+
+    KSEF_TOKEN = "ksef_token"
+    OPERATOR = "operator:cli"
+    ARCHIVE = "archiwum_lokalne"
+
+
+class AuditedOperation(StrEnum):
+    """Which operation a trail entry is about, named after the tool the caller invoked.
+
+    That is the name the person reconstructing an access has in front of them.
+    The six used to be `Final[str]` constants spread over two modules, so a
+    typo in one of them recorded an operation that never existed and nothing —
+    not the type checker, not the reader — could tell. The values are the
+    strings already on disk, so this closes the set without a `SCHEMA_VERSION`
+    bump on an append-only file (`Disclosure` was settled the same way).
+    """
+
+    SYNCHRONISATION = "synchronise_invoices"
+    LISTING = "list_recent_invoices"
+    STATEMENT = "export_period_statement"
+    REVIEW = "review_new_invoices"
+    RENDER = "render_invoice_pdf"
+    PURGE = "purge_archive"
+
+
 @dataclass(frozen=True)
 class Authorisation:
     """Under whose NIP and on what footing a read happened. Never the secret itself."""
 
     nip: str
     environment: KsefEnvironment
-    basis: str
+    basis: AuthorisationBasis
+    source: str | None = None
 
-
-def token_basis(source: object) -> str:
-    """Where the proof of authorisation came from, spelled without the proof."""
-    return f"{TOKEN_BASIS}:{source}"
+    @property
+    def recorded(self) -> str:
+        """The basis as one line of the trail spells it, with its source if it has one."""
+        if self.source is None:
+            return str(self.basis)
+        return f"{self.basis}{BASIS_SOURCE_SEPARATOR}{self.source}"
 
 
 @dataclass(frozen=True)
@@ -138,7 +175,7 @@ class AuditEntry:
     """One read, reconstructible: who, under what, asking what, getting which numbers."""
 
     recorded_at: datetime
-    operation: str
+    operation: AuditedOperation
     authorisation: Authorisation
     disclosure: Disclosure
     subject_role: str | None
@@ -157,10 +194,10 @@ def _encode(entry: AuditEntry) -> dict[str, object]:
     return {
         "schema_version": SCHEMA_VERSION,
         "recorded_at": entry.recorded_at.isoformat(),
-        "operation": entry.operation,
+        "operation": str(entry.operation),
         "nip": entry.authorisation.nip,
         "environment": str(entry.authorisation.environment),
-        "authorisation_basis": entry.authorisation.basis,
+        "authorisation_basis": entry.authorisation.recorded,
         "disclosure": str(entry.disclosure),
         "subject_role": entry.subject_role,
         "criteria": entry.criteria,
@@ -169,6 +206,21 @@ def _encode(entry: AuditEntry) -> dict[str, object]:
         "output_path": entry.output_path,
         "formats": list(entry.formats),
     }
+
+
+def _decoded_basis(recorded: str) -> tuple[AuthorisationBasis, str | None]:
+    """Split a recorded basis back into its footing and, where it has one, its source.
+
+    Matched whole first, because `operator:cli` carries the separator inside the
+    value itself. Splitting first would read it as a footing called `operator`
+    with a source of `cli` — a different claim about the same entry, and one no
+    reader would ever be warned about.
+    """
+    try:
+        return AuthorisationBasis(recorded), None
+    except ValueError:
+        basis, _, source = recorded.partition(BASIS_SOURCE_SEPARATOR)
+        return AuthorisationBasis(basis), source
 
 
 def _decode(document: dict[str, object]) -> AuditEntry:
@@ -183,13 +235,15 @@ def _decode(document: dict[str, object]) -> AuditEntry:
     )
     role = document["subject_role"]
     path = document["output_path"]
+    basis, source = _decoded_basis(str(document["authorisation_basis"]))
     return AuditEntry(
         recorded_at=datetime.fromisoformat(str(document["recorded_at"])),
-        operation=str(document["operation"]),
+        operation=AuditedOperation(str(document["operation"])),
         authorisation=Authorisation(
             nip=str(document["nip"]),
             environment=KsefEnvironment(str(document["environment"])),
-            basis=str(document["authorisation_basis"]),
+            basis=basis,
+            source=source,
         ),
         disclosure=Disclosure(str(document["disclosure"])),
         subject_role=None if role is None else str(role),

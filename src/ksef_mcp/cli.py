@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Final
 from ksef_mcp import client, config, messages, preflight, skill, token_store
 from ksef_mcp.allowance import Allowance
 from ksef_mcp.archive import InvoiceArchive
-from ksef_mcp.audit import OPERATOR_BASIS, AuditTrail, Authorisation
+from ksef_mcp.audit import AuditTrail, Authorisation, AuthorisationBasis
 from ksef_mcp.config import Configuration, KsefEnvironment
 from ksef_mcp.metadata import SERVER_NAME, VERSION
 from ksef_mcp.paths import Nip, NipRejected, SubjectScope
@@ -579,7 +579,7 @@ def run_purge(
                 authorisation=Authorisation(
                     nip=subject,
                     environment=configuration.environment,
-                    basis=OPERATOR_BASIS,
+                    basis=AuthorisationBasis.OPERATOR,
                 ),
                 moment=trail.clock(),
             ),

@@ -20,11 +20,10 @@ from pathlib import Path
 import pytest
 
 from ksef_mcp.archive import InvoiceArchive
-from ksef_mcp.audit import Authorisation, Disclosure
+from ksef_mcp.audit import AuditedOperation, Authorisation, AuthorisationBasis, Disclosure
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.package import ExportPackage, PackageDocument
 from ksef_mcp.retention import (
-    PURGE_OPERATION,
     ArchivePurge,
     PurgeWindow,
     PurgeWindowInverted,
@@ -313,13 +312,13 @@ def test_the_audit_entry_records_a_removal_and_its_numbers(purge: ArchivePurge) 
         authorisation=Authorisation(
             nip=NIP,
             environment=KsefEnvironment.TEST,
-            basis="operator:cli",
+            basis=AuthorisationBasis.OPERATOR,
         ),
         moment=ARCHIVED_AT,
     )
 
     assert (entry.operation, entry.disclosure, entry.ksef_numbers, entry.document_count) == (
-        PURGE_OPERATION,
+        AuditedOperation.PURGE,
         Disclosure.REMOVAL,
         (a_number(1),),
         1,
@@ -334,7 +333,7 @@ def test_the_audit_entry_carries_no_invoice_content(purge: ArchivePurge) -> None
         authorisation=Authorisation(
             nip=NIP,
             environment=KsefEnvironment.TEST,
-            basis="operator:cli",
+            basis=AuthorisationBasis.OPERATOR,
         ),
         moment=ARCHIVED_AT,
     )

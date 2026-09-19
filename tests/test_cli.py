@@ -18,7 +18,7 @@ from ksef_mcp import (
     token_store,
 )
 from ksef_mcp.archive import InvoiceArchive
-from ksef_mcp.audit import OPERATOR_BASIS, AuditTrail, Disclosure
+from ksef_mcp.audit import AuditTrail, AuthorisationBasis, Disclosure
 from ksef_mcp.config import Configuration, KsefEnvironment
 from ksef_mcp.metadata import SERVER_NAME
 from synthetic import synthetic_metadata
@@ -1617,7 +1617,7 @@ def test_purge_records_a_human_at_a_terminal_as_the_basis(
     cli.main(["purge"], console=recorder.console, configuration_file=configured)
 
     recorded = AuditTrail(nip=NIP, environment=KsefEnvironment.TEST).entries()
-    assert recorded[0].authorisation.basis == OPERATOR_BASIS
+    assert recorded[0].authorisation.basis is AuthorisationBasis.OPERATOR
 
 
 def test_purge_reports_that_the_index_still_remembers(
