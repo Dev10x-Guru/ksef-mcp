@@ -17,6 +17,7 @@ import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
 from html import unescape
+from importlib import resources
 from pathlib import Path
 from typing import Final
 
@@ -25,6 +26,8 @@ from ksef_mcp.ksef_port.errors import KsefRequestRejected
 from ksef_mcp.ksef_port.types import KsefNumber
 from ksef_mcp.preflight import NodeReport, inspect_node
 from ksef_mcp.storage import replaced_durably, reserved_staging
+
+PACKAGE_NAME: Final[str] = "ksef_mcp"
 
 BUNDLE_DIRECTORY: Final[str] = "vendor"
 
@@ -113,7 +116,16 @@ class RenderedInvoice:
 
 
 def package_root() -> Path:
-    return Path(__file__).parent
+    """Where this package's own files live, asked of the import system.
+
+    `Path(__file__).parent` answers the same thing today, and answers it by
+    guessing: it reads an attribute of this module and assumes the resources
+    sit beside it. `importlib.resources` asks the loader that actually placed
+    the package, which is the component that knows. Converted to `Path`
+    because both resources are handed to Node as command-line arguments, and
+    a subprocess takes a file name, not a traversable (#106).
+    """
+    return Path(str(resources.files(PACKAGE_NAME)))
 
 
 def bundle_path() -> Path:
