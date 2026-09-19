@@ -10,6 +10,9 @@ udokumentowane.
 
 ## Bez wydania
 
+## 0.3.4 — 2026-09-19
+
+
 ### Bezpieczeństwo
 
 - Paczka z PyPI nie zgubi po cichu generatora PDF. Pliki, których
@@ -165,7 +168,6 @@ udokumentowane.
   wszystkich czterech typów, więc błąd przy ostatnim zabierał klucz AES
   paczki zamówionej przy pierwszym — a takiej paczki nie da się odszyfrować
   już nigdy. Stan idzie na dysk po każdym typie podmiotu (GH-96).
-
 ## 0.3.3 — 2026-09-19
 
 
