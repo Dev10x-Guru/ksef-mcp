@@ -50,6 +50,12 @@ def a_body(ordinal: int) -> bytes:
 
 
 def an_entry(ordinal: int) -> dict[str, str]:
+    """A manifest entry naming a file — the fallback path, not what KSeF sends.
+
+    Kept for the tests that deliberately exercise that path, and only those.
+    It used to be what every test here ran against, which is why nothing
+    caught a production package refusing itself (GH-87).
+    """
     return {
         "ksefNumber": str(synthetic_number(ordinal)),
         "fileName": f"faktura-{ordinal}.xml",
@@ -77,6 +83,19 @@ def a_manifest(*entries: dict[str, str]) -> bytes:
 
 
 def a_package(*ordinals: int) -> ExportPackage:
+    """The default every test here runs against: the shape production sees."""
+    return ExportPackage(
+        reference="EXP-1",
+        documents=tuple(
+            PackageDocument(name=f"faktura-{ordinal}.xml", content=a_body(ordinal))
+            for ordinal in ordinals
+        ),
+        metadata=a_manifest(*(as_ksef_sends_it(ordinal) for ordinal in ordinals)),
+    )
+
+
+def a_package_naming_files(*ordinals: int) -> ExportPackage:
+    """The same package, with a manifest that names its entries after all."""
     return ExportPackage(
         reference="EXP-1",
         documents=tuple(
@@ -118,20 +137,9 @@ def repeated(
     return archive.store(package=package)
 
 
-def a_package_as_ksef_sends_it(*ordinals: int) -> ExportPackage:
-    return ExportPackage(
-        reference="EXP-1",
-        documents=tuple(
-            PackageDocument(name=f"faktura-{ordinal}.xml", content=a_body(ordinal))
-            for ordinal in ordinals
-        ),
-        metadata=a_manifest(*(as_ksef_sends_it(ordinal) for ordinal in ordinals)),
-    )
-
-
 def test_a_manifest_in_the_shape_ksef_sends_is_archived(archive: InvoiceArchive) -> None:
     """GH-87: production archived nothing because no entry ever named a file."""
-    report = archive.store(package=a_package_as_ksef_sends_it(1, 2))
+    report = archive.store(package=a_package(1, 2))
 
     assert report.archived == (str(synthetic_number(1)), str(synthetic_number(2)))
 
@@ -139,9 +147,29 @@ def test_a_manifest_in_the_shape_ksef_sends_is_archived(archive: InvoiceArchive)
 def test_an_invoice_paired_by_hash_lands_under_its_own_number(
     archive: InvoiceArchive,
 ) -> None:
-    archive.store(package=a_package_as_ksef_sends_it(1, 2))
+    archive.store(package=a_package(1, 2))
 
     assert archived_path(archive, 2).read_bytes() == a_body(2)
+
+
+def test_a_manifest_that_does_name_its_files_is_still_honoured(
+    archive: InvoiceArchive,
+) -> None:
+    # The fallback path. Nothing in MF's documentation forbids a manifest
+    # carrying names later, and a package that does is not worse off for it.
+    report = archive.store(package=a_package_naming_files(1, 2))
+
+    assert report.archived == (str(synthetic_number(1)), str(synthetic_number(2)))
+
+
+def test_an_empty_package_with_an_empty_manifest_archives_nothing(
+    archive: InvoiceArchive,
+) -> None:
+    report = archive.store(
+        package=ExportPackage(reference="EXP-1", documents=(), metadata=a_manifest())
+    )
+
+    assert (report.archived, report.already_held) == ((), ())
 
 
 def test_each_invoice_lands_under_the_ksef_number_the_manifest_states(
@@ -472,6 +500,44 @@ def test_the_digest_wins_when_a_manifest_states_both_and_they_disagree(
     archive.store(package=crossed)
 
     assert archived_path(archive, 1).read_bytes() == a_body(1)
+
+
+def test_a_stated_digest_that_misses_is_refused_rather_than_falling_back(
+    archive: InvoiceArchive,
+) -> None:
+    # The name would have paired here. Taking it would archive under a number
+    # the bytes contradict — the hole the digest exists to close.
+    disagreeing = ExportPackage(
+        reference="EXP-1",
+        documents=(PackageDocument(name="faktura-1.xml", content=a_body(1)),),
+        metadata=a_manifest(
+            {
+                "ksefNumber": str(synthetic_number(1)),
+                "invoiceHash": base64_digest(b"cokolwiek innego"),
+                "fileName": "faktura-1.xml",
+            }
+        ),
+    )
+
+    with pytest.raises(ArchiveMetadataUnusable, match="weaker half"):
+        archive.store(package=disagreeing)
+
+
+def test_a_digest_padded_with_whitespace_still_pairs(archive: InvoiceArchive) -> None:
+    # Exact comparison against somebody else's serialisation; a stray space
+    # must not refuse a package that is entirely correct.
+    spaced = ExportPackage(
+        reference="EXP-1",
+        documents=(PackageDocument(name="faktura-1.xml", content=a_body(1)),),
+        metadata=a_manifest(
+            {
+                "ksefNumber": str(synthetic_number(1)),
+                "invoiceHash": f"  {base64_digest(a_body(1))}\n",
+            }
+        ),
+    )
+
+    assert archive.store(package=spaced).archived == (str(synthetic_number(1)),)
 
 
 def test_a_manifest_naming_a_file_the_package_lacks_is_refused(archive: InvoiceArchive) -> None:

@@ -114,9 +114,10 @@ class ArchiveNotPerformed(RuntimeError):
 class InvoiceIdentity:
     """One line of the manifest: which entry of the package is which invoice.
 
-    Either way of pointing at the entry is enough, and a line carrying both is
-    honoured by content first — a name can be restated wrongly, a digest of the
-    bytes cannot.
+    Either way of pointing at the entry is enough. A line carrying both is
+    settled by the digest alone: if it matches, the name adds nothing, and if
+    it does not, the two disagree and the name is the half more likely to be
+    wrong.
     """
 
     ksef_number: KsefNumber
@@ -223,7 +224,10 @@ def _identity(entry: object) -> InvoiceIdentity:
         return InvoiceIdentity(
             ksef_number=KsefNumber(str(number)),
             file_name=None if file_name is None else str(file_name),
-            content_hash=None if content_hash is None else str(content_hash),
+            # Trimmed because the comparison is exact and the digest is
+            # somebody else's serialisation: a stray space would refuse a
+            # package that is entirely correct.
+            content_hash=None if content_hash is None else str(content_hash).strip(),
         )
     except KsefRequestRejected as rejection:
         raise ArchiveMetadataUnusable(
@@ -253,18 +257,29 @@ def _entry_of(
 ) -> str:
     """Which entry of the package this manifest line points at.
 
-    Content first: a file name can be restated wrongly, a digest of the bytes
-    cannot be wrong about which bytes it names.
+    A stated digest is the answer or there is none: falling back to the file
+    name when the digest fails to match would reopen the very hole the digest
+    closes, because the two disagreeing is exactly when the name is the one
+    more likely to be wrong. The name is reached for only when no digest was
+    stated at all.
     """
-    if identity.content_hash is not None and identity.content_hash in by_content:
-        return by_content[identity.content_hash]
+    if identity.content_hash is not None:
+        entry = by_content.get(identity.content_hash)
+        if entry is not None:
+            return entry
+        raise ArchiveMetadataUnusable(
+            f"_metadata.json of export {reference} gives {identity.ksef_number} a "
+            f"digest the package does not carry: {identity.content_hash!r}. "
+            f"Refusing to fall back to the file name — a digest that does not "
+            f"match is a disagreement, and the name is the weaker half of it."
+        )
     if identity.file_name is not None and identity.file_name in bodies:
         return identity.file_name
     raise ArchiveMetadataUnusable(
         f"_metadata.json of export {reference} points {identity.ksef_number} at "
-        f"a document the package does not carry: digest "
-        f"{identity.content_hash!r}, file name {identity.file_name!r}. Refusing "
-        f"to archive a package that does not match its own manifest."
+        f"a document the package does not carry: file name "
+        f"{identity.file_name!r}. Refusing to archive a package that does not "
+        f"match its own manifest."
     )
 
 
@@ -276,11 +291,11 @@ def located(
 ) -> dict[str, str]:
     """Pair every manifest line with one entry, and refuse anything left over.
 
-    Returns entry name to KSeF number. Both directions still hold: a line
-    pointing at nothing is a manifest the package does not match, and an entry
-    no line points at would need a KSeF number nobody stated. What changed is
-    how the pairing is made — by the digest MF states, falling back to a file
-    name when one is given (GH-87).
+    Returns KSeF number to entry name — the direction the caller reads it in.
+    Both refusals still hold: a line pointing at nothing is a manifest the
+    package does not match, and an entry no line points at would need a KSeF
+    number nobody stated. What changed is how the pairing is made — by the
+    digest MF states, or by a file name when no digest was given (GH-87).
     """
     by_content = _by_content(bodies)
     taken: dict[str, str] = {}
@@ -306,7 +321,7 @@ def located(
             f"_metadata.json does not name. Storing it would need a KSeF "
             f"number nobody stated, and skipping it would lose an invoice."
         )
-    return taken
+    return {number: entry for entry, number in taken.items()}
 
 
 def identities(metadata: bytes | None) -> tuple[InvoiceIdentity, ...]:
@@ -402,8 +417,7 @@ class InvoiceArchive:
         """Write every invoice the manifest names, once, and record that it was held."""
         wanted = identities(package.metadata)
         bodies = {document.name: document.content for document in package.documents}
-        entries = located(wanted=wanted, bodies=bodies, reference=package.reference)
-        carrying = {number: entry for entry, number in entries.items()}
+        carrying = located(wanted=wanted, bodies=bodies, reference=package.reference)
         index = self.load_index()
         held = index.known
         archived: list[str] = []
