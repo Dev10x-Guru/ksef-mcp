@@ -32,6 +32,7 @@ from ksef_mcp.archive import (
 from ksef_mcp.ksef_port.budget import Operation, QueryBudget
 from ksef_mcp.ksef_port.errors import (
     KsefPortError,
+    KsefRefused,
     KsefRequestRejected,
     PackageLinkExpired,
 )
@@ -641,10 +642,20 @@ class Synchroniser:
             return state, self._stalled(export=export, failure=expiry, reached=reached)
         try:
             status = session.check_export(handle=export.handle)
+        except KsefRefused as refusal:
+            # KSeF answered, and the answer was about this export: it is gone.
+            return self._abandon(state=state, export=export, refusal=refusal)
         except KsefPortError:
-            return self._abandon(state=state, export=export, expiry=expiry)
+            # Everything else the port can raise says nothing about whether the
+            # export still exists — no answer at all, a rate limit, a session
+            # that expired. Reading any of them as "KSeF no longer serves it"
+            # would drop a live package with its key and roll the point back
+            # for a network blip. It would also turn a 429 into a fresh export
+            # request on the very next line, which is the retry pattern the
+            # Ministry records and answers with a lengthening block.
+            return state, self._stalled(export=export, failure=expiry, reached=reached)
         if status.state is not ExportState.READY or not status.parts:
-            return self._abandon(state=state, export=export, expiry=expiry)
+            return self._abandon(state=state, export=export, refusal=None)
         renewed = replace(export, parts=status.parts)
         return self._archive(
             session=session,
@@ -663,7 +674,7 @@ class Synchroniser:
         *,
         state: SyncState,
         export: PendingExport,
-        expiry: PackageLinkExpired,
+        refusal: KsefRefused | None,
     ) -> tuple[SyncState, DirectionReport]:
         """Take a lost export off the record and put the point back before it.
 
@@ -672,9 +683,15 @@ class Synchroniser:
         record in place instead would hold the subject type against a door that
         will not open again, with the point already past the window behind it —
         the deadlock GH-93 was reported from.
+
+        `refusal` is what KSeF said when asked, or `None` when it answered
+        without refusing and simply had no parts to offer. Either way the
+        message carries it, so the next operator reading the report knows which
+        of the two happened without going back to the registry.
         """
         stored = state.directions.get(export.direction)
         returned = rolled_back_to(export, stored=stored)
+        answer = "nie ma już jej części" if refusal is None else str(refusal)
         return state.without_export(reference=export.reference).with_direction(
             export.direction,
             DirectionState(
@@ -685,8 +702,8 @@ class Synchroniser:
             direction=export.direction,
             outcome=SyncOutcome.RECOVERED,
             detail=(
-                f"Odnośniki do paczki {export.reference} wygasły, a KSeF nie "
-                f"podaje już jej części; wpis zdjęty, punkt kontynuacji "
+                f"Odnośniki do paczki {export.reference} wygasły, a KSeF "
+                f"odpowiedział, że {answer}; wpis zdjęty, punkt kontynuacji "
                 f"cofnięty na {returned.isoformat()}."
             ),
             reached=returned,
