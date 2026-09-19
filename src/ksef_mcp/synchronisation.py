@@ -66,28 +66,6 @@ SYNCHRONISED_DIRECTIONS: Final[tuple[InvoiceDirection, ...]] = (
     InvoiceDirection.AUTHORIZED_SUBJECT,
 )
 
-# Subject 3 and the authorized subject appear rarely; the Ministry's guidance is
-# once a day in a night window. Keeping them off the daytime rotation is what
-# leaves the frequent two their share of twenty exports an hour (D-031 §5).
-OCCASIONAL_DIRECTIONS: Final[frozenset[InvoiceDirection]] = frozenset(
-    {InvoiceDirection.THIRD_SUBJECT, InvoiceDirection.AUTHORIZED_SUBJECT}
-)
-
-# UTC rather than the machine's local time: a window that moves with the
-# operator's timezone and with daylight saving is not a rule anyone can reason
-# about afterwards from the record on disk.
-NIGHT_WINDOW_OPENS_UTC: Final[int] = 0
-
-NIGHT_WINDOW_CLOSES_UTC: Final[int] = 6
-
-# The floor D-031 §5 sets per subject type. With at most one export per type per
-# run, it is also the whole allocation policy: four types times four exports an
-# hour is sixteen, under the twenty the context allows, and the budget counter
-# is the backstop for an allowance KSeF reports lower than that.
-MINIMUM_INTERVAL: Final[timedelta] = timedelta(minutes=15)
-
-OCCASIONAL_INTERVAL: Final[timedelta] = timedelta(days=1)
-
 # How far back a first run reaches. This only says where the sequence starts; a
 # subject with older invoices catches up over the following runs rather than in
 # one oversized package.
@@ -160,25 +138,6 @@ class SynchronisationReport:
 
 def now_utc() -> datetime:
     return datetime.now(tz=UTC)
-
-
-def in_night_window(moment: datetime) -> bool:
-    return NIGHT_WINDOW_OPENS_UTC <= moment.astimezone(UTC).hour < NIGHT_WINDOW_CLOSES_UTC
-
-
-def is_due(
-    *,
-    direction: InvoiceDirection,
-    stored: DirectionState | None,
-    moment: datetime,
-) -> bool:
-    occasional = direction in OCCASIONAL_DIRECTIONS
-    if occasional and not in_night_window(moment):
-        return False
-    if stored is None or stored.attempted_at is None:
-        return True
-    interval = OCCASIONAL_INTERVAL if occasional else MINIMUM_INTERVAL
-    return moment - stored.attempted_at >= interval
 
 
 def advance(point: ContinuationPoint, *, status: ExportStatus) -> ContinuationPoint | None:
@@ -369,7 +328,12 @@ class Synchroniser:
                 reached=None if stored is None else stored.reached,
             )
         moment = self.clock()
-        if not is_due(direction=direction, stored=stored, moment=moment):
+        # Where a subject type with no record on disk stands, built before the
+        # due check rather than inside `_start`: the night window governs a
+        # subject type nobody has ever asked for exactly as it governs one with
+        # a record, so the question has to be put to a state either way.
+        opening = DirectionState(reached=moment - INITIAL_LOOKBACK) if stored is None else stored
+        if not opening.is_due(direction=direction, moment=moment):
             return state, DirectionReport(
                 direction=direction,
                 outcome=SyncOutcome.NOT_DUE,
@@ -382,7 +346,7 @@ class Synchroniser:
             retriever=retriever,
             state=state,
             direction=direction,
-            stored=stored,
+            opening=opening,
             moment=moment,
         )
 
@@ -394,10 +358,9 @@ class Synchroniser:
         retriever: PackageRetriever,
         state: SyncState,
         direction: InvoiceDirection,
-        stored: DirectionState | None,
+        opening: DirectionState,
         moment: datetime,
     ) -> tuple[SyncState, DirectionReport]:
-        opening = DirectionState(reached=moment - INITIAL_LOOKBACK) if stored is None else stored
         try:
             budget.spend(Operation.EXPORT)
         except KsefRequestRejected as refusal:

@@ -13,7 +13,7 @@ import json
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Final
 
@@ -49,6 +49,32 @@ SETTLED_JOURNAL_LIMIT: Final[int] = 50
 # The file carries the AES key of every queued export (D-033), so it is created
 # with its final mode rather than written and then tightened.
 STATE_FILE_MODE: Final[int] = 0o600
+
+# Subject 3 and the authorized subject appear rarely; the Ministry's guidance is
+# once a day in a night window. Keeping them off the daytime rotation is what
+# leaves the frequent two their share of twenty exports an hour (D-031 §5).
+OCCASIONAL_DIRECTIONS: Final[frozenset[InvoiceDirection]] = frozenset(
+    {InvoiceDirection.THIRD_SUBJECT, InvoiceDirection.AUTHORIZED_SUBJECT}
+)
+
+# UTC rather than the machine's local time: a window that moves with the
+# operator's timezone and with daylight saving is not a rule anyone can reason
+# about afterwards from the record on disk.
+NIGHT_WINDOW_OPENS_UTC: Final[int] = 0
+
+NIGHT_WINDOW_CLOSES_UTC: Final[int] = 6
+
+# The floor D-031 §5 sets per subject type. With at most one export per type per
+# run, it is also the whole allocation policy: four types times four exports an
+# hour is sixteen, under the twenty the context allows, and the budget counter
+# is the backstop for an allowance KSeF reports lower than that.
+MINIMUM_INTERVAL: Final[timedelta] = timedelta(minutes=15)
+
+OCCASIONAL_INTERVAL: Final[timedelta] = timedelta(days=1)
+
+
+def in_night_window(moment: datetime) -> bool:
+    return NIGHT_WINDOW_OPENS_UTC <= moment.astimezone(UTC).hour < NIGHT_WINDOW_CLOSES_UTC
 
 
 class SyncStateUnreadable(KsefMcpError):
@@ -123,6 +149,27 @@ class DirectionState:
 
     def continuation_point(self, *, direction: InvoiceDirection) -> ContinuationPoint:
         return ContinuationPoint(direction=direction, reached=self.reached)
+
+    def is_due(self, *, direction: InvoiceDirection, moment: datetime) -> bool:
+        """Whether this subject type may be asked for an export again yet.
+
+        The rule this docstring has always described is now also the rule this
+        type enforces. It used to be read off `attempted_at` by a function next
+        door, so the only protection against blocking the subject — the Ministry
+        lengthens a block each time it sees the limit worked around (D-031 §5) —
+        lived where nothing pointed at it.
+
+        A subject type never asked before carries no `attempted_at` and is due,
+        which is why the caller with no record on disk builds an opening state
+        rather than skipping the question: the night window still applies to it.
+        """
+        occasional = direction in OCCASIONAL_DIRECTIONS
+        if occasional and not in_night_window(moment):
+            return False
+        if self.attempted_at is None:
+            return True
+        interval = OCCASIONAL_INTERVAL if occasional else MINIMUM_INTERVAL
+        return moment - self.attempted_at >= interval
 
 
 @dataclass(frozen=True)
