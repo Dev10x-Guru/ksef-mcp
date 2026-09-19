@@ -679,6 +679,92 @@ def test_doctor_says_when_there_is_no_configuration(doctored: tuple[int, Recorde
     assert "brak konfiguracji" in recorder.transcript
 
 
+def test_doctor_says_nothing_about_twins_when_there_are_none(
+    doctored: tuple[int, Recorder],
+) -> None:
+    _, recorder = doctored
+
+    assert "zapisane inaczej" not in recorder.transcript
+
+
+@pytest.fixture
+def stale_subject_directory(subject_data_root: Path) -> Path:
+    # The shape a taxpayer who onboarded before GH-111 is left with: an archive
+    # under the spelling they typed, which this version no longer looks at.
+    stale = subject_data_root / "subjects" / "123-456-78-90" / "test"
+    stale.mkdir(parents=True)
+    (stale / "faktury").mkdir()
+    return stale
+
+
+def test_doctor_points_at_an_archive_left_under_the_old_spelling(
+    healthy_node: None,
+    usable_keyring: preflight.KeyringReport,
+    tmp_path: Path,
+    configured: Path,
+    stale_subject_directory: Path,
+) -> None:
+    recorder = Recorder()
+
+    cli.main(
+        ["doctor"],
+        console=recorder.console,
+        working_directory=tmp_path,
+        configuration_file=configured,
+    )
+
+    assert str(stale_subject_directory.parent) in recorder.transcript
+
+
+def test_doctor_leaves_the_old_archive_exactly_where_it_is(
+    healthy_node: None,
+    usable_keyring: preflight.KeyringReport,
+    tmp_path: Path,
+    configured: Path,
+    stale_subject_directory: Path,
+) -> None:
+    # Detection, never migration: those directories hold invoices carrying a
+    # counterparty's personal data, and moving them unasked is the worse answer.
+    cli.main(
+        ["doctor"],
+        console=Recorder().console,
+        working_directory=tmp_path,
+        configuration_file=configured,
+    )
+
+    assert (stale_subject_directory / "faktury").is_dir()
+
+
+def test_doctor_does_not_crash_on_a_configuration_whose_nip_is_not_one(
+    healthy_node: None,
+    usable_keyring: preflight.KeyringReport,
+    tmp_path: Path,
+    invoice_directory: Path,
+) -> None:
+    # `doctor` is where a person goes when something is already wrong, so it
+    # reports and keeps going rather than raising over the same bad value.
+    path = tmp_path / "state" / config.CONFIGURATION_FILE
+    config.save_configuration(
+        Configuration(
+            nip="nie-jest-nipem",
+            environment=KsefEnvironment.TEST,
+            keyring_backend="keyring.backends.SecretService",
+            invoice_directory=invoice_directory,
+        ),
+        path=path,
+    )
+    recorder = Recorder()
+
+    code = cli.main(
+        ["doctor"],
+        console=recorder.console,
+        working_directory=tmp_path,
+        configuration_file=path,
+    )
+
+    assert code == cli.EXIT_OK
+
+
 def test_doctor_names_the_environment_without_calling_ksef(
     healthy_node: None,
     usable_keyring: preflight.KeyringReport,

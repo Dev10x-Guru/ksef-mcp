@@ -15,7 +15,7 @@ from ksef_mcp.archive import InvoiceArchive
 from ksef_mcp.audit import OPERATOR_BASIS, AuditTrail, Authorisation
 from ksef_mcp.config import Configuration, KsefEnvironment
 from ksef_mcp.metadata import SERVER_NAME, VERSION
-from ksef_mcp.paths import Nip, NipRejected
+from ksef_mcp.paths import Nip, NipRejected, SubjectScope
 from ksef_mcp.period_cache import MeteredPeriods, PeriodCache
 from ksef_mcp.retention import (
     ArchivePurge,
@@ -401,6 +401,22 @@ def report_connection(console: Console, checked: ksef_port.ConnectionCheck) -> i
     return EXIT_OK
 
 
+def stranded_directories(configuration: Configuration | None) -> tuple[Path, ...]:
+    """Files this version would no longer look at, for `doctor` to point out.
+
+    A configuration whose NIP cannot be read at all is not this function's
+    problem — `verify` and every tool say so in their own words — so it answers
+    "nothing stranded" rather than raising inside a diagnostic command.
+    """
+    if configuration is None:
+        return ()
+    try:
+        scope = SubjectScope.parsed(nip=configuration.nip, environment=configuration.environment)
+    except NipRejected:
+        return ()
+    return scope.unnormalised_twins()
+
+
 def run_doctor(
     console: Console, *, working_directory: Path, configuration_file: Path | None
 ) -> int:
@@ -409,7 +425,10 @@ def run_doctor(
     console.write("Tożsamość:")
     for line in messages.describe_identity(shutil.which(SERVER_NAME)):
         console.write(line)
-    for line in messages.describe_subject(config.load_configuration(path=configuration_file)):
+    configuration = config.load_configuration(path=configuration_file)
+    for line in messages.describe_subject(configuration):
+        console.write(line)
+    for line in messages.describe_unnormalised_twins(stranded_directories(configuration)):
         console.write(line)
     console.write("")
     report_preflight(console, working_directory=working_directory)

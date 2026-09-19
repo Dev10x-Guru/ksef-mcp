@@ -67,8 +67,26 @@ albo cichego rozjazdu między słownikiem a kodem.
 | `PunktKontynuacji` | `ContinuationPoint` |
 | `MetadaneFaktury` | `InvoiceMetadata` |
 | `KierunekFaktur` | `InvoiceDirection`, `WIRE_SUBJECT_TYPES` |
-| `KontekstPodmiotu` | `SubjectContext` |
+| `KontekstPodmiotu` | `SubjectScope`, `Nip` (w `paths.py`) |
 | `Środowisko` | `KsefEnvironment` (istniejący, w `config.py`) |
+| `Poświadczenie` | `Credential` (protokół, w `types.py`) |
+
+Wiersz `KontekstPodmiotu` wskazywał wcześniej `SubjectContext` w
+`types.py` — typ, którego nie wołał żaden moduł produkcyjny. Odwzorowanie
+było więc obietnicą, nie opisem: tożsamość podmiotu naprawdę żyła jako
+goły `nip: str`, powielona w sześciu magazynach (GH-111, GH-113). Pojęcie
+mieszka teraz w `paths.py` i jest używane, a martwy typ został usunięty.
+
+Do `paths.py`, a nie do portu, bo kontekst podmiotu odpowiada na pytanie
+*gdzie na dysku*, którego port z założenia nie zadaje. Kierunek importu
+też na to nie pozwala: `paths` czyta `KsefEnvironment` z `config`, a
+`config` jest liściem, po który sięga cała reszta — odwrócenie tej
+zależności zamknęłoby cykl przez `ksef_port/__init__.py`.
+
+Wiersz `Poświadczenie` jest nowy i pilnuje granicy, której ten ADR strzeże
+od początku: token przyjeżdża jako argument, a keyring zostaje powyżej
+portu. `Credential` to protokół strukturalny, więc `ksef_port` nazywa typ
+tokenu, nie importując `token_store` ani `keyring` (GH-115).
 
 ### Kształt portu
 

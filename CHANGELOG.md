@@ -50,8 +50,35 @@ udokumentowane.
   która strzeże kluczy do paczek z danymi osobowymi, ma być widoczne, a
   nie schowane w zbiorczej zmianie obok poprawki formatowania kodu
   (GH-109).
+- `purge --nip` nie wyprowadzi już kasowania poza katalog podmiotu.
+  Wartość tego parametru staje się członem ścieżki, a komenda kasuje
+  pliki bezpowrotnie — zapis w rodzaju `../../..` przechodził dotąd bez
+  sprawdzenia aż do planu czyszczenia. Jedyną ochroną było pytanie o
+  potwierdzenie, a to chroni przed pomyłką, nie przed złym wejściem. NIP
+  jest teraz czytany na wejściu i musi być dziesięcioma cyframi; wszystko
+  inne kończy się odmową, zanim cokolwiek zostanie zaplanowane (GH-112).
+- Token KSeF nie trafi do śladu stosu po nieudanym połączeniu.
+  Poświadczenie było rozpakowywane do gołego napisu zaraz na wejściu i
+  wędrowało tak przez siedem wywołań — czyli dokładnie przez ten
+  fragment, w którym powstają wyjątki sieciowe, a razem z nimi ślady z
+  wartościami zmiennych lokalnych. Teraz jest rozpakowywane linijkę
+  przed użyciem, w jednym miejscu (GH-115).
 
-### Poprawione
+### Zmienione
+
+- Jeden NIP to jeden podatnik, niezależnie od zapisu. `123-456-32-18`,
+  `123 456 32 18`, `PL1234563218` i `1234563218` to dla urzędu ten sam
+  numer, a dla tego serwera bywały dwoma podmiotami: dwa katalogi z
+  fakturami i dwa wpisy tokenu w keyringu, bez żadnego ostrzeżenia.
+  Zapis jest teraz sprowadzany do samych cyfr przy każdym wejściu.
+
+  **Jeśli podczas konfiguracji wpisałeś NIP z myślnikami albo ze
+  spacjami**, Twoje dotychczasowe pliki leżą pod tamtym zapisem i ta
+  wersja już tam nie zajrzy. Niczego nie przenosimy za Ciebie — w tych
+  katalogach są faktury z danymi kontrahentów, a przekładanie ich bez
+  pytania byłoby gorsze niż katalog, którego nie widać. `ksef-mcp
+  doctor` wskaże taki katalog po nazwie; przeniesienie zawartości do
+  katalogu obok, nazwanego samymi cyframi, wystarczy (GH-111).
 
 - Dwa klienty MCP na jeden podmiot przestają gubić sobie nawzajem zapisy.
   Claude Desktop i Claude Code obok siebie to zwykła konfiguracja, a
