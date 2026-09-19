@@ -14,6 +14,7 @@ from ksef_mcp.ksef_port.errors import (
     KsefUnreachable,
     PackageLinkExpired,
 )
+from ksef_mcp.ksef_port.guard import GuardedSession, RefusalBreaker
 from ksef_mcp.ksef_port.protocol import KsefPort, KsefSession
 from ksef_mcp.ksef_port.retry import NO_AUTOMATIC_RETRY, RetryPolicy
 from ksef_mcp.ksef_port.types import (
@@ -46,6 +47,7 @@ __all__ = [
     "ExportPart",
     "ExportState",
     "ExportStatus",
+    "GuardedSession",
     "InvoiceDirection",
     "InvoiceMetadata",
     "KsefAuthenticationFailed",
@@ -67,6 +69,7 @@ __all__ = [
     "PeriodReaders",
     "QueryBudget",
     "RateLimits",
+    "RefusalBreaker",
     "RetryPolicy",
     "SessionCeilings",
     "SubjectContext",

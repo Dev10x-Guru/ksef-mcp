@@ -260,7 +260,8 @@ class Synchroniser:
     def run(self, *, nip: str, token: str) -> SynchronisationReport:
         state = self.store.load()
         reports: list[DirectionReport] = []
-        with self.port.session(nip=nip, token=token) as session:
+        with self.port.session(nip=nip, token=token) as opened:
+            session = self.allowance.guarded(session=opened)
             budget = self.allowance.budget(session=session)
             retriever = PackageRetriever(session=session, store=self.store)
             for direction in SYNCHRONISED_DIRECTIONS:

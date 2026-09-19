@@ -424,7 +424,8 @@ class InvoiceReviewer:
         reviewed = ledger.reviewed
         reviews: list[DirectionReview] = []
         shown: list[ReviewedInvoice] = []
-        with self.port.session(nip=nip, token=token) as session:
+        with self.port.session(nip=nip, token=token) as opened:
+            session = self.allowance.guarded(session=opened)
             reader = PeriodMetadataReader(
                 cache=self.cache,
                 budget=self.allowance.budget(session=session),
