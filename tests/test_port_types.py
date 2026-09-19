@@ -167,6 +167,33 @@ def test_a_continuation_point_stays_bound_to_its_subject_type() -> None:
     assert moved.direction is InvoiceDirection.THIRD_SUBJECT
 
 
+@pytest.mark.parametrize(
+    ("has_more", "truncated", "expected"),
+    [(False, False, True), (True, False, False), (False, True, False), (True, True, False)],
+    ids=["whole-window", "ksef-has-more", "ksef-shortened", "both-signals"],
+)
+def test_a_page_knows_whether_it_is_the_whole_answer(
+    has_more: bool,
+    truncated: bool,
+    expected: bool,
+) -> None:
+    page = MetadataPage(invoices=(), has_more=has_more, truncated=truncated, hwm_date=None)
+
+    assert page.complete is expected
+
+
+def test_a_shortened_page_carries_the_sentence_that_says_so() -> None:
+    page = MetadataPage(invoices=(), has_more=True, truncated=False, hwm_date=None)
+
+    assert "to nie jest komplet" in page.shortfall_note
+
+
+def test_a_whole_page_adds_nothing_to_the_sentence_it_is_appended_to() -> None:
+    page = MetadataPage(invoices=(), has_more=False, truncated=False, hwm_date=None)
+
+    assert page.shortfall_note == ""
+
+
 def test_a_page_carries_what_the_next_window_needs() -> None:
     page = MetadataPage(
         invoices=(synthetic_metadata(),),
