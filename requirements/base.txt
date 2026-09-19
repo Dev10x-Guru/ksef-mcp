@@ -8,7 +8,7 @@ click==8.5.0 ; sys_platform != 'emscripten'
 cryptography==50.0.1
 h11==0.16.0 ; sys_platform != 'emscripten'
 httpcore2==2.12.0 ; sys_platform != 'emscripten'
-httpx2==2.12.0
+httpx2==2.13.0
 httpx2-jsfetch==1.0 ; sys_platform == 'emscripten'
 idna==3.19
 jsonschema==4.26.0
