@@ -180,13 +180,15 @@ class ContinuationPoint:
     direction: InvoiceDirection
     reached: datetime
 
-    def advanced_to(self, *, hwm: datetime, truncated: bool, last_seen: datetime) -> Self:
-        # Adjoining windows, never overlapping: a truncated package stops at the
-        # last invoice it carried, a complete one at the high water mark (D-031).
-        return type(self)(
-            direction=self.direction,
-            reached=last_seen if truncated else hwm,
-        )
+    def advanced_to(self, *, marker: datetime) -> Self:
+        """Move to the marker the finished export names, keeping the subject type.
+
+        Which of the export's two timestamps is the marker is the export's own
+        question, answered by `ExportStatus.continuation_marker`. Asking it here
+        as well put the D-031 §4 table in two places, and the caller then had to
+        pass both timestamps with fallbacks — one of which could never fire.
+        """
+        return type(self)(direction=self.direction, reached=marker)
 
 
 @dataclass(frozen=True)
@@ -304,6 +306,22 @@ class ExportStatus:
     hwm_date: datetime | None
     last_permanent_storage_date: datetime | None
     invoice_count: int
+
+    @property
+    def continuation_marker(self) -> datetime | None:
+        """Where the next window starts, or `None` when KSeF named no such point.
+
+        The D-031 §4 table, and the only place it is read: adjoining windows,
+        never overlapping, so a truncated package stops at the last invoice it
+        carried and a complete one at the high water mark. Only one of the two
+        fields is ever the real one — the other is inert, and a caller that read
+        both had to invent a fallback for a case that cannot happen.
+
+        `None` is the refusal, not a guess. A package whose marker KSeF left
+        empty advances nowhere, because a guessed start skips invoices no later
+        run ever asks for again.
+        """
+        return self.last_permanent_storage_date if self.truncated else self.hwm_date
 
 
 @dataclass(frozen=True)

@@ -141,24 +141,11 @@ def now_utc() -> datetime:
 
 
 def advance(point: ContinuationPoint, *, status: ExportStatus) -> ContinuationPoint | None:
-    """Move the point per the D-031 §4 table, or refuse when KSeF left it empty.
-
-    The table itself belongs to the port and is called, not copied. What is
-    decided here is the one case the port cannot decide: a package whose
-    continuation timestamp is missing advances nowhere, because a guessed start
-    skips invoices no later run ever asks for again.
-    """
-    hwm = status.hwm_date
-    last_seen = status.last_permanent_storage_date
-    if (last_seen if status.truncated else hwm) is None:
+    """Move the point to the marker the export names, or nowhere when it names none."""
+    marker = status.continuation_marker
+    if marker is None:
         return None
-    # Only the field the table will read is ever the real one; the other is
-    # inert, and repeating the choice here would put the table in two places.
-    return point.advanced_to(
-        hwm=hwm or point.reached,
-        truncated=status.truncated,
-        last_seen=last_seen or point.reached,
-    )
+    return point.advanced_to(marker=marker)
 
 
 def rolled_back_to(export: PendingExport, *, stored: DirectionState | None) -> datetime:

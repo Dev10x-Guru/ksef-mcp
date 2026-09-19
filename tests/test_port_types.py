@@ -5,6 +5,8 @@ import pytest
 from ksef_mcp.ksef_port import (
     ContinuationPoint,
     DateType,
+    ExportState,
+    ExportStatus,
     InvalidKsefIdentifier,
     InvalidPeriod,
     InvoiceDirection,
@@ -135,36 +137,56 @@ def test_every_direction_has_its_wire_name(direction: InvoiceDirection, wire: st
     assert WIRE_SUBJECT_TYPES[direction] == wire
 
 
-def test_a_truncated_package_continues_from_its_last_invoice() -> None:
-    point = ContinuationPoint(direction=InvoiceDirection.BUYER, reached=NOON)
-
-    moved = point.advanced_to(
-        hwm=NOON + timedelta(days=2),
-        truncated=True,
-        last_seen=NOON + timedelta(days=1),
+def a_status(
+    *,
+    truncated: bool,
+    hwm_date: datetime | None = None,
+    last_permanent_storage_date: datetime | None = None,
+) -> ExportStatus:
+    return ExportStatus(
+        state=ExportState.READY,
+        parts=(),
+        truncated=truncated,
+        hwm_date=hwm_date,
+        last_permanent_storage_date=last_permanent_storage_date,
+        invoice_count=0,
     )
 
-    assert moved.reached == NOON + timedelta(days=1)
+
+def test_a_truncated_package_continues_from_its_last_invoice() -> None:
+    status = a_status(
+        truncated=True,
+        hwm_date=NOON + timedelta(days=2),
+        last_permanent_storage_date=NOON + timedelta(days=1),
+    )
+
+    assert status.continuation_marker == NOON + timedelta(days=1)
 
 
 def test_a_complete_package_continues_from_the_high_water_mark() -> None:
-    point = ContinuationPoint(direction=InvoiceDirection.BUYER, reached=NOON)
-
-    moved = point.advanced_to(
-        hwm=NOON + timedelta(days=2),
+    status = a_status(
         truncated=False,
-        last_seen=NOON + timedelta(days=1),
+        hwm_date=NOON + timedelta(days=2),
+        last_permanent_storage_date=NOON + timedelta(days=1),
     )
 
-    assert moved.reached == NOON + timedelta(days=2)
+    assert status.continuation_marker == NOON + timedelta(days=2)
+
+
+@pytest.mark.parametrize("truncated", [True, False], ids=["shortened", "whole"])
+def test_a_package_whose_marker_ksef_left_empty_names_no_point(truncated: bool) -> None:
+    assert a_status(truncated=truncated).continuation_marker is None
 
 
 def test_a_continuation_point_stays_bound_to_its_subject_type() -> None:
     point = ContinuationPoint(direction=InvoiceDirection.THIRD_SUBJECT, reached=NOON)
 
-    moved = point.advanced_to(hwm=NOON, truncated=False, last_seen=NOON)
+    moved = point.advanced_to(marker=NOON + timedelta(days=1))
 
-    assert moved.direction is InvoiceDirection.THIRD_SUBJECT
+    assert (moved.direction, moved.reached) == (
+        InvoiceDirection.THIRD_SUBJECT,
+        NOON + timedelta(days=1),
+    )
 
 
 @pytest.mark.parametrize(
