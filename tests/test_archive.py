@@ -34,7 +34,7 @@ from ksef_mcp.archive import (
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.metadata import SERVER_NAME
 from ksef_mcp.package import ExportPackage, PackageDocument
-from synthetic import synthetic_number
+from synthetic import base64_digest, synthetic_number
 
 NIP = "1234567890"
 
@@ -53,6 +53,22 @@ def an_entry(ordinal: int) -> dict[str, str]:
     return {
         "ksefNumber": str(synthetic_number(ordinal)),
         "fileName": f"faktura-{ordinal}.xml",
+    }
+
+
+def as_ksef_sends_it(ordinal: int) -> dict[str, str]:
+    """One manifest entry in the shape the registry actually writes.
+
+    `_metadata.json` holds `{"invoices": [InvoiceMetadata]}` — the same model
+    `POST /invoices/query/metadata` returns — and `InvoiceMetadata` has no
+    file-name field at all. What it does carry is `invoiceHash`, the SHA-256 of
+    the invoice in base64, which is what pairs an entry with a document
+    (GH-87). The fixture above invents a `fileName` MF never sends, which is
+    why every mock test passed while production archived nothing.
+    """
+    return {
+        "ksefNumber": str(synthetic_number(ordinal)),
+        "invoiceHash": base64_digest(a_body(ordinal)),
     }
 
 
@@ -100,6 +116,32 @@ def repeated(
     archive: InvoiceArchive, package: ExportPackage, stored: ArchiveReport
 ) -> ArchiveReport:
     return archive.store(package=package)
+
+
+def a_package_as_ksef_sends_it(*ordinals: int) -> ExportPackage:
+    return ExportPackage(
+        reference="EXP-1",
+        documents=tuple(
+            PackageDocument(name=f"faktura-{ordinal}.xml", content=a_body(ordinal))
+            for ordinal in ordinals
+        ),
+        metadata=a_manifest(*(as_ksef_sends_it(ordinal) for ordinal in ordinals)),
+    )
+
+
+def test_a_manifest_in_the_shape_ksef_sends_is_archived(archive: InvoiceArchive) -> None:
+    """GH-87: production archived nothing because no entry ever named a file."""
+    report = archive.store(package=a_package_as_ksef_sends_it(1, 2))
+
+    assert report.archived == (str(synthetic_number(1)), str(synthetic_number(2)))
+
+
+def test_an_invoice_paired_by_hash_lands_under_its_own_number(
+    archive: InvoiceArchive,
+) -> None:
+    archive.store(package=a_package_as_ksef_sends_it(1, 2))
+
+    assert archived_path(archive, 2).read_bytes() == a_body(2)
 
 
 def test_each_invoice_lands_under_the_ksef_number_the_manifest_states(
@@ -296,7 +338,7 @@ def test_an_index_from_a_newer_build_is_refused_rather_than_guessed_at(
         (b"5", "no list of invoices"),
         (b"[3]", "not an object"),
         (b'[{"fileName": "faktura-1.xml"}]', "no KSeF number"),
-        (b'[{"ksefNumber": "1234567890-20260901-0100AB12CD01-56"}]', "without naming the file"),
+        (b'[{"ksefNumber": "1234567890-20260901-0100AB12CD01-56"}]', "points at no document"),
         (b'[{"ksefNumber": "FV/2026/09/001", "fileName": "a.xml"}]', "as a KSeF number"),
     ],
     ids=[
@@ -306,7 +348,7 @@ def test_an_index_from_a_newer_build_is_refused_rather_than_guessed_at(
         "not-an-object-at-all",
         "entry-not-an-object",
         "no-number",
-        "no-file-name",
+        "no-locator-at-all",
         "sellers-own-number",
     ],
 )
@@ -330,8 +372,106 @@ def test_a_manifest_that_does_not_pair_numbers_with_files_is_refused(
 )
 def test_the_manifest_is_read_in_every_spelling_it_arrives_in(metadata: bytes) -> None:
     assert identities(metadata) == (
-        InvoiceIdentity(ksef_number=synthetic_number(1), file_name="faktura-1.xml"),
+        InvoiceIdentity(
+            ksef_number=synthetic_number(1),
+            file_name="faktura-1.xml",
+            content_hash=None,
+        ),
     )
+
+
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        b'{"invoices": [{"ksefNumber": "1234567890-20260901-0100AB12CD01-56",'
+        b' "invoiceHash": "3q2+7w=="}]}',
+        b'{"faktury": [{"numerKSeF": "1234567890-20260901-0100AB12CD01-56",'
+        b' "skrotFaktury": "3q2+7w=="}]}',
+    ],
+    ids=["english-keys", "polish-keys"],
+)
+def test_a_digest_is_read_in_every_spelling_it_arrives_in(metadata: bytes) -> None:
+    assert identities(metadata) == (
+        InvoiceIdentity(
+            ksef_number=synthetic_number(1),
+            file_name=None,
+            content_hash="3q2+7w==",
+        ),
+    )
+
+
+def test_a_digest_the_package_does_not_carry_is_refused(archive: InvoiceArchive) -> None:
+    astray = ExportPackage(
+        reference="EXP-1",
+        documents=(PackageDocument(name="faktura-1.xml", content=a_body(1)),),
+        metadata=a_manifest(as_ksef_sends_it(2)),
+    )
+
+    with pytest.raises(ArchiveMetadataUnusable, match="does not carry"):
+        archive.store(package=astray)
+
+
+def test_two_documents_of_the_same_bytes_are_refused_rather_than_guessed(
+    archive: InvoiceArchive,
+) -> None:
+    # A shared digest names neither document. Refusing is the same answer an
+    # absent one gets; picking either would file an invoice under the other's
+    # number, which is the whole thing the manifest exists to prevent.
+    twinned = ExportPackage(
+        reference="EXP-1",
+        documents=(
+            PackageDocument(name="pierwsza.xml", content=a_body(1)),
+            PackageDocument(name="druga.xml", content=a_body(1)),
+        ),
+        metadata=a_manifest(as_ksef_sends_it(1), as_ksef_sends_it(1)),
+    )
+
+    with pytest.raises(ArchiveMetadataUnusable, match="does not carry"):
+        archive.store(package=twinned)
+
+
+def test_two_numbers_pointing_at_one_document_are_refused(archive: InvoiceArchive) -> None:
+    contested = ExportPackage(
+        reference="EXP-1",
+        documents=(PackageDocument(name="faktura-1.xml", content=a_body(1)),),
+        metadata=a_manifest(
+            {"ksefNumber": str(synthetic_number(1)), "fileName": "faktura-1.xml"},
+            {"ksefNumber": str(synthetic_number(2)), "fileName": "faktura-1.xml"},
+        ),
+    )
+
+    with pytest.raises(ArchiveMetadataUnusable, match="One document cannot be two"):
+        archive.store(package=contested)
+
+
+def test_the_digest_wins_when_a_manifest_states_both_and_they_disagree(
+    archive: InvoiceArchive,
+) -> None:
+    # A name can be restated wrongly; a digest of the bytes cannot be wrong
+    # about which bytes it names.
+    crossed = ExportPackage(
+        reference="EXP-1",
+        documents=(
+            PackageDocument(name="pierwsza.xml", content=a_body(1)),
+            PackageDocument(name="druga.xml", content=a_body(2)),
+        ),
+        metadata=a_manifest(
+            {
+                "ksefNumber": str(synthetic_number(1)),
+                "invoiceHash": base64_digest(a_body(1)),
+                "fileName": "druga.xml",
+            },
+            {
+                "ksefNumber": str(synthetic_number(2)),
+                "invoiceHash": base64_digest(a_body(2)),
+                "fileName": "pierwsza.xml",
+            },
+        ),
+    )
+
+    archive.store(package=crossed)
+
+    assert archived_path(archive, 1).read_bytes() == a_body(1)
 
 
 def test_a_manifest_naming_a_file_the_package_lacks_is_refused(archive: InvoiceArchive) -> None:

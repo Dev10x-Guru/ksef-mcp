@@ -10,6 +10,20 @@ udokumentowane.
 
 ## Bez wydania
 
+### Poprawione
+
+- Gotowa paczka trafia na dysk. Synchronizacja dociągała faktury, po czym
+  archiwizacja odmawiała ich zapisu, bo szukała w manifeście nazwy pliku —
+  a manifest KSeF jej nie zawiera i nigdy nie zawierał. Faktura jest teraz
+  wiązana z numerem po skrócie własnej treści, czyli mocniej, niż wiązałaby
+  ją nazwa (GH-87).
+- Komunikat odmowy wymienia klucze, które w manifeście zastał. Dotąd mówił
+  wyłącznie, czego nie znalazł, więc rozpoznanie rozbieżności wymagało
+  odszyfrowania produkcyjnej paczki (GH-87).
+- Odmowa generatora PDF nie niesie już fragmentów odrzucanej faktury.
+  Generator Ministerstwa cytuje w komunikacie wartości odczytane z pliku,
+  a komunikat od wersji 0.3.1 dociera do klienta (GH-85).
+
 ## 0.3.1 — 2026-09-18
 
 

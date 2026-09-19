@@ -14,6 +14,14 @@ names reported ten and then seven missing invoices where four were missing;
 the manifest carries the KSeF numbers, so it is the input to deduplication
 rather than a substitute for it (D-005, #38).
 
+Which document a KSeF number belongs to comes from the digest the manifest
+states, not from a name it does not (GH-87). `_metadata.json` holds
+`InvoiceMetadata` entries — the same model the metadata query returns — and
+that model has no file-name field at all, so the first production package
+refused itself. Pairing on `invoiceHash` is what the file name was reaching
+for: derived from the bytes, it cannot point at the wrong document even when
+the package names its entries however it likes.
+
 Each subject gets its own subdirectory, per environment, because a shared one
 is the main vector for mixing an accounting office's clients (D-032, D-034).
 The deduplication index is a separate file from the invoices it describes, and
@@ -23,6 +31,7 @@ without the next synchronisation fetching every one of them again (D-034).
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
@@ -64,6 +73,22 @@ INVOICE_LIST_KEYS: Final[tuple[str, ...]] = ("invoices", "faktury")
 
 KSEF_NUMBER_KEYS: Final[tuple[str, ...]] = ("ksefNumber", "ksef_number", "numerKSeF")
 
+# What actually pairs a manifest line with a document (GH-87). The manifest is
+# `{"invoices": [InvoiceMetadata]}` — the same model `POST
+# /invoices/query/metadata` returns — and `InvoiceMetadata` carries no file
+# name under any spelling. Every first production run therefore refused its own
+# package: the key below was not misspelled, it was absent by design.
+#
+# `invoiceHash` is mandatory in that model and is the SHA-256 of the invoice in
+# base64. Pairing on it is what the file name was reaching for and could not
+# reach: it is derived from the bytes, so it answers the objection the file
+# name was there to answer — "pairing them by position would archive one
+# invoice under another's number" — better than a name ever did.
+INVOICE_HASH_KEYS: Final[tuple[str, ...]] = ("invoiceHash", "invoice_hash", "skrotFaktury")
+
+# Kept because a manifest that does name a file is still honoured, and because
+# nothing in MF's documentation forbids one appearing later. It is no longer
+# the only way in.
 FILE_NAME_KEYS: Final[tuple[str, ...]] = ("fileName", "file_name", "nazwaPliku")
 
 
@@ -87,10 +112,16 @@ class ArchiveNotPerformed(RuntimeError):
 
 @dataclass(frozen=True)
 class InvoiceIdentity:
-    """One line of the manifest: which entry of the package is which invoice."""
+    """One line of the manifest: which entry of the package is which invoice.
+
+    Either way of pointing at the entry is enough, and a line carrying both is
+    honoured by content first — a name can be restated wrongly, a digest of the
+    bytes cannot.
+    """
 
     ksef_number: KsefNumber
-    file_name: str
+    file_name: str | None
+    content_hash: str | None
 
 
 @dataclass(frozen=True)
@@ -137,6 +168,16 @@ def digest_of(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
 
 
+def stated_digest_of(content: bytes) -> str:
+    """The same digest in the spelling the manifest uses: base64, not hex.
+
+    Separate from `digest_of` on purpose. That one is ours and lives in the
+    deduplication index, where the encoding is nobody's business but ours;
+    this one has to match bytes MF wrote, so its encoding is theirs.
+    """
+    return base64.b64encode(hashlib.sha256(content).digest()).decode("ascii")
+
+
 def _stated(entry: Mapping[str, object], *, keys: tuple[str, ...]) -> object | None:
     return next((entry[key] for key in keys if key in entry), None)
 
@@ -169,18 +210,103 @@ def _identity(entry: object) -> InvoiceIdentity:
             f"archived invoice and nothing else can stand in for it."
         )
     file_name = _stated(entry, keys=FILE_NAME_KEYS)
-    if file_name is None:
+    content_hash = _stated(entry, keys=INVOICE_HASH_KEYS)
+    if file_name is None and content_hash is None:
         raise ArchiveMetadataUnusable(
-            f"_metadata.json states KSeF number {number!r} without naming the "
-            f"file that carries it under any of {list(FILE_NAME_KEYS)}. Pairing "
-            f"them by position would archive one invoice under another's number."
+            f"_metadata.json states KSeF number {number!r} but points at no "
+            f"document: no digest under any of {list(INVOICE_HASH_KEYS)} and no "
+            f"file name under any of {list(FILE_NAME_KEYS)}. The entry does "
+            f"carry {sorted(entry)}. Pairing by position would archive one "
+            f"invoice under another's number."
         )
     try:
-        return InvoiceIdentity(ksef_number=KsefNumber(str(number)), file_name=str(file_name))
+        return InvoiceIdentity(
+            ksef_number=KsefNumber(str(number)),
+            file_name=None if file_name is None else str(file_name),
+            content_hash=None if content_hash is None else str(content_hash),
+        )
     except KsefRequestRejected as rejection:
         raise ArchiveMetadataUnusable(
             f"_metadata.json offers {number!r} as a KSeF number: {rejection}"
         ) from rejection
+
+
+def _by_content(bodies: Mapping[str, bytes]) -> dict[str, str]:
+    """Digest to entry name, dropping any digest two entries share.
+
+    A shared digest means two entries hold the same bytes, and then the digest
+    names neither of them. Dropping it turns that into the same refusal an
+    absent entry gets, rather than a coin toss between two KSeF numbers.
+    """
+    found: dict[str, list[str]] = {}
+    for name, content in bodies.items():
+        found.setdefault(stated_digest_of(content), []).append(name)
+    return {digest: names[0] for digest, names in found.items() if len(names) == 1}
+
+
+def _entry_of(
+    identity: InvoiceIdentity,
+    *,
+    bodies: Mapping[str, bytes],
+    by_content: Mapping[str, str],
+    reference: str,
+) -> str:
+    """Which entry of the package this manifest line points at.
+
+    Content first: a file name can be restated wrongly, a digest of the bytes
+    cannot be wrong about which bytes it names.
+    """
+    if identity.content_hash is not None and identity.content_hash in by_content:
+        return by_content[identity.content_hash]
+    if identity.file_name is not None and identity.file_name in bodies:
+        return identity.file_name
+    raise ArchiveMetadataUnusable(
+        f"_metadata.json of export {reference} points {identity.ksef_number} at "
+        f"a document the package does not carry: digest "
+        f"{identity.content_hash!r}, file name {identity.file_name!r}. Refusing "
+        f"to archive a package that does not match its own manifest."
+    )
+
+
+def located(
+    *,
+    wanted: tuple[InvoiceIdentity, ...],
+    bodies: Mapping[str, bytes],
+    reference: str,
+) -> dict[str, str]:
+    """Pair every manifest line with one entry, and refuse anything left over.
+
+    Returns entry name to KSeF number. Both directions still hold: a line
+    pointing at nothing is a manifest the package does not match, and an entry
+    no line points at would need a KSeF number nobody stated. What changed is
+    how the pairing is made — by the digest MF states, falling back to a file
+    name when one is given (GH-87).
+    """
+    by_content = _by_content(bodies)
+    taken: dict[str, str] = {}
+    for identity in wanted:
+        entry = _entry_of(
+            identity,
+            bodies=bodies,
+            by_content=by_content,
+            reference=reference,
+        )
+        claimed = taken.get(entry)
+        if claimed is not None:
+            raise ArchiveMetadataUnusable(
+                f"_metadata.json of export {reference} points both {claimed} and "
+                f"{identity.ksef_number} at {entry!r}. One document cannot be two "
+                f"invoices, and guessing which would file one under the other."
+            )
+        taken[entry] = str(identity.ksef_number)
+    unclaimed = sorted(name for name in bodies if name not in taken)
+    if unclaimed:
+        raise ArchiveMetadataUnusable(
+            f"Export {reference} carries {unclaimed[0]!r}, which its "
+            f"_metadata.json does not name. Storing it would need a KSeF "
+            f"number nobody stated, and skipping it would lose an invoice."
+        )
+    return taken
 
 
 def identities(metadata: bytes | None) -> tuple[InvoiceIdentity, ...]:
@@ -276,7 +402,8 @@ class InvoiceArchive:
         """Write every invoice the manifest names, once, and record that it was held."""
         wanted = identities(package.metadata)
         bodies = {document.name: document.content for document in package.documents}
-        self._reconciled(wanted=wanted, bodies=bodies, reference=package.reference)
+        entries = located(wanted=wanted, bodies=bodies, reference=package.reference)
+        carrying = {number: entry for entry, number in entries.items()}
         index = self.load_index()
         held = index.known
         archived: list[str] = []
@@ -287,7 +414,7 @@ class InvoiceArchive:
             if number in held:
                 already_held.append(number)
                 continue
-            content = bodies[identity.file_name]
+            content = bodies[carrying[number]]
             written = self._written(number=number, content=content)
             (archived if written else already_held).append(number)
             index = index.with_entry(
@@ -304,29 +431,6 @@ class InvoiceArchive:
             archived=tuple(archived),
             already_held=tuple(already_held),
         )
-
-    def _reconciled(
-        self,
-        *,
-        wanted: tuple[InvoiceIdentity, ...],
-        bodies: Mapping[str, bytes],
-        reference: str,
-    ) -> None:
-        named = {identity.file_name for identity in wanted}
-        absent = sorted(name for name in named if name not in bodies)
-        if absent:
-            raise ArchiveMetadataUnusable(
-                f"_metadata.json of export {reference} names {absent[0]!r}, which "
-                f"the package does not carry. Refusing to archive a package that "
-                f"does not match its own manifest."
-            )
-        unnamed = sorted(name for name in bodies if name not in named)
-        if unnamed:
-            raise ArchiveMetadataUnusable(
-                f"Export {reference} carries {unnamed[0]!r}, which its "
-                f"_metadata.json does not name. Storing it would need a KSeF "
-                f"number nobody stated, and skipping it would lose an invoice."
-            )
 
     def _written(self, *, number: str, content: bytes) -> bool:
         # The KSeF number is validated as `<NIP>-<date>-<id>-<checksum>`, so it

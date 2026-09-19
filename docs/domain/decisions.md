@@ -150,6 +150,15 @@
   HWM wymaga deduplikacji **po stronie systemu lokalnego**, po numerze
   KSeF. Plik `_metadata.json` w paczce jej nie zastępuje — jest jej
   **wejściem**, bo niesie numery KSeF wszystkich faktur w paczce.
+- **Korekta wykonania (GH-87):** manifest wiąże numer z dokumentem przez
+  **skrót treści** (`invoiceHash`, SHA-256 w base64), nie przez nazwę pliku.
+  `_metadata.json` to `{"invoices": [InvoiceMetadata]}` — ten sam model,
+  który zwraca `POST /invoices/query/metadata` — a `InvoiceMetadata` **nie
+  ma pola nazwy pliku w żadnej pisowni**. Dokumentacja MF nie określa też
+  nazewnictwa plików wewnątrz paczki. Kod zakładał nazwę i odmawiał
+  archiwizacji każdej prawdziwej paczki; parowanie po skrócie jest przy tym
+  mocniejsze, bo wynika z bajtów, a nie z napisu, który da się przepisać
+  błędnie.
 - **Warsztat:** 001
 - **Decyzja:** Pobranie okresu jest powtarzalne. Deduplikacja po **numerze
   KSeF** (nigdy po numerze własnym sprzedawcy). Ponowne odpytanie okresu
