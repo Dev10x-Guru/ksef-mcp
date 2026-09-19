@@ -22,5 +22,15 @@ class KsefRefused(KsefPortError):
     """KSeF answered, and the answer was an error — the call reached the registry."""
 
 
+class PackageLinkExpired(KsefRefused):
+    """The presigned link to a package part is no longer honoured by storage.
+
+    Its own type because it is the one refusal that never heals by waiting: every
+    later attempt on the same URL is refused the same way, so treating it as
+    "retry next pass" leaves the subject type asking for a door that will not
+    open again (GH-93). The fresh links, if any exist, come from KSeF.
+    """
+
+
 class KsefUnreachable(KsefPortError):
     """No answer existed. DNS, TCP, TLS or a timeout before the first byte."""

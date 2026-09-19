@@ -10,6 +10,17 @@ udokumentowane.
 
 ## Bez wydania
 
+### Poprawione
+
+- Synchronizacja wychodzi z zakleszczenia na wygasłej paczce. Odnośnik do
+  części paczki wygasa na własnym zegarze, niezależnym od eksportu, a punkt
+  kontynuacji zdążył się już przesunąć za okno, które ta paczka niosła —
+  więc kolejne przebiegi ani jej nie pobierały, ani nie prosiły o ten
+  zakres ponownie. Odmowa z wygasłym odnośnikiem odpytuje teraz KSeF
+  o status eksportu, a gdy KSeF już go nie podaje, wpis zostaje zdjęty,
+  punkt cofnięty przed utracone okno, i ten sam przebieg prosi o nie
+  jeszcze raz (GH-93).
+
 ## 0.3.2 — 2026-09-19
 
 

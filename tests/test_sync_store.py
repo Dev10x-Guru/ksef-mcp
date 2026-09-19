@@ -8,6 +8,7 @@ that a crash cannot half-finish.
 
 import json
 import stat
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -36,6 +37,10 @@ NIP = "1234567890"
 REACHED = datetime(2026, 9, 10, tzinfo=UTC)
 
 STARTED = datetime(2026, 9, 11, 8, 30, tzinfo=UTC)
+
+# Where the subject type stood when the export was asked for — the only way back
+# if the package turns out to be unreachable (GH-93).
+COVERING_FROM = datetime(2026, 6, 14, tzinfo=UTC)
 
 
 @pytest.fixture
@@ -273,6 +278,28 @@ def spent(queued: PendingExport) -> PendingExport:
         encryption=None,
         state=ExportState.FAILED,
     )
+
+
+def test_the_window_an_export_asked_for_survives_the_round_trip(
+    store: SyncStore, queued: PendingExport
+) -> None:
+    store.save(SyncState(pending=(replace(queued, covering_from=COVERING_FROM),)))
+
+    assert store.load().pending[0].covering_from == COVERING_FROM
+
+
+def test_a_record_written_before_the_window_start_existed_still_loads(
+    store: SyncStore, populated: SyncState
+) -> None:
+    # The field is additive in both directions: an older reader ignores the key
+    # and an older document simply does not carry it, so neither needs a schema
+    # bump (GH-93). Reading such a document must not fail.
+    path = store.save(populated)
+    document = json.loads(path.read_text(encoding="utf-8"))
+    del document["pending_exports"][0]["covering_from"]
+    path.write_text(json.dumps(document), encoding="utf-8")
+
+    assert store.load().pending[0].covering_from is None
 
 
 def test_an_export_without_a_key_survives_the_round_trip(

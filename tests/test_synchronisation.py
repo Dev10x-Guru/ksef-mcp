@@ -30,9 +30,11 @@ from ksef_mcp.ksef_port import (
     InvoiceDirection,
     KsefLimits,
     KsefNumber,
+    KsefRefused,
     KsefUnreachable,
     MetadataPage,
     OperationLimit,
+    PackageLinkExpired,
     Period,
     RateLimits,
     SessionCeilings,
@@ -50,6 +52,7 @@ from ksef_mcp.synchronisation import (
     in_night_window,
     is_due,
     now_utc,
+    rolled_back_to,
 )
 from synthetic import (
     aes_encrypted,
@@ -160,6 +163,12 @@ class ScriptedSession:
     statuses: list[ExportStatus]
     limits: KsefLimits
     storage_failure: Exception | None = None
+    # How many times each export's links refuse before they work, so a test can
+    # say "dead once, then renewed" and "dead however often it is asked".
+    expiries: dict[str, int] = field(default_factory=dict)
+    # Exports KSeF no longer answers for at all — the shape that tells a dead
+    # package apart from a dead link.
+    forgotten: frozenset[str] = frozenset()
     started: list[tuple[InvoiceDirection, Period]] = field(default_factory=list)
     polled: list[str] = field(default_factory=list)
     fetched: list[str] = field(default_factory=list)
@@ -179,10 +188,19 @@ class ScriptedSession:
 
     def check_export(self, *, handle: ExportHandle) -> ExportStatus:
         self.polled.append(handle.reference)
+        if handle.reference in self.forgotten:
+            raise KsefRefused(f"KSeF nie zna eksportu {handle.reference}.")
         return self.statuses[min(len(self.polled), len(self.statuses)) - 1]
 
     def fetch_part(self, *, handle: ExportHandle, part: ExportPart) -> bytes:
         self.fetched.append(handle.reference)
+        remaining = self.expiries.get(handle.reference, 0)
+        if remaining:
+            self.expiries[handle.reference] = remaining - 1
+            raise PackageLinkExpired(
+                f"Storage refused part {part.ordinal} of export {handle.reference} "
+                f"with 403. A package link expires."
+            )
         if self.storage_failure is not None:
             raise self.storage_failure
         return ENCRYPTED_PACKAGE
@@ -584,6 +602,65 @@ def left_on_disk(store: SyncStore, *, state: ExportState) -> None:
     )
 
 
+# Where the subject type stood before the export that then died — the value a
+# rollback has to find its way back to (GH-93).
+STUCK_SINCE = datetime(2026, 6, 20, tzinfo=UTC)
+
+STARTED_AT = NOON - timedelta(hours=2)
+
+
+def a_dead_package(store: SyncStore, *, covering_from: datetime | None = STUCK_SINCE) -> None:
+    """The state GH-93 was reported from: a ready package, and a point already past it.
+
+    `covering_from` is `None` in a record written before the fix — the fixture
+    says so explicitly rather than leaving the older shape untested.
+    """
+    store.save(
+        SyncState(
+            directions={
+                InvoiceDirection.BUYER: DirectionState(reached=HWM, attempted_at=STARTED_AT)
+            },
+            pending=(
+                PendingExport(
+                    reference="EXP-DEAD",
+                    direction=InvoiceDirection.BUYER,
+                    started_at=STARTED_AT,
+                    encryption=ExportEncryption(key=KEY, initialisation_vector=IV),
+                    state=ExportState.READY,
+                    parts=(a_part(),),
+                    invoice_count=2,
+                    covering_from=covering_from,
+                ),
+            ),
+        )
+    )
+
+
+def a_pass_over_a_dead_package(
+    store: SyncStore,
+    naps: list[float],
+    *,
+    statuses: list[ExportStatus],
+    covering_from: datetime | None = STUCK_SINCE,
+    expiries: int = 1,
+    forgotten: frozenset[str] = frozenset(),
+    limits: KsefLimits | None = None,
+) -> tuple[ScriptedSession, SynchronisationReport]:
+    a_dead_package(store, covering_from=covering_from)
+    session = ScriptedSession(
+        statuses=statuses,
+        limits=allowances() if limits is None else limits,
+        expiries={"EXP-DEAD": expiries},
+        forgotten=forgotten,
+    )
+    report = a_synchroniser(session=session, store=store, naps=naps).run(nip=NIP, token=TOKEN)
+    return session, report
+
+
+def buyer_windows(session: ScriptedSession) -> list[Period]:
+    return [period for direction, period in session.started if direction is InvoiceDirection.BUYER]
+
+
 def test_a_queued_package_is_resumed_instead_of_being_asked_for_again(
     store: SyncStore, naps: list[float]
 ) -> None:
@@ -749,6 +826,166 @@ def test_a_failed_download_leaves_the_window_to_the_next_pass(
     after_a_failed_download: SynchronisationReport,
 ) -> None:
     assert after_a_failed_download.pending_exports == ("EXP-1", "EXP-2")
+
+
+def test_a_dead_package_stops_blocking_its_subject_type(
+    store: SyncStore, naps: list[float]
+) -> None:
+    # GH-93: a package whose presigned links expired used to hold its subject
+    # type forever — the record could not be fetched and the point had already
+    # moved past the window it covered, so no later pass asked for it again.
+    _, report = a_pass_over_a_dead_package(store, naps, statuses=[ready(), failed(), ready()])
+
+    assert outcome(report, InvoiceDirection.BUYER) is SyncOutcome.ARCHIVED
+
+
+def test_an_expired_link_asks_ksef_about_the_export_before_giving_up_on_it(
+    store: SyncStore, naps: list[float]
+) -> None:
+    # The link and the export expire on different clocks: the parts on record
+    # can be unusable while the export behind them is alive.
+    session, _ = a_pass_over_a_dead_package(store, naps, statuses=[ready(), ready()])
+
+    assert "EXP-DEAD" in session.polled
+
+
+def test_an_export_ksef_still_serves_is_read_from_the_links_it_hands_back(
+    store: SyncStore, naps: list[float], archive: InvoiceArchive
+) -> None:
+    a_pass_over_a_dead_package(store, naps, statuses=[ready(), ready()])
+
+    assert (archive.invoice_directory / f"{synthetic_number(1)}.xml").is_file()
+
+
+def test_renewed_links_cost_a_status_query_and_not_an_export(
+    store: SyncStore, naps: list[float]
+) -> None:
+    # An export is one of twenty an hour shared between four subject types; a
+    # status is one of two hundred. Asking the cheap question first is the point.
+    session, _ = a_pass_over_a_dead_package(store, naps, statuses=[ready(), ready()])
+
+    assert [direction for direction, _ in session.started] == [InvoiceDirection.SELLER]
+
+
+def test_links_that_stay_dead_after_renewal_leave_the_record_where_it_was(
+    store: SyncStore, naps: list[float]
+) -> None:
+    # KSeF still serves the export, so it is not lost — and a record that is not
+    # lost keeps its key and its parts for the next pass (ADR-104 §2).
+    _, report = a_pass_over_a_dead_package(store, naps, statuses=[ready(), ready()], expiries=2)
+
+    assert outcome(report, InvoiceDirection.BUYER) is SyncOutcome.NOT_ARCHIVED
+
+
+def test_links_that_stay_dead_after_renewal_keep_the_export_queued(
+    store: SyncStore, naps: list[float]
+) -> None:
+    _, report = a_pass_over_a_dead_package(store, naps, statuses=[ready(), ready()], expiries=2)
+
+    assert "EXP-DEAD" in report.pending_exports
+
+
+def test_an_export_ksef_has_forgotten_is_taken_off_the_record(
+    store: SyncStore, naps: list[float]
+) -> None:
+    _, report = a_pass_over_a_dead_package(
+        store, naps, statuses=[ready(), ready()], forgotten=frozenset({"EXP-DEAD"})
+    )
+
+    assert "EXP-DEAD" not in report.pending_exports
+
+
+def test_an_export_answered_as_no_longer_ready_is_taken_off_the_record(
+    store: SyncStore, naps: list[float]
+) -> None:
+    # KSeF answers, and the answer is that there is nothing to fetch. Same
+    # conclusion as silence, reached from the other direction.
+    _, report = a_pass_over_a_dead_package(store, naps, statuses=[ready(), failed(), ready()])
+
+    assert "EXP-DEAD" not in report.pending_exports
+
+
+def test_a_lost_export_puts_the_point_back_at_the_window_it_covered(
+    store: SyncStore, naps: list[float]
+) -> None:
+    # The whole reason the rollback exists: without it the next window starts
+    # after the invoices the lost package was carrying.
+    session, _ = a_pass_over_a_dead_package(store, naps, statuses=[ready(), failed(), ready()])
+
+    assert [window.date_from for window in buyer_windows(session)] == [STUCK_SINCE]
+
+
+def test_a_lost_export_is_reported_as_what_was_undone_and_what_followed(
+    store: SyncStore, naps: list[float]
+) -> None:
+    _, report = a_pass_over_a_dead_package(store, naps, statuses=[ready(), failed(), ready()])
+
+    detail = reported(report, InvoiceDirection.BUYER).detail
+    assert ("EXP-DEAD" in detail, "archiwum" in detail) == (True, True)
+
+
+def test_a_record_from_before_the_window_start_was_kept_reaches_a_whole_window_back(
+    store: SyncStore, naps: list[float]
+) -> None:
+    # Too far back costs one export and deduplication drops the duplicates
+    # (D-005); too short loses invoices nothing asks for again.
+    session, _ = a_pass_over_a_dead_package(
+        store, naps, statuses=[ready(), failed(), ready()], covering_from=None
+    )
+
+    assert [window.date_from for window in buyer_windows(session)] == [
+        STARTED_AT - MAX_QUERY_WINDOW
+    ]
+
+
+def test_a_renewal_with_no_status_allowance_left_keeps_the_package_and_its_key(
+    store: SyncStore, naps: list[float]
+) -> None:
+    # Nothing left to ask with, so nothing is concluded — the record stands.
+    _, report = a_pass_over_a_dead_package(
+        store,
+        naps,
+        statuses=[ready(), ready()],
+        limits=allowances(statuses_per_hour=1),
+    )
+
+    assert (
+        outcome(report, InvoiceDirection.BUYER),
+        "EXP-DEAD" in report.pending_exports,
+    ) == (SyncOutcome.NOT_ARCHIVED, True)
+
+
+def test_a_rollback_stands_on_the_export_alone_when_no_point_was_recorded(
+    store: SyncStore,
+) -> None:
+    export = PendingExport(
+        reference="EXP-DEAD",
+        direction=InvoiceDirection.BUYER,
+        started_at=STARTED_AT,
+        encryption=ExportEncryption(key=KEY, initialisation_vector=IV),
+        state=ExportState.READY,
+        covering_from=STUCK_SINCE,
+    )
+
+    assert rolled_back_to(export, stored=None) == STUCK_SINCE
+
+
+def test_a_rollback_never_moves_a_point_that_stands_further_back_forward(
+    store: SyncStore,
+) -> None:
+    # A subject type dormant longer than the ceiling stands further back than one
+    # window reaches; pulling it up to meet the guess would skip exactly the
+    # invoices the rollback exists to recover.
+    dormant = STARTED_AT - MAX_QUERY_WINDOW - timedelta(days=200)
+    export = PendingExport(
+        reference="EXP-DEAD",
+        direction=InvoiceDirection.BUYER,
+        started_at=STARTED_AT,
+        encryption=ExportEncryption(key=KEY, initialisation_vector=IV),
+        state=ExportState.READY,
+    )
+
+    assert rolled_back_to(export, stored=DirectionState(reached=dormant)) == dormant
 
 
 def test_an_exhausted_export_allowance_stops_the_pass_rather_than_the_server(

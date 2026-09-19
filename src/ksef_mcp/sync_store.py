@@ -65,6 +65,14 @@ class PendingExport:
 
     `encryption` is empty once the export is over: a key outlives nothing it
     could still open, and a package KSeF refused will never be fetched (D-033).
+
+    `covering_from` is where the subject type stood when this export was asked
+    for. It is the only way back if the package turns out to be unreachable: the
+    point moves on what KSeF confirmed rather than on what this process wrote
+    (ADR-103 §3), so by the time a package is found dead the point is already
+    past the window it covered (GH-93). A record written before that field
+    existed carries `None`, which reads as "the window start was not kept" and
+    not as "the export covered nothing".
     """
 
     reference: str
@@ -74,6 +82,7 @@ class PendingExport:
     state: ExportState
     parts: tuple[ExportPart, ...] = ()
     invoice_count: int = 0
+    covering_from: datetime | None = None
 
     @property
     def handle(self) -> ExportHandle:
@@ -164,6 +173,7 @@ def _encode_pending(export: PendingExport) -> dict[str, object]:
         "started_at": export.started_at.isoformat(),
         "state": str(export.state),
         "invoice_count": export.invoice_count,
+        "covering_from": None if export.covering_from is None else export.covering_from.isoformat(),
         "encryption_key": _encode_secret(None if encryption is None else encryption.key),
         "initialisation_vector": _encode_secret(
             None if encryption is None else encryption.initialisation_vector
@@ -183,6 +193,10 @@ def _decode_encryption(stored: dict[str, object]) -> ExportEncryption | None:
 
 
 def _decode_pending(stored: dict[str, object]) -> PendingExport:
+    # `.get`, not `[...]`: a record written before the field existed is still
+    # this schema — an older reader ignores the key and an older document simply
+    # does not carry it, so neither direction needs a version bump (GH-93).
+    covering = stored.get("covering_from")
     return PendingExport(
         reference=str(stored["reference"]),
         direction=InvoiceDirection(stored["direction"]),
@@ -191,6 +205,7 @@ def _decode_pending(stored: dict[str, object]) -> PendingExport:
         state=ExportState(stored["state"]),
         parts=tuple(_decode_part(part) for part in stored["parts"]),  # type: ignore[union-attr]
         invoice_count=int(stored["invoice_count"]),  # type: ignore[arg-type]
+        covering_from=None if covering is None else datetime.fromisoformat(str(covering)),
     )
 
 

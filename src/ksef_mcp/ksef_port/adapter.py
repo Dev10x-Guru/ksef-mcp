@@ -22,6 +22,7 @@ from ksef_mcp.ksef_port.errors import (
     KsefRateLimited,
     KsefRefused,
     KsefUnreachable,
+    PackageLinkExpired,
 )
 from ksef_mcp.ksef_port.types import (
     PAGE_SIZE,
@@ -91,6 +92,12 @@ CONSERVATIVE_CEILINGS: Final[SessionCeilings] = SessionCeilings(
 # A package part is tens of megabytes off presigned storage, so the default
 # five seconds would abort a healthy download.
 PART_DOWNLOAD_TIMEOUT: Final[float] = 300.0
+
+# How presigned storage spells "this signature is no longer valid". 403 is what
+# S3-shaped storage answers once the expiry stamped into the URL has passed; 410
+# is the same statement made explicitly. Neither heals by waiting, so they are
+# the two the caller must be able to tell apart from an outage (GH-93).
+EXPIRED_LINK_STATUSES: Final[frozenset[int]] = frozenset({403, 410})
 
 
 @contextmanager
@@ -329,9 +336,11 @@ class Ksef2Session:
             response = self.transport.request(part.method, part.url)
             response.raise_for_status()
         except httpx.HTTPStatusError as error:
-            raise KsefRefused(
+            status = error.response.status_code
+            refusal = PackageLinkExpired if status in EXPIRED_LINK_STATUSES else KsefRefused
+            raise refusal(
                 f"Storage refused part {part.ordinal} of export {handle.reference} "
-                f"with {error.response.status_code}. A package link expires."
+                f"with {status}. A package link expires."
             ) from error
         except httpx.HTTPError as error:
             raise KsefUnreachable(f"Could not reach package storage: {error}") from error
