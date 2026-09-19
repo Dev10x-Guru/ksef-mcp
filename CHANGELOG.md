@@ -12,6 +12,14 @@ udokumentowane.
 
 ### Poprawione
 
+- Limit godzinowy jest liczony przez całą godzinę, a nie przez jedno
+  wywołanie narzędzia. Serwer pod `uvx` ginie razem z sesją agenta, więc
+  licznik zaczynał od zera przy każdym uruchomieniu: trzy narzędzia w
+  ciągu minuty wydawały trzy pełne przydziały i nic nie odmawiało ani
+  razu. Zużycie zapisuje się teraz na dysku, osobno dla każdego NIP-u i
+  środowiska, obok stanu synchronizacji — nie w cache'u, który czyszczarka
+  dysku ma prawo skasować. Egzekwowane są też limity sekundowy i minutowy,
+  dotąd odczytywane z KSeF i nigdy niesprawdzane (GH-97).
 - Odrzucony eksport przestaje blokować swój typ podmiotu. Gdy KSeF odmówił
   zbudowania paczki, jej wpis zostawał w kolejce roboczej na zawsze —
   a kolejka rozstrzyga, o co prosić dalej, więc ten typ podmiotu zamawiał

@@ -20,6 +20,8 @@ from typing import Final
 
 import pytest
 
+from conftest import an_allowance
+from ksef_mcp.allowance import Allowance
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port import (
     DateType,
@@ -152,9 +154,26 @@ def session() -> RecordingSession:
 
 
 @pytest.fixture
-def lister(session: RecordingSession, cache: PeriodCache) -> InvoiceLister:
+def protection(tmp_path: Path) -> Allowance:
+    return an_allowance(
+        nip=NIP,
+        environment=KsefEnvironment.TEST,
+        root=tmp_path,
+        clock=lambda: ASKED_AT,
+    )
+
+
+@pytest.fixture
+def lister(
+    session: RecordingSession,
+    cache: PeriodCache,
+    protection: Allowance,
+) -> InvoiceLister:
     return InvoiceLister(
-        port=RecordingPort(session_object=session), cache=cache, clock=lambda: ASKED_AT
+        port=RecordingPort(session_object=session),
+        cache=cache,
+        allowance=protection,
+        clock=lambda: ASKED_AT,
     )
 
 
@@ -375,10 +394,14 @@ def test_the_second_answer_says_it_came_from_disk(lister: InvoiceLister) -> None
     ]
 
 
-def test_a_spent_allowance_does_not_take_the_other_subject_types_down(cache: PeriodCache) -> None:
+def test_a_spent_allowance_does_not_take_the_other_subject_types_down(
+    cache: PeriodCache,
+    protection: Allowance,
+) -> None:
     lister = InvoiceLister(
         port=RecordingPort(session_object=RecordingSession(page=page_of(2), allowance=EXHAUSTED)),
         cache=cache,
+        allowance=protection,
         clock=lambda: ASKED_AT,
     )
 
@@ -387,27 +410,40 @@ def test_a_spent_allowance_does_not_take_the_other_subject_types_down(cache: Per
     ] * 4
 
 
-def test_a_spent_allowance_explains_itself_and_repeats_the_question(cache: PeriodCache) -> None:
+def test_a_spent_allowance_explains_itself_and_repeats_the_question(
+    cache: PeriodCache,
+    protection: Allowance,
+) -> None:
     lister = InvoiceLister(
         port=RecordingPort(session_object=RecordingSession(page=page_of(2), allowance=EXHAUSTED)),
         cache=cache,
+        allowance=protection,
         clock=lambda: ASKED_AT,
     )
 
     assert "NIP 1234567890" in lister.run(nip=NIP, token="tajny-token").directions[0].message
 
 
-def test_a_spent_allowance_reports_no_moment_of_asking(cache: PeriodCache) -> None:
+def test_a_spent_allowance_reports_no_moment_of_asking(
+    cache: PeriodCache,
+    protection: Allowance,
+) -> None:
     lister = InvoiceLister(
         port=RecordingPort(session_object=RecordingSession(page=page_of(2), allowance=EXHAUSTED)),
         cache=cache,
+        allowance=protection,
         clock=lambda: ASKED_AT,
     )
 
     assert lister.run(nip=NIP, token="tajny-token").directions[0].queried_at is None
 
 
-def a_lister_meeting(refusal: Exception, *, cache: PeriodCache) -> InvoiceLister:
+def a_lister_meeting(
+    refusal: Exception,
+    *,
+    cache: PeriodCache,
+    protection: Allowance,
+) -> InvoiceLister:
     """A lister whose second subject type runs into `refusal` and whose first does not."""
     return InvoiceLister(
         port=RecordingPort(
@@ -417,18 +453,24 @@ def a_lister_meeting(refusal: Exception, *, cache: PeriodCache) -> InvoiceLister
             )
         ),
         cache=cache,
+        allowance=protection,
         clock=lambda: ASKED_AT,
     )
 
 
 def test_a_rate_limit_on_one_subject_type_keeps_the_answers_already_paid_for(
     cache: PeriodCache,
+    protection: Allowance,
 ) -> None:
     # GH-95. A real 429 is a sibling of the local refusal rather than a
     # subclass, so it used to sail through the `except` and out of `run` —
     # taking with it the seller's answer, which had already cost one of twenty
     # metadata queries an hour.
-    lister = a_lister_meeting(KsefRateLimited("KSeF odmówił: 429.", retry_after=None), cache=cache)
+    lister = a_lister_meeting(
+        KsefRateLimited("KSeF odmówił: 429.", retry_after=None),
+        cache=cache,
+        protection=protection,
+    )
 
     assert [one.outcome for one in lister.run(nip=NIP, token="tajny-token").directions] == [
         ListingOutcome.LISTED,
@@ -438,16 +480,30 @@ def test_a_rate_limit_on_one_subject_type_keeps_the_answers_already_paid_for(
     ]
 
 
-def test_a_rate_limit_passes_on_the_wait_ksef_itself_asked_for(cache: PeriodCache) -> None:
+def test_a_rate_limit_passes_on_the_wait_ksef_itself_asked_for(
+    cache: PeriodCache,
+    protection: Allowance,
+) -> None:
     # KSeF's own number, never one of ours: a guessed pause is the pattern the
     # Ministry answers with a lengthening block (D-017).
-    lister = a_lister_meeting(KsefRateLimited("KSeF odmówił: 429.", retry_after=90), cache=cache)
+    lister = a_lister_meeting(
+        KsefRateLimited("KSeF odmówił: 429.", retry_after=90),
+        cache=cache,
+        protection=protection,
+    )
 
     assert "odczekanie 90 s" in lister.run(nip=NIP, token="tajny-token").directions[1].message
 
 
-def test_a_rate_limit_without_a_wait_promises_nothing_about_waiting(cache: PeriodCache) -> None:
-    lister = a_lister_meeting(KsefRateLimited("KSeF odmówił: 429.", retry_after=None), cache=cache)
+def test_a_rate_limit_without_a_wait_promises_nothing_about_waiting(
+    cache: PeriodCache,
+    protection: Allowance,
+) -> None:
+    lister = a_lister_meeting(
+        KsefRateLimited("KSeF odmówił: 429.", retry_after=None),
+        cache=cache,
+        protection=protection,
+    )
 
     assert "odczekanie" not in lister.run(nip=NIP, token="tajny-token").directions[1].message
 
@@ -461,12 +517,12 @@ def test_a_rate_limit_without_a_wait_promises_nothing_about_waiting(cache: Perio
     ids=["unreachable", "rejected-credential"],
 )
 def test_a_failure_that_is_not_about_the_allowance_is_not_reported_as_one(
-    failure: Exception, cache: PeriodCache
+    failure: Exception, cache: PeriodCache, protection: Allowance
 ) -> None:
     # The `except` names two refusals and only two. Widening it to
     # `KsefPortError` would answer a dead network or a rejected credential with
     # a cheerful partial listing, which is worse than no listing at all.
-    lister = a_lister_meeting(failure, cache=cache)
+    lister = a_lister_meeting(failure, cache=cache, protection=protection)
 
     with pytest.raises(type(failure)):
         lister.run(nip=NIP, token="tajny-token")

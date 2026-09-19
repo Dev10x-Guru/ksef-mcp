@@ -28,8 +28,8 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Final
 
+from ksef_mcp.allowance import Allowance
 from ksef_mcp.config import KsefEnvironment
-from ksef_mcp.ksef_port.budget import QueryBudget
 from ksef_mcp.ksef_port.errors import KsefPortError, KsefRateLimited, KsefRequestRejected
 from ksef_mcp.ksef_port.protocol import KsefPort
 from ksef_mcp.ksef_port.types import (
@@ -309,6 +309,7 @@ class InvoiceLister:
 
     port: KsefPort
     cache: PeriodCache
+    allowance: Allowance
     clock: Callable[[], datetime] = now_utc
 
     def run(self, *, nip: str, token: str) -> InvoiceListing:
@@ -317,7 +318,7 @@ class InvoiceLister:
         with self.port.session(nip=nip, token=token) as session:
             reader = PeriodMetadataReader(
                 cache=self.cache,
-                budget=QueryBudget(limits=session.read_limits().rates, clock=self.clock),
+                budget=self.allowance.budget(session=session),
             )
             for direction in SYNCHRONISED_DIRECTIONS:
                 question = Question(

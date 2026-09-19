@@ -23,6 +23,7 @@ from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Final
 
+from ksef_mcp.allowance import Allowance
 from ksef_mcp.archive import (
     ArchiveIndexUnreadable,
     ArchiveMetadataUnusable,
@@ -237,6 +238,7 @@ class Synchroniser:
 
     port: KsefPort
     store: SyncStore
+    allowance: Allowance
     clock: Callable[[], datetime] = now_utc
     sleep: Callable[[float], None] = time.sleep
     poll_attempts: int = POLL_ATTEMPTS
@@ -259,7 +261,7 @@ class Synchroniser:
         state = self.store.load()
         reports: list[DirectionReport] = []
         with self.port.session(nip=nip, token=token) as session:
-            budget = QueryBudget(limits=session.read_limits().rates, clock=self.clock)
+            budget = self.allowance.budget(session=session)
             retriever = PackageRetriever(session=session, store=self.store)
             for direction in SYNCHRONISED_DIRECTIONS:
                 state, report = self._advance_one(

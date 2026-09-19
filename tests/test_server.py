@@ -99,9 +99,10 @@ server_module = sys.modules["ksef_mcp.server"]
 class StubSynchroniser:
     """Stands in for the pass itself: this module's job is the tool surface."""
 
-    def __init__(self, *, port: object, store: object) -> None:
+    def __init__(self, *, port: object, store: object, allowance: object) -> None:
         self.port = port
         self.store = store
+        self.allowance = allowance
 
     def run(self, *, nip: str, token: str) -> SynchronisationReport:
         return SynchronisationReport(
@@ -439,9 +440,10 @@ def listed_question(direction: InvoiceDirection) -> Question:
 class StubLister:
     """Stands in for the pass over the subject types: this module's job is the surface."""
 
-    def __init__(self, *, port: object, cache: object) -> None:
+    def __init__(self, *, port: object, cache: object, allowance: object) -> None:
         self.port = port
         self.cache = cache
+        self.allowance = allowance
 
     def run(self, *, nip: str, token: str) -> InvoiceListing:
         return InvoiceListing(
@@ -603,10 +605,18 @@ class StubComposer:
 
     directories: ClassVar[list[Path]] = []
 
-    def __init__(self, *, port: object, cache: object, archive: object) -> None:
+    def __init__(
+        self,
+        *,
+        port: object,
+        cache: object,
+        archive: object,
+        allowance: object,
+    ) -> None:
         self.port = port
         self.cache = cache
         self.archive = archive
+        self.allowance = allowance
 
     def run(
         self,
@@ -740,10 +750,18 @@ def reviewed_question(direction: InvoiceDirection) -> Question:
 class StubReviewer:
     """Stands in for the comparison itself: this module's job is the tool surface."""
 
-    def __init__(self, *, port: object, cache: object, store: object) -> None:
+    def __init__(
+        self,
+        *,
+        port: object,
+        cache: object,
+        store: object,
+        allowance: object,
+    ) -> None:
         self.port = port
         self.cache = cache
         self.store = store
+        self.allowance = allowance
 
     def run(self, *, nip: str, token: str) -> InvoiceReview:
         late = replace(synthetic_metadata(1), ksef_number=KsefNumber(LATE_NUMBER))

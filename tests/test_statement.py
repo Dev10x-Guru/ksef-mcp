@@ -21,6 +21,8 @@ from typing import Final
 
 import pytest
 
+from conftest import an_allowance
+from ksef_mcp.allowance import Allowance
 from ksef_mcp.archive import InvoiceArchive, digest_of
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port import (
@@ -158,15 +160,27 @@ def session() -> RecordingSession:
 
 
 @pytest.fixture
+def protection(tmp_path: Path) -> Allowance:
+    return an_allowance(
+        nip=NIP,
+        environment=KsefEnvironment.TEST,
+        root=tmp_path,
+        clock=lambda: ASKED_AT,
+    )
+
+
+@pytest.fixture
 def composer(
     session: RecordingSession,
     cache: PeriodCache,
     archived: InvoiceArchive,
+    protection: Allowance,
 ) -> StatementComposer:
     return StatementComposer(
         port=RecordingPort(session_object=session),
         cache=cache,
         archive=archived,
+        allowance=protection,
         clock=lambda: ASKED_AT,
     )
 
@@ -495,11 +509,14 @@ def test_komunikat_niesie_liczbe_sume_i_sciezke(statement: Statement) -> None:
     )
 
 
-def test_pusty_miesiac_ma_komunikat_bez_sumy(cache: PeriodCache, archived: InvoiceArchive) -> None:
+def test_pusty_miesiac_ma_komunikat_bez_sumy(
+    cache: PeriodCache, archived: InvoiceArchive, protection: Allowance
+) -> None:
     composer = StatementComposer(
         port=RecordingPort(session_object=RecordingSession(page=page_of(0))),
         cache=cache,
         archive=archived,
+        allowance=protection,
         clock=lambda: ASKED_AT,
     )
 
@@ -514,12 +531,13 @@ def test_pusty_miesiac_ma_komunikat_bez_sumy(cache: PeriodCache, archived: Invoi
 
 
 def test_uciety_okres_wraca_z_ostrzezeniem(
-    cache: PeriodCache, archived: InvoiceArchive, working: Path
+    cache: PeriodCache, archived: InvoiceArchive, working: Path, protection: Allowance
 ) -> None:
     composer = StatementComposer(
         port=RecordingPort(session_object=RecordingSession(page=page_of(1, truncated=True))),
         cache=cache,
         archive=archived,
+        allowance=protection,
         clock=lambda: ASKED_AT,
     )
 

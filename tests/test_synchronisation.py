@@ -18,6 +18,8 @@ from pathlib import Path
 
 import pytest
 
+from conftest import an_allowance
+from ksef_mcp.allowance import LEDGER_FILE
 from ksef_mcp.archive import INDEX_FILE, InvoiceArchive
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port import (
@@ -140,13 +142,26 @@ def failed() -> ExportStatus:
 def allowances(
     *,
     exports_per_hour: int | None = 20,
+    exports_per_second: int | None = 8,
     statuses_per_hour: int | None = 200,
     downloads_per_hour: int | None = 64,
 ) -> KsefLimits:
+    """What KSeF grants this scripted context. The narrow windows are stated too.
+
+    `exports_per_second` is wide by default and named rather than buried,
+    because the clock in these tests never moves: a pass over four subject types
+    reads as four exports in one instant, which is an artefact of `FrozenClock`
+    and not of a run. The test that is *about* the per-second ceiling narrows it
+    on purpose.
+    """
     return KsefLimits(
         rates=RateLimits(
             metadata_queries=OperationLimit(per_second=8, per_minute=16, per_hour=20),
-            exports=OperationLimit(per_second=2, per_minute=4, per_hour=exports_per_hour),
+            exports=OperationLimit(
+                per_second=exports_per_second,
+                per_minute=16,
+                per_hour=exports_per_hour,
+            ),
             export_statuses=OperationLimit(per_second=8, per_minute=16, per_hour=statuses_per_hour),
             invoice_downloads=OperationLimit(
                 per_second=4, per_minute=16, per_hour=downloads_per_hour
@@ -271,6 +286,12 @@ def a_synchroniser(
     return Synchroniser(
         port=ScriptedPort(session_double=session),
         store=store,
+        allowance=an_allowance(
+            nip=store.nip,
+            environment=store.environment,
+            root=store.root,
+            clock=FrozenClock(moment=moment),
+        ),
         clock=FrozenClock(moment=moment),
         sleep=naps.append,
     )
@@ -428,6 +449,37 @@ def test_the_rare_subject_types_are_exported_in_the_night_window(
     )
 
     assert outcome(report, InvoiceDirection.THIRD_SUBJECT) is SyncOutcome.ARCHIVED
+
+
+def test_a_burst_of_exports_is_refused_by_the_per_second_ceiling_ksef_stated(
+    store: SyncStore, naps: list[float]
+) -> None:
+    # The narrow windows used to be read from KSeF, stored, and never able to
+    # refuse anything: only `per_hour` was consulted (GH-97). Four subject types
+    # asked for inside one second is exactly the burst the Ministry logs.
+    session = ScriptedSession(statuses=[ready()], limits=allowances(exports_per_second=2))
+
+    report = a_synchroniser(session=session, store=store, naps=naps, moment=MIDNIGHT).run(
+        nip=NIP, token=TOKEN
+    )
+
+    assert [one.outcome for one in report.directions].count(SyncOutcome.BUDGET_SPENT) == 2
+
+
+def test_a_pass_records_what_it_spent_where_the_next_process_will_find_it(
+    store: SyncStore, naps: list[float]
+) -> None:
+    # The counter used to live and die with one tool call (GH-97). What makes
+    # the next process inherit it is the ledger beside the synchronisation
+    # record; that it counts is `test_allowance.py`'s subject, that a pass
+    # writes it at all is this one's.
+    session = ScriptedSession(statuses=[ready()], limits=allowances())
+
+    a_synchroniser(session=session, store=store, naps=naps, moment=MIDNIGHT).run(
+        nip=NIP, token=TOKEN
+    )
+
+    assert (store.directory / LEDGER_FILE).is_file()
 
 
 def test_the_export_window_is_pinned_to_permanent_storage(

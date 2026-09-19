@@ -22,6 +22,8 @@ from typing import Final
 import pytest
 from platformdirs import user_data_path
 
+from conftest import an_allowance
+from ksef_mcp.allowance import Allowance
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port import (
     DateType,
@@ -172,11 +174,27 @@ def session() -> RecordingSession:
 
 
 @pytest.fixture
-def reviewer(session: RecordingSession, cache: PeriodCache, store: ReviewStore) -> InvoiceReviewer:
+def protection(tmp_path: Path) -> Allowance:
+    return an_allowance(
+        nip=NIP,
+        environment=KsefEnvironment.TEST,
+        root=tmp_path,
+        clock=lambda: ASKED_AT,
+    )
+
+
+@pytest.fixture
+def reviewer(
+    session: RecordingSession,
+    cache: PeriodCache,
+    store: ReviewStore,
+    protection: Allowance,
+) -> InvoiceReviewer:
     return InvoiceReviewer(
         port=RecordingPort(session_object=session),
         cache=cache,
         store=store,
+        allowance=protection,
         clock=lambda: ASKED_AT,
     )
 
@@ -455,7 +473,7 @@ def test_asking_again_within_the_hour_spends_no_further_query(
 
 
 def test_an_unfetched_subject_type_reports_the_delta_as_unknown(
-    cache: PeriodCache, store: ReviewStore
+    cache: PeriodCache, store: ReviewStore, protection: Allowance
 ) -> None:
     reviewer = InvoiceReviewer(
         port=RecordingPort(
@@ -463,6 +481,7 @@ def test_an_unfetched_subject_type_reports_the_delta_as_unknown(
         ),
         cache=cache,
         store=store,
+        allowance=protection,
         clock=lambda: ASKED_AT,
     )
 
@@ -476,6 +495,7 @@ def a_reviewer_meeting(
     *,
     cache: PeriodCache,
     store: ReviewStore,
+    protection: Allowance,
 ) -> InvoiceReviewer:
     """A reviewer whose second subject type runs into `refusal` and whose first does not."""
     return InvoiceReviewer(
@@ -487,17 +507,21 @@ def a_reviewer_meeting(
         ),
         cache=cache,
         store=store,
+        allowance=protection,
         clock=lambda: ASKED_AT,
     )
 
 
 def test_a_rate_limit_on_one_subject_type_keeps_the_rest_of_the_review(
-    cache: PeriodCache, store: ReviewStore
+    cache: PeriodCache, store: ReviewStore, protection: Allowance
 ) -> None:
     # GH-95, the review side. Losing the whole pass to a 429 would also lose
     # what the ledger was about to be told about the types already read.
     reviewer = a_reviewer_meeting(
-        KsefRateLimited("KSeF odmówił: 429.", retry_after=None), cache=cache, store=store
+        KsefRateLimited("KSeF odmówił: 429.", retry_after=None),
+        cache=cache,
+        store=store,
+        protection=protection,
     )
 
     assert [one.outcome for one in reviewer.run(nip=NIP, token="tajny-token").directions] == [
@@ -509,10 +533,13 @@ def test_a_rate_limit_on_one_subject_type_keeps_the_rest_of_the_review(
 
 
 def test_a_rate_limited_subject_type_says_it_does_not_know(
-    cache: PeriodCache, store: ReviewStore
+    cache: PeriodCache, store: ReviewStore, protection: Allowance
 ) -> None:
     reviewer = a_reviewer_meeting(
-        KsefRateLimited("KSeF odmówił: 429.", retry_after=None), cache=cache, store=store
+        KsefRateLimited("KSeF odmówił: 429.", retry_after=None),
+        cache=cache,
+        store=store,
+        protection=protection,
     )
 
     assert (
@@ -522,7 +549,7 @@ def test_a_rate_limited_subject_type_says_it_does_not_know(
 
 
 def test_an_unfetched_subject_type_does_not_claim_anything_was_shown(
-    cache: PeriodCache, store: ReviewStore
+    cache: PeriodCache, store: ReviewStore, protection: Allowance
 ) -> None:
     reviewer = InvoiceReviewer(
         port=RecordingPort(
@@ -530,6 +557,7 @@ def test_an_unfetched_subject_type_does_not_claim_anything_was_shown(
         ),
         cache=cache,
         store=store,
+        allowance=protection,
         clock=lambda: ASKED_AT,
     )
     reviewer.run(nip=NIP, token="tajny-token")
@@ -538,7 +566,7 @@ def test_an_unfetched_subject_type_does_not_claim_anything_was_shown(
 
 
 def test_an_unfetched_subject_type_says_it_does_not_know(
-    cache: PeriodCache, store: ReviewStore
+    cache: PeriodCache, store: ReviewStore, protection: Allowance
 ) -> None:
     reviewer = InvoiceReviewer(
         port=RecordingPort(
@@ -546,6 +574,7 @@ def test_an_unfetched_subject_type_says_it_does_not_know(
         ),
         cache=cache,
         store=store,
+        allowance=protection,
         clock=lambda: ASKED_AT,
     )
 
