@@ -187,3 +187,26 @@ naruszenia jako REQUIRED/CRITICAL, nie jako preferencje stylistyczne:
    konfigurację CI). Test sieciowy uruchamiany bez oznaczenia w
    domyślnym zestawie to WARNING; taki, który mógłby trafić na
    produkcję, to CRITICAL.
+5. **Bezpieczne fail zamiast zgadywania** — gdy kod napotka
+   niejednoznaczną sytuację (np. dwa dokumenty o identycznym haśle, ale
+   różnych numerach KSeF), sprawdzaj:
+   - Czy kod odrzuca całą paczkę (fail), czy wybiera rozwiązanie
+     (guess)?
+   - Czy ta decyzja jest testowana (separate case)?
+   - Czy pojawia się w ADR lub `docs/domain/decisions.md`?
+   
+   KSeF ma ścisłe reguły numeracji — zgadnięcie nieznanego numeru ma
+   konsekwencje. Odrzucenie zamiast tego jest bezpieczne, ale wymaga
+   dokumentacji dla operatorów.
+6. **Komunikaty błędów archiwizacji** — gdy kod odrzuca paczkę KSeF
+   (ArchiveMetadataUnusable, ArchiveNotPerformed), sprawdzaj:
+   - Czy komunikat wymienia strukturę, którą kod oczekiwał (np. listy
+     kluczy JSON)?
+   - Czy komunikat wymienia, co faktycznie znalazł (np. klucze, które
+     rzeczywiście pojawiły się w wpisie)?
+   - Czy komunikat pozwala operatorowi zdiagnozować bez dostępu do
+     produkcyjnego XML (ponieważ XML faktury nigdy nie powinien być w
+     logach)?
+   
+   Paczki z produkcji są kosztowne do odtworzenia — komunikat powinien
+   być samowystarczający.
