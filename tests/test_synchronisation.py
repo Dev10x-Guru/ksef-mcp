@@ -930,6 +930,7 @@ def test_a_status_query_that_never_reached_ksef_keeps_the_export_on_the_record(
     [
         KsefUnreachable("Brak odpowiedzi od KSeF."),
         KsefRateLimited("Przekroczony limit zapytań.", retry_after=60),
+        KsefAuthenticationFailed("Sesja wygasła."),
     ],
 )
 def test_a_status_query_that_never_reached_ksef_leaves_the_point_alone(

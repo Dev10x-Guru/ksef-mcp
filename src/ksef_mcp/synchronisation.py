@@ -213,7 +213,15 @@ def rolled_back_to(export: PendingExport, *, stored: DirectionState | None) -> d
     further back than one window reaches, and letting the guess pull it up to
     meet would skip precisely the invoices this rollback exists to recover.
     """
-    remembered = export.covering_from or export.started_at - MAX_QUERY_WINDOW
+    # `is not None`, not truthiness: a datetime is always truthy today, so the
+    # shorter spelling works by a property of the type rather than by what is
+    # meant here — and it would start choosing wrongly, silently, the day the
+    # field holds anything that defines its own `__bool__`.
+    remembered = (
+        export.started_at - MAX_QUERY_WINDOW
+        if export.covering_from is None
+        else export.covering_from
+    )
     return remembered if stored is None else min(remembered, stored.reached)
 
 
