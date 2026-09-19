@@ -311,6 +311,15 @@ def _incompleteness(complete: bool) -> str:
     )
 
 
+def _ledger_note(complete: bool) -> str:
+    if complete:
+        return "Zapisuję je jako pokazane, więc kolejne wywołanie ich nie powtórzy."
+    return (
+        "Nie zapisuję ich jako pokazanych: okno nie jest kompletem, więc kolejne "
+        "wywołanie je powtórzy."
+    )
+
+
 def _earlier_months_phrase(earlier: tuple[InvoiceMetadata, ...]) -> str:
     if not earlier:
         return ""
@@ -385,16 +394,21 @@ def assess(
         outcome=ReviewOutcome.REPORTED,
         message=(
             f"{invoices_phrase(count)} od ostatniego przeglądu, brutto "
-            f"{describe_totals(totals)}. Zapisuję je jako pokazane, więc kolejne "
-            f"wywołanie ich nie powtórzy.{_earlier_months_phrase(earlier)}"
-            f"{_incompleteness(complete)}"
+            f"{describe_totals(totals)}. {_ledger_note(complete)}"
+            f"{_earlier_months_phrase(earlier)}{_incompleteness(complete)}"
         ),
         new_invoices=fresh,
         new_count=count,
         earlier_months=earlier,
         gross_totals=totals,
         complete=complete,
-        marked=True,
+        # Only a complete window may be recorded as reviewed, for the reason the
+        # branch above already gives in its own words: what KSeF left out of the
+        # answer was never shown to anybody. Recording the part that fit lets the
+        # ninety-day window slide past the rest, and the invoice of the seventh of
+        # July — the one this module exists for — would be lost the way the manual
+        # archive lost it.
+        marked=complete,
         queried_at=queried_at,
         from_cache=from_cache,
     )
@@ -474,6 +488,8 @@ class InvoiceReviewer:
                     from_cache=answer.from_cache,
                 )
                 reviews.append(review)
+                if not review.marked:
+                    continue
                 shown.extend(
                     ReviewedInvoice(
                         ksef_number=str(invoice.ksef_number),
