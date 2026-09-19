@@ -1,10 +1,10 @@
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
@@ -49,6 +49,9 @@ from ksef_mcp.statement import (
 )
 from ksef_mcp.sync_store import SyncStore
 from ksef_mcp.synchronisation import DirectionReport, SynchronisationReport, Synchroniser
+
+if TYPE_CHECKING:
+    from ksef_mcp.ksef_port.adapter import Ksef2Port
 
 server: MCPServer = MCPServer(name=SERVER_NAME, version=VERSION)
 
@@ -200,20 +203,81 @@ def authenticated_subject() -> tuple[config.Configuration, token_store.StoredTok
     return configuration, stored
 
 
-def authorisation_of(
-    configuration: config.Configuration,
-    stored: token_store.StoredToken,
-) -> Authorisation:
-    """The footing the read stands on — where the proof came from, never the proof."""
-    return Authorisation(
-        nip=configuration.nip,
-        environment=configuration.environment,
-        basis=token_basis(stored.source),
-    )
+@dataclass(frozen=True)
+class SubjectDependencies:
+    """Everything a tool needs for one subject, built from one NIP.
+
+    `Synchroniser` had already recognised this risk and derived its archive from
+    its store rather than accept two arguments that must agree. Four tools
+    assembled the port, the cache, the stores and the allowance by hand from the
+    same pair of values, each free to drift from the others — a subject spelled
+    one way for the cache and another for the allowance reads a period it never
+    paid for (GH-114).
+
+    Each access builds a fresh store. They are frozen dataclasses holding a NIP,
+    an environment and an optional root, so there is nothing to share and
+    nothing that would go stale between two tool calls.
+    """
+
+    configuration: config.Configuration
+
+    @property
+    def nip(self) -> str:
+        return self.configuration.nip
+
+    @property
+    def environment(self) -> config.KsefEnvironment:
+        return self.configuration.environment
+
+    @property
+    def port(self) -> "Ksef2Port":
+        # Imported here rather than at module scope: `ksef2` pulls lxml, signxml
+        # and xsdata, and a client listing tools must not pay half a second for
+        # a dependency only the tools that reach KSeF ever touch.
+        from ksef_mcp.ksef_port.adapter import Ksef2Port
+
+        return Ksef2Port(environment=self.environment)
+
+    @property
+    def cache(self) -> PeriodCache:
+        return PeriodCache(nip=self.nip, environment=self.environment)
+
+    @property
+    def archive(self) -> InvoiceArchive:
+        return InvoiceArchive(nip=self.nip, environment=self.environment)
+
+    @property
+    def sync_store(self) -> SyncStore:
+        return SyncStore(nip=self.nip, environment=self.environment)
+
+    @property
+    def review_store(self) -> ReviewStore:
+        return ReviewStore(nip=self.nip, environment=self.environment)
+
+    @property
+    def allowance(self) -> Allowance:
+        return Allowance(nip=self.nip, environment=self.environment)
+
+    @property
+    def trail(self) -> AuditTrail:
+        return AuditTrail(nip=self.nip, environment=self.environment)
+
+    def authorisation(self, stored: token_store.StoredToken) -> Authorisation:
+        """The footing the read stands on — where the proof came from, never the proof."""
+        return Authorisation(
+            nip=self.nip,
+            environment=self.environment,
+            basis=token_basis(stored.source),
+        )
+
+    def archive_authorisation(self) -> Authorisation:
+        """No token was read: the invoice was already on disk."""
+        return Authorisation(nip=self.nip, environment=self.environment, basis=ARCHIVE_BASIS)
 
 
-def trail_for(configuration: config.Configuration) -> AuditTrail:
-    return AuditTrail(nip=configuration.nip, environment=configuration.environment)
+def authenticated_dependencies() -> tuple[SubjectDependencies, token_store.StoredToken]:
+    configuration, stored = authenticated_subject()
+    return SubjectDependencies(configuration=configuration), stored
 
 
 def window_criteria(period: Period) -> str:
@@ -283,27 +347,22 @@ def _direction_entries(
 
 
 def synchronise() -> SynchronisationResult:
-    # Imported here rather than at module scope: `ksef2` pulls lxml, signxml and
-    # xsdata, and a client listing tools must not pay half a second for a
-    # dependency only this tool reaches for.
-    from ksef_mcp.ksef_port.adapter import Ksef2Port
-
-    configuration, stored = authenticated_subject()
+    subject, stored = authenticated_dependencies()
     synchroniser = Synchroniser(
-        port=Ksef2Port(environment=configuration.environment),
-        store=SyncStore(nip=configuration.nip, environment=configuration.environment),
-        allowance=Allowance(nip=configuration.nip, environment=configuration.environment),
+        port=subject.port,
+        store=subject.sync_store,
+        allowance=subject.allowance,
     )
-    report = synchroniser.run(nip=configuration.nip, token=stored.value)
-    trail = trail_for(configuration)
+    report = synchroniser.run(nip=subject.nip, token=stored.value)
+    trail = subject.trail
     trail.record(
         synchronisation_entries(
             report,
-            authorisation=authorisation_of(configuration, stored),
+            authorisation=subject.authorisation(stored),
             moment=trail.clock(),
         )
     )
-    return describe(report, environment=configuration.environment)
+    return describe(report, environment=subject.environment)
 
 
 @server.tool()
@@ -444,20 +503,18 @@ def listing_entries(
 
 
 def list_invoices() -> InvoiceListingResult:
-    from ksef_mcp.ksef_port.adapter import Ksef2Port
-
-    configuration, stored = authenticated_subject()
+    subject, stored = authenticated_dependencies()
     lister = InvoiceLister(
-        port=Ksef2Port(environment=configuration.environment),
-        cache=PeriodCache(nip=configuration.nip, environment=configuration.environment),
-        allowance=Allowance(nip=configuration.nip, environment=configuration.environment),
+        port=subject.port,
+        cache=subject.cache,
+        allowance=subject.allowance,
     )
-    listing = lister.run(nip=configuration.nip, token=stored.value)
-    trail = trail_for(configuration)
+    listing = lister.run(nip=subject.nip, token=stored.value)
+    trail = subject.trail
     trail.record(
         listing_entries(
             listing,
-            authorisation=authorisation_of(configuration, stored),
+            authorisation=subject.authorisation(stored),
             moment=trail.clock(),
         )
     )
@@ -555,34 +612,29 @@ def statement_entries(
 
 
 def export_statement(*, period: str, working_directory: str | None) -> StatementResult:
-    from ksef_mcp.ksef_port.adapter import Ksef2Port
-
-    configuration, stored = authenticated_subject()
+    subject, stored = authenticated_dependencies()
     directory = (
-        configuration.invoice_directory
+        subject.configuration.invoice_directory
         if working_directory is None
         else Path(working_directory).expanduser()
     )
     composer = StatementComposer(
-        port=Ksef2Port(environment=configuration.environment),
-        cache=PeriodCache(nip=configuration.nip, environment=configuration.environment),
-        archive=InvoiceArchive(
-            nip=configuration.nip,
-            environment=configuration.environment,
-        ),
-        allowance=Allowance(nip=configuration.nip, environment=configuration.environment),
+        port=subject.port,
+        cache=subject.cache,
+        archive=subject.archive,
+        allowance=subject.allowance,
     )
     statement = composer.run(
-        nip=configuration.nip,
+        nip=subject.nip,
         token=stored.value,
         period=AccountingPeriod.parsed(period),
         directory=directory,
     )
-    trail = trail_for(configuration)
+    trail = subject.trail
     trail.record(
         statement_entries(
             statement,
-            authorisation=authorisation_of(configuration, stored),
+            authorisation=subject.authorisation(stored),
             moment=trail.clock(),
         )
     )
@@ -739,21 +791,19 @@ def review_entries(
 
 
 def review_invoices() -> InvoiceReviewResult:
-    from ksef_mcp.ksef_port.adapter import Ksef2Port
-
-    configuration, stored = authenticated_subject()
+    subject, stored = authenticated_dependencies()
     reviewer = InvoiceReviewer(
-        port=Ksef2Port(environment=configuration.environment),
-        cache=PeriodCache(nip=configuration.nip, environment=configuration.environment),
-        store=ReviewStore(nip=configuration.nip, environment=configuration.environment),
-        allowance=Allowance(nip=configuration.nip, environment=configuration.environment),
+        port=subject.port,
+        cache=subject.cache,
+        store=subject.review_store,
+        allowance=subject.allowance,
     )
-    review = reviewer.run(nip=configuration.nip, token=stored.value)
-    trail = trail_for(configuration)
+    review = reviewer.run(nip=subject.nip, token=stored.value)
+    trail = subject.trail
     trail.record(
         review_entries(
             review,
-            authorisation=authorisation_of(configuration, stored),
+            authorisation=subject.authorisation(stored),
             moment=trail.clock(),
         )
     )
@@ -853,37 +903,32 @@ def render_entries(
 
 
 def render_invoice(*, ksef_number: str, working_directory: str | None) -> RenderedInvoiceResult:
-    configuration = configured_subject()
+    subject = SubjectDependencies(configuration=configured_subject())
     directory = (
-        configuration.invoice_directory
+        subject.configuration.invoice_directory
         if working_directory is None
         else Path(working_directory).expanduser()
     )
-    archive = InvoiceArchive(nip=configuration.nip, environment=configuration.environment)
     renderer = InvoiceRenderer(
-        environment=configuration.environment,
-        archive_directory=archive.invoice_directory,
+        environment=subject.environment,
+        archive_directory=subject.archive.invoice_directory,
         working_directory=prepare_working_directory(directory).path,
     )
     rendered = renderer(ksef_number)
-    trail = trail_for(configuration)
+    trail = subject.trail
     # No token was needed and none was read: the invoice was already on disk.
     # The trail still says under whose NIP and environment it was opened.
     trail.record(
         render_entries(
             rendered,
-            authorisation=Authorisation(
-                nip=configuration.nip,
-                environment=configuration.environment,
-                basis=ARCHIVE_BASIS,
-            ),
+            authorisation=subject.archive_authorisation(),
             moment=trail.clock(),
         )
     )
     return describe_rendered(
         rendered,
-        nip=configuration.nip,
-        environment=configuration.environment,
+        nip=subject.nip,
+        environment=subject.environment,
     )
 
 
