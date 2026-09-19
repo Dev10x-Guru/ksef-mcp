@@ -28,7 +28,7 @@ from ksef_mcp.ksef_port.types import (
     InvoiceDirection,
 )
 from ksef_mcp.paths import SubjectScope
-from ksef_mcp.storage import exclusive_write, written_atomically
+from ksef_mcp.storage import exclusive_write, require_schema, written_atomically
 
 STATE_FILE: Final[str] = "synchronisation.json"
 
@@ -281,13 +281,13 @@ def _decode_direction(stored: dict[str, object]) -> DirectionState:
 
 
 def _decode(document: dict[str, object]) -> SyncState:
-    found = document["schema_version"]
-    if found != SCHEMA_VERSION:
-        raise SyncStateUnreadable(
-            f"Synchronisation state is schema {found}, this build reads "
-            f"{SCHEMA_VERSION}. Refusing to guess: a misread continuation point "
-            f"skips invoices nothing asks for again."
-        )
+    require_schema(
+        document,
+        expected=SCHEMA_VERSION,
+        named="Synchronisation state",
+        refused_as=SyncStateUnreadable,
+        consequence=("a misread continuation point skips invoices nothing asks for again."),
+    )
     points: dict[str, dict[str, object]] = document["continuation_points"]  # type: ignore[assignment]
     exports: list[dict[str, object]] = document["pending_exports"]  # type: ignore[assignment]
     # `.get`, not `[...]`, for the same reason `covering_from` uses it: a record

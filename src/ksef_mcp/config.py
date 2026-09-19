@@ -1,5 +1,4 @@
 import json
-import os
 import stat
 from dataclasses import dataclass
 from enum import StrEnum
@@ -8,9 +7,18 @@ from typing import Final
 
 from platformdirs import user_data_path
 
+from ksef_mcp.errors import KsefMcpError
 from ksef_mcp.metadata import SERVER_NAME
+from ksef_mcp.storage import require_schema, written_atomically
 
 CONFIGURATION_FILE: Final[str] = "configuration.json"
+
+# The configuration was the last of six persistent documents to carry one, and
+# the omission is what made a renamed key indistinguishable from a truncated
+# file (GH-169). Version 1 is the shape four bare keys already had, so a file
+# written before this build has no version and is refused by name rather than
+# silently misread.
+SCHEMA_VERSION: Final[int] = 1
 
 INVOICE_DIRECTORY_MODE: Final[int] = 0o700
 
@@ -56,17 +64,52 @@ def configuration_path() -> Path:
     return user_data_path(appname=SERVER_NAME) / CONFIGURATION_FILE
 
 
+class ConfigurationUnreadable(KsefMcpError):
+    """The configuration file exists and this build cannot make sense of it.
+
+    Its own type because the alternative was a `JSONDecodeError` or a `KeyError`
+    leaving the server and the CLI both refusing to start, with no sentence
+    anywhere saying that deleting one file is the way out (GH-168).
+    """
+
+
 def load_configuration(*, path: Path | None = None) -> Configuration | None:
     resolved = configuration_path() if path is None else path
     if not resolved.is_file():
         return None
-    stored = json.loads(resolved.read_text(encoding="utf-8"))
-    return Configuration(
-        nip=stored["nip"],
-        environment=KsefEnvironment(stored["environment"]),
-        keyring_backend=stored["keyring_backend"],
-        invoice_directory=Path(stored["invoice_directory"]),
+    try:
+        stored = json.loads(resolved.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as damaged:
+        raise ConfigurationUnreadable(
+            f"{resolved} is not readable JSON — an interrupted write leaves the "
+            f"file truncated. Run `ksef-mcp onboarding` to write it again."
+        ) from damaged
+    # A file written before versioning existed carries exactly these four keys,
+    # so its absent version reads as 1 rather than turning every onboarding done
+    # so far into a refusal. From 2 onward the key is there and the check bites.
+    require_schema(
+        {"schema_version": SCHEMA_VERSION} | stored,
+        expected=SCHEMA_VERSION,
+        named="The configuration",
+        refused_as=ConfigurationUnreadable,
+        consequence=(
+            "a misread NIP or environment files under the wrong subject, or "
+            "against the live registry. Run `ksef-mcp onboarding` to write it "
+            "again."
+        ),
     )
+    try:
+        return Configuration(
+            nip=stored["nip"],
+            environment=KsefEnvironment(stored["environment"]),
+            keyring_backend=stored["keyring_backend"],
+            invoice_directory=Path(stored["invoice_directory"]),
+        )
+    except (KeyError, TypeError, ValueError) as incomplete:
+        raise ConfigurationUnreadable(
+            f"{resolved} is missing or misstates {incomplete}. Run "
+            f"`ksef-mcp onboarding` to write it again."
+        ) from incomplete
 
 
 def save_configuration(
@@ -74,22 +117,28 @@ def save_configuration(
     *,
     path: Path | None = None,
 ) -> Path:
+    """Staging file then rename, so an interrupted write never blocks the next start.
+
+    This was the one persistence routine of seven writing straight into the
+    target with `O_TRUNC`: a full disk or a lost session left a truncated file
+    that stopped both the server and the CLI from starting, and nothing said so
+    (GH-168). The staging file carries the final mode from creation, because the
+    document names the taxpayer's NIP.
+    """
     resolved = configuration_path() if path is None else path
     resolved.parent.mkdir(parents=True, exist_ok=True)
     document = {
+        "schema_version": SCHEMA_VERSION,
         "nip": configuration.nip,
         "environment": str(configuration.environment),
         "keyring_backend": configuration.keyring_backend,
         "invoice_directory": str(configuration.invoice_directory),
     }
-    # Created with the final mode rather than written and then chmod-ed: the
-    # gap between the two leaves the taxpayer's NIP readable to every local
-    # account. umask can only clear bits, never add them, so this is safe.
-    descriptor = os.open(resolved, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, CONFIGURATION_FILE_MODE)
-    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-        handle.write(json.dumps(document, indent=2, ensure_ascii=False) + "\n")
-    resolved.chmod(CONFIGURATION_FILE_MODE)
-    return resolved
+    return written_atomically(
+        resolved,
+        content=(json.dumps(document, indent=2, ensure_ascii=False) + "\n").encode("utf-8"),
+        file_mode=CONFIGURATION_FILE_MODE,
+    )
 
 
 @dataclass(frozen=True)

@@ -46,7 +46,7 @@ from ksef_mcp.ksef_port.errors import KsefRequestRejected
 from ksef_mcp.ksef_port.types import KsefNumber
 from ksef_mcp.package import ExportPackage
 from ksef_mcp.paths import SubjectScope
-from ksef_mcp.storage import exclusive_write, written_atomically
+from ksef_mcp.storage import exclusive_write, require_schema, written_atomically
 
 INVOICE_DIRECTORY: Final[str] = "invoices"
 
@@ -384,13 +384,13 @@ def _encode_index(
 
 
 def _decode_index(document: dict[str, object]) -> DeduplicationIndex:
-    found = document["schema_version"]
-    if found != SCHEMA_VERSION:
-        raise ArchiveIndexUnreadable(
-            f"The deduplication index is schema {found}, this build reads "
-            f"{SCHEMA_VERSION}. Refusing to guess: a misread index fetches "
-            f"invoices already held, or hides ones never fetched."
-        )
+    require_schema(
+        document,
+        expected=SCHEMA_VERSION,
+        named="The deduplication index",
+        refused_as=ArchiveIndexUnreadable,
+        consequence=("a misread index fetches invoices already held, or hides ones never fetched."),
+    )
     entries: list[dict[str, object]] = document["entries"]  # type: ignore[assignment]
     index = DeduplicationIndex()
     for entry in entries:

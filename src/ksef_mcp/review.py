@@ -74,7 +74,7 @@ from ksef_mcp.listing import (
 )
 from ksef_mcp.paths import SubjectScope
 from ksef_mcp.period_cache import PeriodCache, PeriodMetadataReader
-from ksef_mcp.storage import exclusive_write, written_atomically
+from ksef_mcp.storage import exclusive_write, require_schema, written_atomically
 from ksef_mcp.synchronisation import SYNCHRONISED_DIRECTIONS
 
 REVIEW_FILE: Final[str] = "review.json"
@@ -170,13 +170,15 @@ def _encode(ledger: ReviewLedger, *, nip: str, environment: KsefEnvironment) -> 
 
 
 def _decode(document: dict[str, object]) -> ReviewLedger:
-    found = document["schema_version"]
-    if found != SCHEMA_VERSION:
-        raise ReviewLedgerUnreadable(
-            f"The review ledger is schema {found}, this build reads "
-            f"{SCHEMA_VERSION}. Refusing to guess: a misread ledger either "
-            f"repeats invoices already reviewed or hides one never shown."
-        )
+    require_schema(
+        document,
+        expected=SCHEMA_VERSION,
+        named="The review ledger",
+        refused_as=ReviewLedgerUnreadable,
+        consequence=(
+            "a misread ledger either repeats invoices already reviewed or hides one never shown."
+        ),
+    )
     entries: list[dict[str, object]] = document["entries"]  # type: ignore[assignment]
     return ReviewLedger(
         entries=tuple(
