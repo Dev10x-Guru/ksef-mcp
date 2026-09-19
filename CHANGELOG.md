@@ -55,6 +55,12 @@ udokumentowane.
   10 000 faktur na sesję koszt narastał z każdą kolejną synchronizacją —
   a płaciło się go tak samo przy odczycie indeksu, jak przy zapisie
   (GH-147).
+- Zestawienie miesięczne nie czyta już całego XML-a każdej faktury po to,
+  by policzyć kod weryfikacyjny. Indeks archiwum trzyma ten skrót od
+  chwili zapisu faktury, więc miesiąc z 400 fakturami to 400 pełnych
+  odczytów mniej. Kod nadal opisuje bajty leżące na dysku: gdy indeks
+  o fakturze nie wie albo jest nieczytelny, plik zostaje czytany tak jak
+  dotąd (GH-148).
 - Niedostępny KSeF ani odmowa uwierzytelnienia nie zostaną już po cichu
   zamienione na „nie ma tego w podręcznej pamięci". Pamięć okresów
   celowo traktuje uszkodzony wpis jako chybienie, bo da się go odtworzyć
