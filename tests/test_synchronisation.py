@@ -173,6 +173,10 @@ class ScriptedSession:
     # "KSeF says it does not know this one" must not be spelled the same way
     # as "KSeF could not be reached at all".
     status_failures: dict[str, Exception] = field(default_factory=dict)
+    # What ordering an export runs into, keyed by subject type. A pass touches
+    # four of them in sequence, so "the third one blew up" is the only way to
+    # ask what the first two left on disk.
+    start_failures: dict[InvoiceDirection, Exception] = field(default_factory=dict)
     started: list[tuple[InvoiceDirection, Period]] = field(default_factory=list)
     polled: list[str] = field(default_factory=list)
     fetched: list[str] = field(default_factory=list)
@@ -184,6 +188,9 @@ class ScriptedSession:
         raise AssertionError("Synchronizacja nie odpytuje metadanych — idzie przez eksport.")
 
     def start_export(self, *, period: Period, direction: InvoiceDirection) -> ExportHandle:
+        refusal = self.start_failures.get(direction)
+        if refusal is not None:
+            raise refusal
         self.started.append((direction, period))
         return ExportHandle(
             reference=f"EXP-{len(self.started)}",
@@ -750,14 +757,42 @@ def test_a_refused_export_leaves_the_point_where_it_was(
 
 
 def test_a_refused_export_is_kept_under_its_reference(store: SyncStore, naps: list[float]) -> None:
+    # Kept, so the reference can still be explained later — in the journal,
+    # where a record nothing can continue belongs.
     session = ScriptedSession(statuses=[failed()], limits=allowances())
 
     a_synchroniser(session=session, store=store, naps=naps).run(nip=NIP, token=TOKEN)
 
-    assert [export.state for export in store.load().pending] == [
+    assert [export.state for export in store.load().settled] == [
         ExportState.FAILED,
         ExportState.FAILED,
     ]
+
+
+def test_a_refused_export_leaves_the_queue_empty(store: SyncStore, naps: list[float]) -> None:
+    # This is GH-94. A refusal used to sit at the head of the queue for good,
+    # and `pending_for` reads the queue — so the subject type ordered a fresh
+    # package every fifteen minutes and collected none of them, which is the
+    # pattern the Ministry answers with a lengthening block.
+    session = ScriptedSession(statuses=[failed()], limits=allowances())
+
+    a_synchroniser(session=session, store=store, naps=naps).run(nip=NIP, token=TOKEN)
+
+    assert store.load().pending == ()
+
+
+def test_a_second_pass_after_a_refusal_polls_the_new_export(
+    store: SyncStore, naps: list[float]
+) -> None:
+    # The proof that the queue is unblocked: the pass that follows a refusal
+    # reaches its own export rather than tripping over the dead one again.
+    session = ScriptedSession(statuses=[failed()], limits=allowances())
+    later = NOON + MINIMUM_INTERVAL
+
+    a_synchroniser(session=session, store=store, naps=naps).run(nip=NIP, token=TOKEN)
+    a_synchroniser(session=session, store=store, naps=naps, moment=later).run(nip=NIP, token=TOKEN)
+
+    assert session.polled == ["EXP-1", "EXP-2", "EXP-3", "EXP-4"]
 
 
 def test_a_refused_export_does_not_keep_its_key(store: SyncStore, naps: list[float]) -> None:
@@ -767,7 +802,51 @@ def test_a_refused_export_does_not_keep_its_key(store: SyncStore, naps: list[flo
 
     a_synchroniser(session=session, store=store, naps=naps).run(nip=NIP, token=TOKEN)
 
-    assert [export.encryption for export in store.load().pending] == [None, None]
+    assert [export.encryption for export in store.load().settled] == [None, None]
+
+
+@pytest.fixture
+def after_a_later_subject_type_blew_up(store: SyncStore, naps: list[float]) -> ScriptedSession:
+    """The seller's package is queued and still building; the buyer's ask explodes.
+
+    The explosion is deliberately something no `except` in the pass names, so it
+    leaves `run` the way a bug does — which is the case GH-96 is about.
+    """
+    session = ScriptedSession(
+        statuses=[still_running()],
+        limits=allowances(),
+        start_failures={InvoiceDirection.BUYER: MemoryError("Zabrakło pamięci.")},
+    )
+    with pytest.raises(MemoryError):
+        a_synchroniser(session=session, store=store, naps=naps).run(nip=NIP, token=TOKEN)
+    return session
+
+
+def test_a_package_ksef_accepted_keeps_its_key_when_a_later_type_blows_up(
+    store: SyncStore, after_a_later_subject_type_blew_up: ScriptedSession
+) -> None:
+    # The whole of GH-96. The state used to be written once, after the loop, so
+    # an exception in any subject type took the AES key of every package the
+    # earlier ones had queued — and KSeF had already accepted those. Without the
+    # key nothing decrypts them, ever (D-033).
+    assert [export.encryption for export in store.load().pending] == [
+        ExportEncryption(key=KEY, initialisation_vector=IV)
+    ]
+
+
+def test_a_package_ksef_accepted_keeps_its_reference_when_a_later_type_blows_up(
+    store: SyncStore, after_a_later_subject_type_blew_up: ScriptedSession
+) -> None:
+    assert [export.reference for export in store.load().pending] == ["EXP-1"]
+
+
+def test_an_attempt_already_made_is_held_when_a_later_type_blows_up(
+    store: SyncStore, after_a_later_subject_type_blew_up: ScriptedSession
+) -> None:
+    # `attempted_at` is what holds the fifteen-minute floor open across a
+    # restart. Losing it means the next pass asks again immediately, building
+    # the retry pattern the Ministry records (D-031 §5).
+    assert store.load().directions[InvoiceDirection.SELLER].attempted_at == NOON
 
 
 def test_a_ready_package_without_a_continuation_marker_does_not_move_the_point(

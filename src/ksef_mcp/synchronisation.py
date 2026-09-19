@@ -269,12 +269,20 @@ class Synchroniser:
                     state=state,
                     direction=direction,
                 )
+                # Written per subject type, not once when the loop is over. A
+                # failure in a later type used to discard everything the earlier
+                # ones had established: the `attempted_at` holding the
+                # fifteen-minute floor open, and — far worse — the AES key of a
+                # package KSeF had already accepted, which nothing can ever
+                # decrypt without it (D-033, GH-96). The state is immutable and
+                # goes out by temp→rename, so four writes a pass cost nothing
+                # next to one unreadable package.
+                self.store.save(state)
                 reports.append(report)
-        path = self.store.save(state)
         return SynchronisationReport(
             directions=tuple(reports),
             pending_exports=tuple(export.reference for export in state.pending),
-            state_path=str(path),
+            state_path=str(self.store.path),
         )
 
     def _advance_one(
@@ -444,10 +452,13 @@ class Synchroniser:
         if status.state is ExportState.FAILED:
             # The point never moved, so the same window is asked for again —
             # one export spent, nothing skipped.
-            return state.with_pending(
+            return state.with_settled(
                 # Recorded rather than dropped: a reference nobody can explain
-                # later is worse than one marked as the failure it was. The key
-                # does not stay with it: this export is over, and a key that
+                # later is worse than one marked as the failure it was. It goes
+                # to the journal and not back on the queue, because KSeF will
+                # never build this package and a queue entry nothing can finish
+                # blocks its subject type for good (GH-94). The key does not
+                # stay with it either: this export is over, and a key that
                 # outlives the export it belongs to is exactly what D-033
                 # forbids.
                 PendingExport(

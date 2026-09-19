@@ -24,6 +24,7 @@ from ksef_mcp.ksef_port import (
 )
 from ksef_mcp.sync_store import (
     SCHEMA_VERSION,
+    SETTLED_JOURNAL_LIMIT,
     DirectionState,
     ExportKeyDiscarded,
     PendingExport,
@@ -305,9 +306,69 @@ def test_a_record_written_before_the_window_start_existed_still_loads(
 def test_an_export_without_a_key_survives_the_round_trip(
     store: SyncStore, queued: PendingExport
 ) -> None:
-    store.save(SyncState(pending=(spent(queued),)))
+    store.save(SyncState(settled=(spent(queued),)))
 
-    assert store.load().pending[0].encryption is None
+    assert store.load().settled[0].encryption is None
+
+
+def test_a_finished_export_is_journalled_rather_than_queued(queued: PendingExport) -> None:
+    # The queue answers "what is this subject type still waiting on". A refused
+    # export can never be waited on again, so it has no business answering it.
+    state = SyncState(pending=(queued,)).with_settled(spent(queued))
+
+    assert (state.pending, [export.state for export in state.settled]) == (
+        (),
+        [ExportState.FAILED],
+    )
+
+
+def test_a_journalled_export_stops_blocking_its_subject_type(queued: PendingExport) -> None:
+    # The whole of GH-94 in one assertion: with the refusal in the queue this
+    # returned it forever, and every pass ordered a package nobody collected.
+    state = SyncState(pending=(queued,)).with_settled(spent(queued))
+
+    assert state.pending_for(InvoiceDirection.BUYER) is None
+
+
+def test_the_journal_keeps_only_the_most_recent_refusals(queued: PendingExport) -> None:
+    # The document is read and written whole on every pass, so the journal is
+    # bounded on purpose — one refused export must not grow the file forever.
+    state = SyncState()
+    for ordinal in range(SETTLED_JOURNAL_LIMIT + 5):
+        state = state.with_settled(replace(spent(queued), reference=f"EXP-{ordinal}"))
+
+    assert (len(state.settled), state.settled[0].reference) == (SETTLED_JOURNAL_LIMIT, "EXP-5")
+
+
+def test_the_journal_survives_the_round_trip(store: SyncStore, queued: PendingExport) -> None:
+    store.save(SyncState(settled=(spent(queued),)))
+
+    assert [export.reference for export in store.load().settled] == ["EXP-1"]
+
+
+def test_a_record_written_before_the_journal_existed_still_loads(
+    store: SyncStore, populated: SyncState
+) -> None:
+    # Additive in both directions, exactly like `covering_from`: an older reader
+    # ignores the key and an older document does not carry it, so neither needs
+    # a schema bump.
+    path = store.save(populated)
+    document = json.loads(path.read_text(encoding="utf-8"))
+    del document["settled_exports"]
+    path.write_text(json.dumps(document), encoding="utf-8")
+
+    assert store.load().settled == ()
+
+
+def test_a_refusal_left_in_the_queue_by_an_older_build_moves_to_the_journal(
+    store: SyncStore, queued: PendingExport
+) -> None:
+    # The upgrade path. A file written before GH-94 holds the deadlock itself;
+    # reading it has to undo that, or the fix reaches nobody who already hit it.
+    store.save(SyncState(pending=(spent(queued),)))
+    reloaded = store.load()
+
+    assert (reloaded.pending, [export.reference for export in reloaded.settled]) == ((), ["EXP-1"])
 
 
 def test_an_export_without_a_key_still_writes_the_field(
