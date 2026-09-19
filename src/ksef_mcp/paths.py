@@ -120,3 +120,26 @@ class SubjectScope:
 
     def under(self, base: Path) -> Path:
         return base / SUBJECT_DIRECTORY / self.nip.value / str(self.environment)
+
+    def unnormalised_twins(self, *, override: Path | None = None) -> tuple[Path, ...]:
+        """Directories holding this same taxpayer under a spelling we no longer write.
+
+        Normalising the spelling moves where a subject's files are looked for,
+        so somebody who onboarded with `123-456-32-18` would find an archive
+        that had apparently emptied itself. This reports those directories and
+        does nothing else on purpose: an archive holds a counterparty's personal
+        data, and relocating one behind the taxpayer's back is a worse answer
+        than a directory they can see named and move themselves (GH-111).
+        """
+        holder = self.data_root(override=override).parent.parent
+        if not holder.is_dir():
+            return ()
+        return tuple(sorted(found for found in holder.iterdir() if self.is_twin(found)))
+
+    def is_twin(self, candidate: Path) -> bool:
+        if not candidate.is_dir() or candidate.name == self.nip.value:
+            return False
+        try:
+            return Nip.parsed(candidate.name) == self.nip
+        except NipRejected:
+            return False

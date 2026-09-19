@@ -133,6 +133,27 @@ def describe_refused_nip() -> str:
     )
 
 
+def describe_unnormalised_twins(directories: tuple[Path, ...]) -> tuple[str, ...]:
+    """Name the old directory and the command, and move nothing.
+
+    A taxpayer who onboarded with a grouped NIP has files under a spelling this
+    version no longer writes. Moving them automatically would relocate invoices
+    carrying a counterparty's personal data without being asked, so `doctor`
+    points at them and lets the person decide (GH-111).
+    """
+    if not directories:
+        return ()
+    return (
+        "",
+        "  Uwaga: znalazłem katalogi tego samego podmiotu zapisane inaczej.",
+        "  Od tej wersji NIP zapisuję jednym sposobem — samymi cyframi —",
+        "  więc pliki spod starego zapisu nie są już widoczne.",
+        *(f"    {directory}" for directory in directories),
+        "  Nie przenoszę ich sam: są w nich faktury z danymi kontrahentów.",
+        "  Przenieś zawartość ręcznie do katalogu obok, nazwanego cyframi.",
+    )
+
+
 def describe_environment_choices() -> tuple[str, ...]:
     """The difference between test and demo is not obvious from the names."""
     return (
