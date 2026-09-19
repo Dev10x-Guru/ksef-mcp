@@ -34,7 +34,6 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-import os
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -48,6 +47,7 @@ from ksef_mcp.ksef_port.errors import KsefRequestRejected
 from ksef_mcp.ksef_port.types import KsefNumber
 from ksef_mcp.metadata import SERVER_NAME
 from ksef_mcp.package import ExportPackage
+from ksef_mcp.storage import exclusive_write, written_atomically
 from ksef_mcp.sync_store import SUBJECT_DIRECTORY
 
 INVOICE_DIRECTORY: Final[str] = "invoices"
@@ -55,8 +55,6 @@ INVOICE_DIRECTORY: Final[str] = "invoices"
 INDEX_FILE: Final[str] = "deduplication.json"
 
 INVOICE_SUFFIX: Final[str] = ".xml"
-
-STAGING_SUFFIX: Final[str] = ".tmp"
 
 SCHEMA_VERSION: Final[int] = 1
 
@@ -110,6 +108,17 @@ class ArchiveNotPerformed(RuntimeError):
     """Asked what an archivist stored before it stored anything."""
 
 
+class IndexEntryAlreadyHeld(RuntimeError):
+    """A KSeF number was offered to the index twice.
+
+    The invoice file has always refused its own duplicate structurally — the
+    name is the identity, and `_written` reports an existing target as already
+    held rather than replacing it. The index entry had no such guard: it was
+    checked for uniqueness and never made to keep it, so two passes starting
+    from one snapshot silently dropped the earlier pass's entries (GH-103).
+    """
+
+
 @dataclass(frozen=True)
 class InvoiceIdentity:
     """One line of the manifest: which entry of the package is which invoice.
@@ -148,6 +157,20 @@ class DeduplicationIndex:
         return frozenset(entry.ksef_number for entry in self.entries)
 
     def with_entry(self, entry: IndexEntry) -> DeduplicationIndex:
+        """Add a number the index does not hold, and refuse one it does.
+
+        This is the structural half of the guarantee; `InvoiceArchive.store`
+        supplies the other by doing its whole read-change-write under the
+        subject's lock (ADR-107 §2). Neither alone is enough: the lock without
+        this refusal would still let a caller add a number twice, and this
+        refusal without the lock would still start from a stale snapshot.
+        """
+        if entry.ksef_number in self.known:
+            raise IndexEntryAlreadyHeld(
+                f"The deduplication index already holds {entry.ksef_number}. A "
+                f"second entry for one KSeF number would make the index answer "
+                f"two different things about the same invoice."
+            )
         return replace(self, entries=(*self.entries, entry))
 
 
@@ -371,16 +394,24 @@ def _decode_index(document: dict[str, object]) -> DeduplicationIndex:
             f"invoices already held, or hides ones never fetched."
         )
     entries: list[dict[str, object]] = document["entries"]  # type: ignore[assignment]
-    return DeduplicationIndex(
-        entries=tuple(
-            IndexEntry(
-                ksef_number=str(entry["ksef_number"]),
-                content_hash=str(entry["content_hash"]),
-                archived_at=datetime.fromisoformat(str(entry["archived_at"])),
+    index = DeduplicationIndex()
+    for entry in entries:
+        # Built through `with_entry` rather than assembled in one go, so a file
+        # naming one invoice twice is refused where every other unreadable index
+        # is refused, instead of being carried forward as a working one.
+        try:
+            index = index.with_entry(
+                IndexEntry(
+                    ksef_number=str(entry["ksef_number"]),
+                    content_hash=str(entry["content_hash"]),
+                    archived_at=datetime.fromisoformat(str(entry["archived_at"])),
+                )
             )
-            for entry in entries
-        )
-    )
+        except IndexEntryAlreadyHeld as repeated:
+            raise ArchiveIndexUnreadable(
+                f"The deduplication index names one invoice twice: {repeated}"
+            ) from repeated
+    return index
 
 
 @dataclass(frozen=True)
@@ -414,31 +445,39 @@ class InvoiceArchive:
         return _decode_index(json.loads(self.index_path.read_text(encoding="utf-8")))
 
     def store(self, *, package: ExportPackage) -> ArchiveReport:
-        """Write every invoice the manifest names, once, and record that it was held."""
+        """Write every invoice the manifest names, once, and record that it was held.
+
+        The index is read, extended and written inside one hold on the subject's
+        directory (ADR-107 §2). Read outside it, the snapshot went stale the
+        moment a second pass started, and the entries the first pass added were
+        written out of existence by the second one's save — leaving invoices on
+        disk the index did not know about, fetched again out of an allowance of
+        twenty exports an hour (GH-103).
+        """
         wanted = identities(package.metadata)
         bodies = {document.name: document.content for document in package.documents}
         carrying = located(wanted=wanted, bodies=bodies, reference=package.reference)
-        index = self.load_index()
-        held = index.known
-        archived: list[str] = []
-        already_held: list[str] = []
-        self.invoice_directory.mkdir(mode=ARCHIVE_DIRECTORY_MODE, parents=True, exist_ok=True)
-        for identity in wanted:
-            number = str(identity.ksef_number)
-            if number in held:
-                already_held.append(number)
-                continue
-            content = bodies[carrying[number]]
-            written = self._written(number=number, content=content)
-            (archived if written else already_held).append(number)
-            index = index.with_entry(
-                IndexEntry(
-                    ksef_number=number,
-                    content_hash=digest_of(content),
-                    archived_at=self.clock(),
+        with exclusive_write(self.directory, directory_mode=ARCHIVE_DIRECTORY_MODE):
+            index = self.load_index()
+            archived: list[str] = []
+            already_held: list[str] = []
+            self.invoice_directory.mkdir(mode=ARCHIVE_DIRECTORY_MODE, parents=True, exist_ok=True)
+            for identity in wanted:
+                number = str(identity.ksef_number)
+                if number in index.known:
+                    already_held.append(number)
+                    continue
+                content = bodies[carrying[number]]
+                written = self._written(number=number, content=content)
+                (archived if written else already_held).append(number)
+                index = index.with_entry(
+                    IndexEntry(
+                        ksef_number=number,
+                        content_hash=digest_of(content),
+                        archived_at=self.clock(),
+                    )
                 )
-            )
-        self._save_index(index)
+            self._save_index(index)
         return ArchiveReport(
             directory=str(self.invoice_directory),
             index_path=str(self.index_path),
@@ -456,30 +495,19 @@ class InvoiceArchive:
             # whatever is already there is this very invoice — it is reported as
             # already held rather than replaced.
             return False
-        staging = target.with_suffix(STAGING_SUFFIX)
-        descriptor = os.open(staging, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, ARCHIVE_FILE_MODE)
-        with os.fdopen(descriptor, "wb") as handle:
-            handle.write(content)
-            handle.flush()
-            os.fsync(handle.fileno())
-        staging.chmod(ARCHIVE_FILE_MODE)
         # The rename is the guardian of the invariant (D-006): a crash mid-write
         # leaves a staging file nobody reads, never half an invoice under a name
         # that claims to be a whole one.
-        os.replace(staging, target)
+        written_atomically(target, content=content, file_mode=ARCHIVE_FILE_MODE)
         return True
 
     def _save_index(self, index: DeduplicationIndex) -> None:
-        self.directory.mkdir(mode=ARCHIVE_DIRECTORY_MODE, parents=True, exist_ok=True)
         document = _encode_index(index, nip=self.nip, environment=self.environment)
-        staging = self.index_path.with_suffix(STAGING_SUFFIX)
-        descriptor = os.open(staging, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, ARCHIVE_FILE_MODE)
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            handle.write(json.dumps(document, indent=2, ensure_ascii=False) + "\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-        staging.chmod(ARCHIVE_FILE_MODE)
-        os.replace(staging, self.index_path)
+        written_atomically(
+            self.index_path,
+            content=(json.dumps(document, indent=2, ensure_ascii=False) + "\n").encode("utf-8"),
+            file_mode=ARCHIVE_FILE_MODE,
+        )
 
 
 @dataclass

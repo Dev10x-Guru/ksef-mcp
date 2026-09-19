@@ -42,8 +42,8 @@ belongs to a period. That judgement is the accountant's (ST-4).
 from __future__ import annotations
 
 import json
-import os
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from enum import StrEnum
@@ -69,12 +69,11 @@ from ksef_mcp.listing import (
 )
 from ksef_mcp.metadata import SERVER_NAME
 from ksef_mcp.period_cache import PeriodCache, PeriodMetadataReader
+from ksef_mcp.storage import exclusive_write, written_atomically
 from ksef_mcp.sync_store import SUBJECT_DIRECTORY
 from ksef_mcp.synchronisation import SYNCHRONISED_DIRECTIONS
 
 REVIEW_FILE: Final[str] = "review.json"
-
-STAGING_SUFFIX: Final[str] = ".tmp"
 
 SCHEMA_VERSION: Final[int] = 1
 
@@ -214,21 +213,36 @@ class ReviewStore:
             return ReviewLedger()
         return _decode(json.loads(self.path.read_text(encoding="utf-8")))
 
+    @contextmanager
+    def exclusively(self) -> Iterator[None]:
+        """Hold this subject's directory for a whole read-change-write (ADR-107)."""
+        with exclusive_write(self.directory, directory_mode=REVIEW_DIRECTORY_MODE):
+            yield
+
+    def updating(self, change: Callable[[ReviewLedger], ReviewLedger]) -> ReviewLedger:
+        """Re-read the ledger under the lock, extend that, and write it back.
+
+        The snapshot a review ran against is minutes old by the time it has an
+        answer, and writing it back whole would drop everything another writer
+        recorded meanwhile. `extended` merges rather than replaces, so reading
+        again here is what turns a lost update into a union (ADR-107 §2).
+        """
+        with self.exclusively():
+            updated = change(self.load())
+            self.save(updated)
+            return updated
+
     def save(self, ledger: ReviewLedger) -> Path:
-        self.directory.mkdir(mode=REVIEW_DIRECTORY_MODE, parents=True, exist_ok=True)
-        document = _encode(ledger, nip=self.nip, environment=self.environment)
-        # temp → rename (D-006). A half-written ledger read back as empty would
-        # replay every invoice ever reviewed, and the interrupted write would
-        # have destroyed the good one to do it.
-        staging = self.path.with_suffix(STAGING_SUFFIX)
-        descriptor = os.open(staging, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, REVIEW_FILE_MODE)
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            handle.write(json.dumps(document, indent=2, ensure_ascii=False) + "\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-        staging.chmod(REVIEW_FILE_MODE)
-        os.replace(staging, self.path)
-        return self.path
+        with self.exclusively():
+            document = _encode(ledger, nip=self.nip, environment=self.environment)
+            # temp → rename (D-006). A half-written ledger read back as empty
+            # would replay every invoice ever reviewed, and the interrupted
+            # write would have destroyed the good one to do it.
+            return written_atomically(
+                self.path,
+                content=(json.dumps(document, indent=2, ensure_ascii=False) + "\n").encode("utf-8"),
+                file_mode=REVIEW_FILE_MODE,
+            )
 
 
 class ReviewOutcome(StrEnum):
@@ -466,7 +480,7 @@ class InvoiceReviewer:
                     for invoice in review.new_invoices
                 )
         if shown:
-            self.store.save(ledger.extended(tuple(shown)))
+            self.store.updating(lambda held: held.extended(tuple(shown)))
         return InvoiceReview(
             nip=nip,
             environment=self.port.environment,

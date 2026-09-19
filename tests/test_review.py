@@ -286,6 +286,20 @@ def test_a_ledger_from_a_newer_build_is_refused_rather_than_guessed_at(
         store.load()
 
 
+def test_an_update_extends_what_another_writer_recorded_meanwhile(
+    store: ReviewStore,
+) -> None:
+    """GH-101: the snapshot a review ran against is minutes old by the time it writes."""
+    stale = store.load()
+    first = ReviewedInvoice(ksef_number=IN_JULY, received_on=date(2026, 7, 7), reviewed_at=ASKED_AT)
+    second = replace(first, ksef_number=str(synthetic_metadata(1).ksef_number))
+    store.save(stale.extended((first,)))
+
+    store.updating(lambda held: held.extended((second,)))
+
+    assert store.load().reviewed == {IN_JULY, second.ksef_number}
+
+
 def test_the_ledger_does_not_record_the_same_number_twice() -> None:
     # Faktura własna dociera do tego samego podmiotu w dwóch rolach, a pętla
     # chodzi po czterech typach podmiotu.

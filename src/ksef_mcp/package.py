@@ -198,12 +198,14 @@ class PackageRetriever:
         """
         package = self.collect(export=export)
         archivist(package)
-        state = self.store.load()
-        path = self.store.save(state.without_export(reference=export.reference))
+        # One exclusive cycle, not a read followed by an unrelated write: a
+        # second writer slipping between the two used to resurrect the record
+        # this call exists to drop, and with it the key (ADR-107 §2).
+        self.store.updating(lambda state: state.without_export(reference=export.reference))
         return ArchivedExport(
             reference=export.reference,
             document_count=len(package.documents),
-            state_path=str(path),
+            state_path=str(self.store.path),
         )
 
     def _opened(self, *, handle: ExportHandle, part: ExportPart) -> bytes:

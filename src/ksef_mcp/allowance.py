@@ -18,7 +18,6 @@ Two roots, and the split is the load-bearing part (D-032):
 from __future__ import annotations
 
 import json
-import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -34,6 +33,7 @@ from ksef_mcp.ksef_port.guard import GuardedSession
 from ksef_mcp.ksef_port.protocol import KsefSession
 from ksef_mcp.ksef_port.types import KsefLimits, OperationLimit, RateLimits, SessionCeilings
 from ksef_mcp.metadata import SERVER_NAME
+from ksef_mcp.storage import written_atomically
 from ksef_mcp.sync_store import SUBJECT_DIRECTORY
 
 LEDGER_FILE: Final[str] = "budget.json"
@@ -41,8 +41,6 @@ LEDGER_FILE: Final[str] = "budget.json"
 LIMITS_FILE: Final[str] = "limits.json"
 
 REFUSALS_FILE: Final[str] = "refusals.json"
-
-STAGING_SUFFIX: Final[str] = ".tmp"
 
 SCHEMA_VERSION: Final[int] = 1
 
@@ -78,15 +76,13 @@ def _write_document(*, path: Path, document: dict[str, object]) -> None:
     path.parent.mkdir(mode=DIRECTORY_MODE, parents=True, exist_ok=True)
     # temp → rename (D-006), as everywhere else that state reaches disk: a
     # half-written counter read back as a miss would hand out an allowance that
-    # has already been spent.
-    staging = path.with_suffix(STAGING_SUFFIX)
-    descriptor = os.open(staging, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, FILE_MODE)
-    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-        handle.write(json.dumps(document, indent=2, ensure_ascii=False) + "\n")
-        handle.flush()
-        os.fsync(handle.fileno())
-    staging.chmod(FILE_MODE)
-    os.replace(staging, path)
+    # has already been spent. The staging name is unique per writer and the
+    # directory entry is persisted after the swap (ADR-107 §3, §4).
+    written_atomically(
+        path,
+        content=(json.dumps(document, indent=2, ensure_ascii=False) + "\n").encode("utf-8"),
+        file_mode=FILE_MODE,
+    )
 
 
 @dataclass(frozen=True)

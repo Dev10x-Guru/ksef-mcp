@@ -20,11 +20,15 @@ from pathlib import Path
 import pytest
 from platformdirs import user_data_path
 
+from conftest import in_another_thread
 from ksef_mcp.archive import (
     ArchiveIndexUnreadable,
     ArchiveMetadataUnusable,
     ArchiveNotPerformed,
     ArchiveReport,
+    DeduplicationIndex,
+    IndexEntry,
+    IndexEntryAlreadyHeld,
     InvoiceArchive,
     InvoiceIdentity,
     PackageArchivist,
@@ -34,6 +38,7 @@ from ksef_mcp.archive import (
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.metadata import SERVER_NAME
 from ksef_mcp.package import ExportPackage, PackageDocument
+from ksef_mcp.storage import WriteExclusivityUnavailable, exclusive_write
 from synthetic import base64_digest, synthetic_number
 
 NIP = "1234567890"
@@ -608,3 +613,45 @@ def test_an_archivist_asked_before_it_stored_anything_refuses(
 
     with pytest.raises(ArchiveNotPerformed, match="has not stored a package yet"):
         archivist.reported  # noqa: B018
+
+
+def test_the_index_refuses_a_second_entry_for_a_number_it_already_holds() -> None:
+    """GH-103: the invoice file was protected structurally, the entry was not."""
+    entry = IndexEntry(
+        ksef_number=str(synthetic_number(1)),
+        content_hash=digest_of(a_body(1)),
+        archived_at=ARCHIVED_AT,
+    )
+
+    with pytest.raises(IndexEntryAlreadyHeld, match="already holds"):
+        DeduplicationIndex().with_entry(entry).with_entry(entry)
+
+
+def test_an_index_naming_one_invoice_twice_is_refused_rather_than_carried_forward(
+    archive: InvoiceArchive, stored: ArchiveReport
+) -> None:
+    document = json.loads(archive.index_path.read_text(encoding="utf-8"))
+    document["entries"].append(document["entries"][0])
+    archive.index_path.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(ArchiveIndexUnreadable, match="names one invoice twice"):
+        archive.load_index()
+
+
+def test_a_package_stored_while_another_writer_holds_the_subject_is_refused(
+    archive: InvoiceArchive, package: ExportPackage
+) -> None:
+    """GH-101: the losing writer has to hear about it, not lose its entries."""
+    with exclusive_write(archive.directory, directory_mode=0o700):
+        with pytest.raises(WriteExclusivityUnavailable):
+            in_another_thread(lambda: archive.store(package=package))
+
+
+def test_a_refused_store_leaves_the_index_of_the_writer_that_held_it(
+    archive: InvoiceArchive, package: ExportPackage, stored: ArchiveReport
+) -> None:
+    with exclusive_write(archive.directory, directory_mode=0o700):
+        with pytest.raises(WriteExclusivityUnavailable):
+            in_another_thread(lambda: archive.store(package=a_package(3)))
+
+    assert len(archive.load_index().entries) == 2

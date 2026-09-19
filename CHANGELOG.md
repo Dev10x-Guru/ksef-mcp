@@ -12,6 +12,40 @@ udokumentowane.
 
 ### Poprawione
 
+- Dwa klienty MCP na jeden podmiot przestają gubić sobie nawzajem zapisy.
+  Claude Desktop i Claude Code obok siebie to zwykła konfiguracja, a
+  narzędzia MCP są synchroniczne, więc równoległy zapis zdarzał się nawet
+  w jednym procesie. Każdy magazyn wczytywał cały dokument, zmieniał swój
+  fragment i zapisywał całość, więc ten, kto kończył drugi, wymazywał
+  zmianę pierwszego — razem z punktami kontynuacji i kluczami AES
+  zamówionych paczek, których bez nich nie da się odszyfrować. Katalog
+  podmiotu ma teraz jednego pisarza naraz; drugi dostaje jasną odmowę z
+  nazwą zajętego katalogu, zamiast pisać w próżnię. Czekania nie ma
+  celowo: zawieszone narzędzie to zawieszona sesja agenta, a dwie
+  synchronizacje jednego podmiotu wydają przydział dwa razy (GH-101).
+- Faktura nie zniknie z indeksu, bo drugi zapis zaczął od tej samej
+  migawki. Sam plik faktury był chroniony od początku — nazwa pliku jest
+  tożsamością i nic jej nie nadpisze — ale wpis w indeksie deduplikacji
+  był tylko sprawdzany, nie wymuszany. Skutek widziała księgowa: faktura
+  leżała na dysku, indeks o niej nie wiedział, więc następna
+  synchronizacja pobierała ją ponownie i wydawała na to przydział
+  (GH-103).
+- Plik przejściowy nie da się już popsuć drugim pisarzem. Wszystkie
+  magazyny używały tej samej nazwy roboczej, więc dwa równoczesne zapisy
+  obcinały się nawzajem, zanim którykolwiek zdążył podmienić plik
+  docelowy. Przy okazji znika okno, w którym dokument niosący klucze AES
+  albo dane kontrahenta istniał przez moment z prawami dostępu
+  odziedziczonymi po systemie, a nie z własnymi (GH-102).
+- Dziennik audytowy nie przeplecie linii dwóch równoczesnych zapisów, a
+  uszkodzoną linię nazwie po numerze zamiast wysypać się niezrozumiałym
+  błędem. Ślad audytowy ma dowodzić, kto sięgnął po które faktury —
+  nieczytelny dowodzi tylko własnej nieczytelności, i to dokładnie wtedy,
+  gdy jest najbardziej potrzebny. Komunikat o uszkodzeniu nie cytuje
+  treści linii, bo ta niesie numery KSeF (GH-104).
+- Zamiana pliku przeżywa zanik zasilania, nie tylko zabicie procesu.
+  Zapisywana była sama treść pliku, ale już nie wpis w katalogu, który
+  nadaje jej nazwę — czyli ten krok, na którym opiera się cała ochrona
+  przed połową dokumentu pod nazwą obiecującą całość (GH-105).
 - Limit godzinowy jest liczony przez całą godzinę, a nie przez jedno
   wywołanie narzędzia. Serwer pod `uvx` ginie razem z sesją agenta, więc
   licznik zaczynał od zera przy każdym uruchomieniu: trzy narzędzia w

@@ -35,10 +35,16 @@ a whole-file invariant: those files are read entire, and half a document reads
 back as an empty one. A trail is the other shape. It only ever grows, nobody
 edits its middle, and rewriting it whole on every append would both cost
 quadratically over a server running for weeks and put the entire accumulated
-record at risk to add one line. A single `write()` on an `O_APPEND` descriptor
-is indivisible against other appenders, so two processes acting for the same
-subject cannot interleave a line, and `fsync` follows each one because evidence
+record at risk to add one line. `fsync` follows every append, because evidence
 that did not survive a power cut is not evidence.
+
+`O_APPEND` places each write at the end of the file as it stands, and that is
+all it does. A `write()` is indivisible against other appenders only up to
+`PIPE_BUF`, so the claim that two processes acting for one subject cannot
+interleave a line was true of short entries and false of a synchronisation
+naming four subject types' invoices (GH-104). What actually serialises the
+appenders is the subject's write lock (ADR-107 §5); `O_APPEND` remains because
+the alternative to it is rewriting the whole trail on every line.
 """
 
 from __future__ import annotations
@@ -56,6 +62,7 @@ from platformdirs import user_data_path
 
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.metadata import SERVER_NAME
+from ksef_mcp.storage import exclusive_write
 from ksef_mcp.sync_store import SUBJECT_DIRECTORY
 
 AUDIT_FILE: Final[str] = "audit.jsonl"
@@ -194,6 +201,27 @@ def _decode(document: dict[str, object]) -> AuditEntry:
     )
 
 
+def _decoded_line(line: str, *, ordinal: int) -> AuditEntry:
+    """One line of the trail, with a damaged one named rather than thrown raw.
+
+    A `JSONDecodeError` escaping this module told the reader nothing about which
+    file it came from or which line to look at, and it did not read as "the
+    trail is damaged" at all (GH-104). The message names the position and
+    nothing else: the line itself holds KSeF numbers, and an error message is
+    the last place those should surface (D-011).
+    """
+    try:
+        document = json.loads(line)
+    except json.JSONDecodeError as damaged:
+        raise AuditTrailUnreadable(
+            f"Line {ordinal} of the audit trail is not JSON: {damaged.msg} at "
+            f"position {damaged.pos}. A truncated or interleaved line means the "
+            f"trail can no longer be read as evidence — keep the file and have "
+            f"it examined rather than appending to it further."
+        ) from damaged
+    return _decode(document)
+
+
 @dataclass(frozen=True)
 class AuditTrail:
     """One subject's record of reads, beside the archive whose accesses it describes."""
@@ -218,15 +246,26 @@ class AuditTrail:
         return self.directory / AUDIT_FILE
 
     def record(self, entries: Iterable[AuditEntry]) -> Path:
+        """Append every entry as one indivisible block, or refuse to append at all.
+
+        `O_APPEND` stays — this is a log, and the divergence from D-006 above is
+        deliberate. What it never was is a serialisation mechanism: a single
+        `write()` is indivisible only up to `PIPE_BUF`, and one
+        `synchronise_invoices` naming four subject types' invoices passes four
+        kilobytes without trying. Past that, two appenders interleave halves of
+        a line and the trail stops parsing exactly where it is needed most
+        (GH-104). The subject's write lock is what makes the block indivisible;
+        the append-only shape is what the lock is protecting (ADR-107 §5).
+        """
         lines = [json.dumps(_encode(entry), ensure_ascii=False) + "\n" for entry in entries]
         if not lines:
             return self.path
-        self.directory.mkdir(mode=AUDIT_DIRECTORY_MODE, parents=True, exist_ok=True)
-        descriptor = os.open(self.path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, AUDIT_FILE_MODE)
-        with os.fdopen(descriptor, "a", encoding="utf-8") as handle:
-            handle.write("".join(lines))
-            handle.flush()
-            os.fsync(handle.fileno())
+        with exclusive_write(self.directory, directory_mode=AUDIT_DIRECTORY_MODE):
+            descriptor = os.open(self.path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, AUDIT_FILE_MODE)
+            with os.fdopen(descriptor, "a", encoding="utf-8") as handle:
+                handle.write("".join(lines))
+                handle.flush()
+                os.fsync(handle.fileno())
         return self.path
 
     def entries(self) -> tuple[AuditEntry, ...]:
@@ -234,7 +273,9 @@ class AuditTrail:
         if not self.path.is_file():
             return ()
         return tuple(
-            _decode(json.loads(line))
-            for line in self.path.read_text(encoding="utf-8").splitlines()
+            _decoded_line(line, ordinal=ordinal)
+            for ordinal, line in enumerate(
+                self.path.read_text(encoding="utf-8").splitlines(), start=1
+            )
             if line
         )

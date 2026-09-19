@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from conftest import in_another_thread
 from ksef_mcp.audit import (
     AUDIT_FILE,
     XML_FORMAT,
@@ -197,6 +198,39 @@ def test_a_line_from_another_schema_is_refused_rather_than_guessed_at(
 
     with pytest.raises(AuditTrailUnreadable, match="schema 99"):
         trail.entries()
+
+
+def test_a_line_torn_in_half_is_named_as_a_damaged_trail(trail: AuditTrail, recorded: Path) -> None:
+    """GH-104: a raw JSONDecodeError said nothing about which line, or which file."""
+    whole = recorded.read_text(encoding="utf-8")
+    recorded.write_text(whole + whole[: len(whole) // 2], encoding="utf-8")
+
+    with pytest.raises(AuditTrailUnreadable, match="Line 2 of the audit trail"):
+        trail.entries()
+
+
+def test_a_damaged_line_is_named_without_quoting_what_it_held(
+    trail: AuditTrail, recorded: Path
+) -> None:
+    # The line carries KSeF numbers, and an error message is the last place
+    # those should surface (D-011).
+    recorded.write_text('{"broken"\n', encoding="utf-8")
+
+    with pytest.raises(AuditTrailUnreadable) as refusal:
+        trail.entries()
+
+    assert FIRST_NUMBER not in str(refusal.value)
+
+
+def test_two_recorders_never_interleave_their_lines(
+    trail: AuditTrail, authorisation: Authorisation
+) -> None:
+    """GH-104: `O_APPEND` is indivisible only up to `PIPE_BUF`."""
+    crowded = written_entry(authorisation, numbers=tuple(FIRST_NUMBER for _ in range(400)))
+    trail.record((crowded, crowded))
+    in_another_thread(lambda: trail.record((crowded,)))
+
+    assert len(trail.entries()) == 3
 
 
 def test_the_clock_is_the_wall_clock_in_utc() -> None:

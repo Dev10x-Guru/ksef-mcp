@@ -12,7 +12,6 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-import os
 import re
 import subprocess
 from collections.abc import Callable
@@ -25,6 +24,7 @@ from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port.errors import KsefRequestRejected
 from ksef_mcp.ksef_port.types import KsefNumber
 from ksef_mcp.preflight import NodeReport, inspect_node
+from ksef_mcp.storage import replaced_durably, reserved_staging
 
 BUNDLE_DIRECTORY: Final[str] = "vendor"
 
@@ -39,8 +39,6 @@ INVOICE_SUFFIX: Final[str] = ".xml"
 PDF_SUFFIX: Final[str] = ".pdf"
 
 PDF_FILE_MODE: Final[int] = 0o600
-
-STAGING_SUFFIX: Final[str] = ".tmp"
 
 RENDER_TIMEOUT_SECONDS: Final[float] = 120.0
 
@@ -320,10 +318,15 @@ class InvoiceRenderer:
         self.readable_node()
         target = self.working_directory / f"{ksef_number}{PDF_SUFFIX}"
         # Written under a staging name and renamed, like every other file this
-        # package produces: Node creates it under the process umask, so a PDF
-        # carrying a counterparty's personal data would otherwise be
-        # world-readable for the moment between its write and the chmod below.
-        staging = target.with_suffix(STAGING_SUFFIX)
+        # package produces: Node writes into a file it did not create, so a PDF
+        # carrying a counterparty's personal data never exists under the process
+        # umask at all.
+        # Reserved rather than named after the target: two renders of one
+        # invoice used to hand Node the same path, and the second generator
+        # truncated the first one's output before either was renamed. The file
+        # exists at its final mode before Node opens it, so the umask window the
+        # comment above describes is closed too (ADR-107 §3).
+        staging = reserved_staging(target, file_mode=PDF_FILE_MODE)
         # Only production documents are verifiable, so only they get a link. An
         # empty one leaves the generator's verification block off the page.
         link = (
@@ -355,12 +358,16 @@ class InvoiceRenderer:
             # reason for one that names nothing — the failure this whole branch
             # exists to prevent.
             refused = source.read_bytes().decode("utf-8", errors="replace")
+            # Removed here rather than left behind: the name is unique per
+            # render now, so nothing would ever reuse or overwrite it, and a
+            # working directory filling with half-written PDFs is the price of
+            # that uniqueness if the refusal path does not pay it.
+            staging.unlink(missing_ok=True)
             raise GeneratorFailed(
                 f"Generator Ministerstwa odrzucił fakturę {ksef_number}: "
                 f"{stated_failure(completed.stderr, document=refused)}"
             )
-        staging.chmod(PDF_FILE_MODE)
-        os.replace(staging, target)
+        replaced_durably(staging, target)
         return RenderedInvoice(
             ksef_number=str(ksef_number),
             path=target,

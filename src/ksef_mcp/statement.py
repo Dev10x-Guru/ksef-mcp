@@ -38,7 +38,6 @@ from __future__ import annotations
 
 import csv
 import io
-import os
 import re
 from calendar import monthrange
 from collections.abc import Callable
@@ -63,6 +62,7 @@ from ksef_mcp.ksef_port.types import DateType, InvoiceDirection, InvoiceMetadata
 from ksef_mcp.listing import CurrencyTotal, gross_totals, invoices_phrase
 from ksef_mcp.metadata import SERVER_NAME
 from ksef_mcp.period_cache import PeriodCache, PeriodMetadataReader, cache_root
+from ksef_mcp.storage import written_atomically
 
 # The counterparty on every one of the eight columns is the seller, so the
 # querying subject is the buyer: this is the purchase side of the month, the one
@@ -72,8 +72,6 @@ STATEMENT_DIRECTION: Final[InvoiceDirection] = InvoiceDirection.BUYER
 STATEMENT_PREFIX: Final[str] = "zestawienie"
 
 STATEMENT_SUFFIX: Final[str] = ".csv"
-
-STAGING_SUFFIX: Final[str] = ".tmp"
 
 # The rows name counterparties, so the file is created with its final mode
 # rather than written and then tightened (D-011).
@@ -334,16 +332,16 @@ def prepare_working_directory(
 
 
 def write_statement(*, rows: tuple[StatementRow, ...], path: Path) -> Path:
-    """Staging file then rename, so an interrupted write never looks like a month."""
-    staging = path.with_suffix(STAGING_SUFFIX)
-    descriptor = os.open(staging, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, STATEMENT_FILE_MODE)
-    with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as handle:
-        handle.write(rendered(rows))
-        handle.flush()
-        os.fsync(handle.fileno())
-    staging.chmod(STATEMENT_FILE_MODE)
-    os.replace(staging, path)
-    return path
+    """Staging file then rename, so an interrupted write never looks like a month.
+
+    The line terminator is stated by the writer rather than left to the stream,
+    so the rendered text is already exactly the bytes the file should hold.
+    """
+    return written_atomically(
+        path,
+        content=rendered(rows).encode("utf-8"),
+        file_mode=STATEMENT_FILE_MODE,
+    )
 
 
 @dataclass(frozen=True)

@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -51,13 +50,12 @@ from ksef_mcp.ksef_port.types import (
     Period,
 )
 from ksef_mcp.metadata import SERVER_NAME
+from ksef_mcp.storage import exclusive_write, written_atomically
 from ksef_mcp.sync_store import SUBJECT_DIRECTORY
 
 PERIOD_DIRECTORY: Final[str] = "periods"
 
 CACHE_FILE_SUFFIX: Final[str] = ".json"
-
-STAGING_SUFFIX: Final[str] = ".tmp"
 
 # Raised to 2 when a window's end stopped being nullable (GH-84). The version
 # check is the searchable mechanism for "this entry predates a format change";
@@ -308,20 +306,17 @@ class PeriodCache:
         )
         if not is_cacheable(period):
             return entry
-        self.directory.mkdir(mode=CACHE_DIRECTORY_MODE, parents=True, exist_ok=True)
         path = self.path_for(period=period, direction=direction)
         document = _encode(entry, nip=self.nip, environment=self.environment)
         # temp → rename (D-006) here too. A half-written entry would be read as a
         # miss and cost the query this file exists to save, and the interrupted
         # write would have destroyed a good entry to do it.
-        staging = path.with_suffix(STAGING_SUFFIX)
-        descriptor = os.open(staging, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, CACHE_FILE_MODE)
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            handle.write(json.dumps(document, indent=2, ensure_ascii=False) + "\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-        staging.chmod(CACHE_FILE_MODE)
-        os.replace(staging, path)
+        with exclusive_write(self.directory, directory_mode=CACHE_DIRECTORY_MODE):
+            written_atomically(
+                path,
+                content=(json.dumps(document, indent=2, ensure_ascii=False) + "\n").encode("utf-8"),
+                file_mode=CACHE_FILE_MODE,
+            )
         return entry
 
 
