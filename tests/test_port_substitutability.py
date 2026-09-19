@@ -17,6 +17,7 @@ import httpx
 import pytest
 
 import ksef_mcp
+from conftest import an_allowance
 from doubles import HWM
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port import (
@@ -39,6 +40,7 @@ from ksef_mcp.ksef_port import (
     check_connection,
 )
 from ksef_mcp.ksef_port.adapter import Ksef2Port
+from ksef_mcp.period_cache import MeteredPeriods, PeriodCache
 from synthetic import synthetic_metadata
 from test_port_adapter import NIP, TOKEN, Plan
 
@@ -142,14 +144,30 @@ def test_both_hand_out_something_that_is_a_session(port: KsefPort) -> None:
         assert isinstance(session, KsefSession)
 
 
-def test_the_same_service_greets_the_subject_either_way(port: KsefPort) -> None:
-    checked = check_connection(port=port, nip=NIP, token=TOKEN)
+@pytest.fixture
+def readers(tmp_path: Path) -> MeteredPeriods:
+    return MeteredPeriods(
+        cache=PeriodCache(
+            nip=NIP,
+            environment=KsefEnvironment.TEST,
+            root=tmp_path / "cache",
+        ),
+        allowance=an_allowance(nip=NIP, environment=KsefEnvironment.TEST, root=tmp_path),
+    )
+
+
+def test_the_same_service_greets_the_subject_either_way(
+    port: KsefPort, readers: MeteredPeriods
+) -> None:
+    checked = check_connection(port=port, nip=NIP, token=TOKEN, readers=readers)
 
     assert checked.subject_name == "Moja Firma sp. z o.o."
 
 
-def test_the_same_service_returns_the_same_invoices_either_way(port: KsefPort) -> None:
-    checked = check_connection(port=port, nip=NIP, token=TOKEN)
+def test_the_same_service_returns_the_same_invoices_either_way(
+    port: KsefPort, readers: MeteredPeriods
+) -> None:
+    checked = check_connection(port=port, nip=NIP, token=TOKEN, readers=readers)
 
     assert [str(invoice.ksef_number) for invoice in checked.invoices] == [
         "1234567890-20260901-0100AB12CD01-56",

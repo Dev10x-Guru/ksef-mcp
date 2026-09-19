@@ -37,6 +37,7 @@ from typing import Final
 
 from platformdirs import user_cache_path
 
+from ksef_mcp.allowance import Allowance
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port.budget import Operation, QueryBudget
 from ksef_mcp.ksef_port.errors import KsefPortError
@@ -356,3 +357,37 @@ class PeriodMetadataReader:
         page = session.query_metadata(period=period, direction=direction)
         recorded = self.cache.remember(period=period, direction=direction, page=page)
         return PeriodAnswer(page=page, queried_at=recorded.queried_at, from_cache=False)
+
+    def page_for(
+        self,
+        *,
+        session: KsefSession,
+        period: Period,
+        direction: InvoiceDirection,
+    ) -> MetadataPage:
+        """The `PeriodReader` the port asks for, over the answer this class gives.
+
+        A caller that only wants the invoices should not have to know whether
+        they were paid for — but `check_connection` lives inside the port and
+        cannot name `PeriodAnswer`, so the narrow half is spelled out here.
+        """
+        return self.read(session=session, period=period, direction=direction).page
+
+
+@dataclass(frozen=True)
+class MeteredPeriods:
+    """The remembered answers and the counter that pays for the misses, paired.
+
+    What `check_connection` is handed instead of a bare session. The pairing is
+    the point: a cache without a counter gives away the allowance silently, and
+    a counter without a cache charges for a question already answered (D-021).
+    """
+
+    cache: PeriodCache
+    allowance: Allowance
+
+    def reader_for(self, *, session: KsefSession) -> PeriodMetadataReader:
+        return PeriodMetadataReader(
+            cache=self.cache,
+            budget=self.allowance.budget(session=session),
+        )

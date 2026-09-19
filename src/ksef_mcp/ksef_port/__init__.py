@@ -1,5 +1,10 @@
 from ksef_mcp.ksef_port.budget import Operation, QueryBudget
-from ksef_mcp.ksef_port.connection import ConnectionCheck, check_connection
+from ksef_mcp.ksef_port.connection import (
+    ConnectionCheck,
+    PeriodReader,
+    PeriodReaders,
+    check_connection,
+)
 from ksef_mcp.ksef_port.errors import (
     KsefAuthenticationFailed,
     KsefPortError,
@@ -58,6 +63,8 @@ __all__ = [
     "OperationLimit",
     "PackageLinkExpired",
     "Period",
+    "PeriodReader",
+    "PeriodReaders",
     "QueryBudget",
     "RateLimits",
     "RetryPolicy",

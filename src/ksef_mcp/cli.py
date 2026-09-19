@@ -10,10 +10,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 from ksef_mcp import client, config, messages, preflight, skill, token_store
+from ksef_mcp.allowance import Allowance
 from ksef_mcp.archive import InvoiceArchive
 from ksef_mcp.audit import OPERATOR_BASIS, AuditTrail, Authorisation
 from ksef_mcp.config import Configuration, KsefEnvironment
 from ksef_mcp.metadata import SERVER_NAME, VERSION
+from ksef_mcp.period_cache import MeteredPeriods, PeriodCache
 from ksef_mcp.retention import (
     ArchivePurge,
     PurgeWindow,
@@ -300,6 +302,20 @@ def run_onboarding(
     return offer_connection_check(console, configuration_file=configuration_file)
 
 
+def metered_periods(configuration: config.Configuration) -> MeteredPeriods:
+    """`verify` answering from the same disk, and paying from the same counter.
+
+    The subject and the environment come from the one configuration the command
+    already loaded, so the files this touches are the ones the MCP tools touch.
+    A second spelling of either would give `verify` a private cache and a
+    private allowance, which is the bypass it is being taken out of (GH-98).
+    """
+    return MeteredPeriods(
+        cache=PeriodCache(nip=configuration.nip, environment=configuration.environment),
+        allowance=Allowance(nip=configuration.nip, environment=configuration.environment),
+    )
+
+
 def run_verify(console: Console, *, configuration_file: Path | None) -> int:
     # Imported here, not at module scope: ksef2 pulls lxml, signxml and xsdata,
     # which costs about half a second. Only this command talks to KSeF, and
@@ -325,11 +341,13 @@ def run_verify(console: Console, *, configuration_file: Path | None) -> int:
             f"  Zmienna nie jest przypisana do NIP-u, więc nie gwarantuję, że "
             f"należy do {configuration.nip}."
         )
+    port = Ksef2Port(environment=configuration.environment)
     try:
         checked = ksef_port.check_connection(
-            port=Ksef2Port(environment=configuration.environment),
+            port=port,
             nip=configuration.nip,
             token=stored.value,
+            readers=metered_periods(configuration),
         )
     except ksef_port.KsefRateLimited as refusal:
         console.write(messages.describe_failure(configuration, refusal))
