@@ -11,9 +11,11 @@ import pytest
 from ksef_mcp import pdf
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.preflight import NodeReport
-from synthetic import synthetic_fa3_invoice
+from synthetic import BUYER_NAME, SELLER_NIP, synthetic_fa3_invoice
 
 KSEF_NUMBER = "1234567890-20260817-0100AB12CD01-56"
+
+EXAMPLE_INVOICE = synthetic_fa3_invoice().decode("utf-8")
 
 REQUIRED = (22, 14, 0)
 
@@ -194,21 +196,23 @@ def test_an_old_node_without_a_pin_is_told_to_upgrade() -> None:
 
 
 def test_the_generators_own_complaint_is_quoted() -> None:
-    assert pdf.stated_failure('{"error": "zły schemat"}') == "zły schemat"
+    assert pdf.stated_failure('{"error": "zły schemat"}', document="") == "zły schemat"
 
 
 def test_noise_after_the_complaint_is_stepped_over() -> None:
     # Read from the end, so the line that has to be skipped is the trailing one:
     # Node writes the stack trace after the structured complaint.
-    assert pdf.stated_failure('{"error": "zły schemat"}\nat Object.<anonymous>') == "zły schemat"
+    stderr = '{"error": "zły schemat"}\nat Object.<anonymous>'
+    assert pdf.stated_failure(stderr, document="") == "zły schemat"
 
 
 def test_json_that_is_not_a_complaint_is_stepped_over() -> None:
-    assert pdf.stated_failure('{"error": "zły schemat"}\n{"warning": "x"}') == "zły schemat"
+    stderr = '{"error": "zły schemat"}\n{"warning": "x"}'
+    assert pdf.stated_failure(stderr, document="") == "zły schemat"
 
 
 def test_silence_from_the_generator_is_said_plainly() -> None:
-    assert pdf.stated_failure("") == "generator nie podał powodu"
+    assert pdf.stated_failure("", document="") == "generator nie podał powodu"
 
 
 def test_an_invoice_absent_from_the_archive_is_refused(archive: Path, working: Path) -> None:
@@ -273,10 +277,74 @@ def test_the_result_names_the_generator_version(rendered: pdf.RenderedInvoice) -
 
 
 def test_a_chatty_generator_complaint_is_cut_short() -> None:
-    # Insurance against a future build quoting the document it rejected: this
-    # string reaches the caller, and an invoice body must not ride along.
-    stated = pdf.stated_failure(json.dumps({"error": "x" * 500}))
-    assert len(stated) == pdf.FAILURE_DETAIL_LIMIT
+    # The cap bounds how much of somebody else's message travels. It is not
+    # what keeps the document out — see the quotation tests below.
+    stated = pdf.stated_failure(json.dumps({"error": "x" * 500}), document="")
+    assert len(stated) <= pdf.FAILURE_DETAIL_LIMIT
+
+
+def test_a_run_the_document_contains_is_redacted() -> None:
+    guarded = pdf.without_quotations("NIP 9876543210 odrzucony", document="…9876543210…")
+    assert guarded == f"NIP {pdf.REDACTED} odrzucony"
+
+
+def test_a_run_too_short_to_carry_meaning_is_kept() -> None:
+    # The invoice contains `Data` in half its tag names; redacting on four
+    # characters would come back unreadable and tell nobody anything.
+    assert pdf.without_quotations("Data", document="<DataWytworzeniaFa>") == "Data"
+
+
+def test_adjacent_quotations_collapse_into_one_marker() -> None:
+    # Two runs, not one: the document holds both fields but never side by side,
+    # so the greedy walk stops between them and would otherwise emit `[…][…]`.
+    guarded = pdf.without_quotations(
+        f"{SELLER_NIP}{BUYER_NAME}",
+        document=f"{BUYER_NAME} wystawił, NIP {SELLER_NIP}",
+    )
+    assert guarded == pdf.REDACTED
+
+
+def test_a_complaint_holding_nothing_of_the_document_travels_whole() -> None:
+    # The shape build 1.1.39 answers a malformed file with.
+    parser = "Text data outside of root node.\nLine: 0\nColumn: 8\nChar: e"
+    assert pdf.without_quotations(parser, document=EXAMPLE_INVOICE) == parser
+
+
+def test_the_quotation_guard_runs_before_the_cap() -> None:
+    # Capping first would cut a quotation in half and forward the half that fit.
+    stderr = json.dumps({"error": "x" * 195 + SELLER_NIP})
+    assert SELLER_NIP not in pdf.stated_failure(stderr, document=SELLER_NIP)
+
+
+# GH-85: the cap above bounds how much of a leak travels, never whether one can.
+# Two hundred characters of somebody else's message is room enough for a
+# counterparty's name and a NIP, and D-011 does not bend for a build we do not
+# control. These name the fields of the very invoice being rendered.
+@pytest.mark.parametrize(
+    ("quoted", "forbidden"),
+    [
+        (f"Nie rozpoznano nabywcy: {BUYER_NAME}", BUYER_NAME),
+        (f"Blad walidacji NIP {SELLER_NIP}", SELLER_NIP),
+        ("Odrzucono pozycje: Olej napedowy 100.000 l", "Olej napedowy"),
+        ("Zly numer faktury FV/2026/09/0001", "FV/2026/09/0001"),
+    ],
+)
+def test_a_generator_quoting_the_document_does_not_leak_it(
+    archive: Path,
+    working: Path,
+    quoted: str,
+    forbidden: str,
+) -> None:
+    render = renderer(
+        archive=archive,
+        working=working,
+        runner=lambda command: completed(returncode=1, stderr=json.dumps({"error": quoted})),
+    )
+
+    with pytest.raises(pdf.GeneratorFailed) as refused:
+        render(KSEF_NUMBER)
+
+    assert forbidden not in str(refused.value)
 
 
 @without_node
@@ -301,3 +369,52 @@ def test_the_rendered_document_is_not_empty(archive: Path, working: Path) -> Non
         working_directory=working,
     )
     assert render(KSEF_NUMBER).byte_count > 10_000
+
+
+@pytest.fixture
+def refused_archive(tmp_path: Path) -> Path:
+    """A real FA(3) the generator will refuse, with its data left intact.
+
+    Only the form code is broken, and only that one, because the build accepts
+    a wrong `WariantFormularza`, an unknown namespace and even a truncated
+    document — this is the corruption it actually answers with a refusal.
+    Every field a leak would carry (the NIP, the counterparty, the line item)
+    is still in the bytes it reads; a fixture that corrupted the data instead
+    would prove nothing about what the message may quote.
+    """
+    directory = tmp_path / "archiwum-odrzucone"
+    directory.mkdir()
+    spoiled = synthetic_fa3_invoice().replace(
+        b'kodSystemowy="FA (3)"',
+        b'kodSystemowy="FA (99)"',
+    )
+    (directory / f"{KSEF_NUMBER}.xml").write_bytes(spoiled)
+    return directory
+
+
+@without_node
+@pytest.mark.parametrize(
+    "forbidden",
+    [SELLER_NIP, BUYER_NAME, "FV/2026/09/0001", "Olej napędowy", "Testowa"],
+)
+def test_the_ministrys_generator_refusal_quotes_nothing_from_the_document(
+    refused_archive: Path,
+    working: Path,
+    forbidden: str,
+) -> None:
+    """GH-85: the contract the vendored build must keep, checked against the build.
+
+    The bundle is somebody else's artefact and D-027 lets it be swapped. Its
+    refusal text reaches the caller, so every swap has to re-prove that the
+    text carries none of the document — a cap on its length never could.
+    """
+    render = pdf.InvoiceRenderer(
+        environment=KsefEnvironment.PRODUCTION,
+        archive_directory=refused_archive,
+        working_directory=working,
+    )
+
+    with pytest.raises(pdf.GeneratorFailed) as refused:
+        render(KSEF_NUMBER)
+
+    assert forbidden not in str(refused.value)
