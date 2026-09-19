@@ -46,6 +46,7 @@ from ksef_mcp.ksef_port import (
 from ksef_mcp.ksef_port.types import MAX_QUERY_WINDOW
 from ksef_mcp.sync_store import (
     MINIMUM_INTERVAL,
+    ContinuationPointMissing,
     DirectionState,
     PendingExport,
     SyncState,
@@ -673,6 +674,29 @@ def left_on_disk(store: SyncStore, *, state: ExportState) -> None:
             ),
         )
     )
+
+
+def test_a_queued_export_without_a_continuation_point_is_refused_by_name(
+    store: SyncStore, naps: list[float]
+) -> None:
+    """A raw `KeyError` from the middle of a pass said nothing about what was wrong."""
+    store.save(
+        SyncState(
+            pending=(
+                PendingExport(
+                    reference="EXP-ORPHAN",
+                    direction=InvoiceDirection.SELLER,
+                    started_at=NOON - timedelta(hours=2),
+                    encryption=ExportEncryption(key=KEY, initialisation_vector=IV),
+                    state=ExportState.RUNNING,
+                ),
+            ),
+        )
+    )
+    session = ScriptedSession(statuses=[ready()], limits=allowances())
+
+    with pytest.raises(ContinuationPointMissing, match="punktu kontynuacji"):
+        a_synchroniser(session=session, store=store, naps=naps).run(nip=NIP, token=TOKEN)
 
 
 # Where the subject type stood before the export that then died — the value a

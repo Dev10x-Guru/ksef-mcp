@@ -49,6 +49,7 @@ from ksef_mcp.ksef_port.types import (
 )
 from ksef_mcp.package import PackageRetriever, PackageUnreadable
 from ksef_mcp.sync_store import (
+    ContinuationPointMissing,
     DirectionState,
     ExportKeyDiscarded,
     PendingExport,
@@ -364,12 +365,10 @@ class Synchroniser:
             period=Period.for_synchronisation(since=opening.reached, now=moment),
             direction=direction,
         )
-        queued = PendingExport(
-            reference=handle.reference,
+        queued = PendingExport.queued(
+            handle=handle,
             direction=direction,
             started_at=moment,
-            encryption=handle.encryption,
-            state=ExportState.RUNNING,
             # Where the point stood before this export moved it. Kept with the
             # export rather than beside the point, because it is only ever read
             # to undo this one export, and it dies with it (GH-93).
@@ -419,23 +418,12 @@ class Synchroniser:
         if status.state is ExportState.FAILED:
             # The point never moved, so the same window is asked for again —
             # one export spent, nothing skipped.
-            return state.with_settled(
-                # Recorded rather than dropped: a reference nobody can explain
-                # later is worse than one marked as the failure it was. It goes
-                # to the journal and not back on the queue, because KSeF will
-                # never build this package and a queue entry nothing can finish
-                # blocks its subject type for good (GH-94). The key does not
-                # stay with it either: this export is over, and a key that
-                # outlives the export it belongs to is exactly what D-033
-                # forbids.
-                PendingExport(
-                    reference=export.reference,
-                    direction=export.direction,
-                    started_at=export.started_at,
-                    encryption=None,
-                    state=ExportState.FAILED,
-                )
-            ), DirectionReport(
+            # Recorded rather than dropped: a reference nobody can explain later
+            # is worse than one marked as the failure it was. It goes to the
+            # journal and not back on the queue, because KSeF will never build
+            # this package and a queue entry nothing can finish blocks its
+            # subject type for good (GH-94).
+            return state.with_settled(export.refused()), DirectionReport(
                 direction=export.direction,
                 outcome=SyncOutcome.FAILED,
                 detail=f"KSeF odrzucił eksport {export.reference}.",
@@ -459,23 +447,27 @@ class Synchroniser:
         export: PendingExport,
         status: ExportStatus,
     ) -> tuple[SyncState, DirectionReport]:
-        stored = state.directions[export.direction]
+        stored = state.directions.get(export.direction)
+        if stored is None:
+            # A record carrying a queued export for a subject type that has no
+            # continuation point: nothing says where this window began, and a
+            # guessed start skips invoices no later run ever asks for again.
+            # Refusing by name beats the `KeyError` this used to raise from the
+            # middle of a pass, which said nothing about what was wrong.
+            raise ContinuationPointMissing(
+                f"Eksport {export.reference} czeka na typ podmiotu, dla którego "
+                f"zapis synchronizacji nie ma punktu kontynuacji. Punkt musi "
+                f"wynikać z zapisu, nie ze zgadywania — usuń wpis oczekującego "
+                f"eksportu, żeby ten typ podmiotu zaczął sekwencję od nowa."
+            )
         moved = advance(
             stored.continuation_point(direction=export.direction),
             status=status,
         )
-        ready = PendingExport(
-            reference=export.reference,
-            direction=export.direction,
-            started_at=export.started_at,
-            encryption=export.encryption,
-            state=ExportState.READY,
-            parts=status.parts,
-            invoice_count=status.invoice_count,
-            # Carried, not recomputed: the window this export asked for is a fact
-            # about the export, and the point has already moved past it by now.
-            covering_from=export.covering_from,
-        )
+        # The parts arrive by transition rather than by rewriting the record:
+        # the window this export asked for is a fact about the export, and it is
+        # carried rather than recomputed once the point has moved past it.
+        ready = export.built(status=status)
         carrying = state.with_pending(ready)
         if moved is None:
             return self._archive(
@@ -642,7 +634,7 @@ class Synchroniser:
             return state, self._stalled(export=export, failure=expiry, reached=reached)
         if status.state is not ExportState.READY or not status.parts:
             return self._abandon(state=state, export=export, refusal=None)
-        renewed = replace(export, parts=status.parts)
+        renewed = export.relinked(parts=status.parts)
         return self._archive(
             session=session,
             budget=budget,

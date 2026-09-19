@@ -15,7 +15,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Final
+from typing import Final, Self
 
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.errors import KsefMcpError
@@ -25,6 +25,7 @@ from ksef_mcp.ksef_port.types import (
     ExportHandle,
     ExportPart,
     ExportState,
+    ExportStatus,
     InvoiceDirection,
 )
 from ksef_mcp.paths import SubjectScope
@@ -85,6 +86,10 @@ class ExportKeyDiscarded(KsefMcpError):
     """Asked for the key of an export that has already finished."""
 
 
+class ContinuationPointMissing(KsefMcpError):
+    """A queued export has no subject type to advance, and none may be invented."""
+
+
 @dataclass(frozen=True)
 class PendingExport:
     """A package KSeF has been asked for and this process has not yet archived.
@@ -114,6 +119,61 @@ class PendingExport:
     parts: tuple[ExportPart, ...] = ()
     invoice_count: int = 0
     covering_from: datetime | None = None
+
+    @classmethod
+    def queued(
+        cls,
+        *,
+        handle: ExportHandle,
+        direction: InvoiceDirection,
+        started_at: datetime,
+        covering_from: datetime,
+    ) -> Self:
+        """The record written the moment KSeF accepts an export request."""
+        return cls(
+            reference=handle.reference,
+            direction=direction,
+            started_at=started_at,
+            encryption=handle.encryption,
+            state=ExportState.RUNNING,
+            covering_from=covering_from,
+        )
+
+    def built(self, *, status: ExportStatus) -> Self:
+        """The same export, now with the parts KSeF finished building for it.
+
+        A transition rather than a fresh record, so what belongs to the export
+        and not to this moment — the reference, the key, and above all the
+        window it asked for — is carried by construction. Rewriting the fields
+        by hand is what lost `covering_from` and, with it, the only way back
+        from a package that turns out to be unreachable (GH-93).
+        """
+        return replace(
+            self,
+            state=ExportState.READY,
+            parts=status.parts,
+            invoice_count=status.invoice_count,
+        )
+
+    def relinked(self, *, parts: tuple[ExportPart, ...]) -> Self:
+        """The same export with fresh download links, after the old ones expired."""
+        return replace(self, parts=parts)
+
+    def refused(self) -> Self:
+        """The end of an export KSeF will never build.
+
+        The key goes first: it outlives nothing it could still open, and a key
+        that survives its export is exactly what D-033 forbids. The parts and
+        the invoice count go with it because a refused export has neither — said
+        here once, rather than left as an unexplained gap in a rewritten record.
+        """
+        return replace(
+            self,
+            state=ExportState.FAILED,
+            encryption=None,
+            parts=(),
+            invoice_count=0,
+        )
 
     @property
     def finished(self) -> bool:
