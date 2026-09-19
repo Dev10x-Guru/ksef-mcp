@@ -375,12 +375,13 @@ def test_one_unreadable_read_does_not_discard_the_other(
 def test_a_degraded_allowance_still_runs_out(unreadable_limits: KsefSession) -> None:
     # The point of the fallback. `None` would read as "no ceiling" and let the
     # counter wave every call through — the pattern the Ministry blocks for.
+    # Which of the three windows stops it first is not this test's business;
+    # that one of them does is.
     budget = QueryBudget(limits=unreadable_limits.read_limits().rates)
-    for _ in range(20):
-        budget.spend(Operation.METADATA_QUERY)
 
     with pytest.raises(KsefRequestRejected):
-        budget.spend(Operation.METADATA_QUERY)
+        for _ in range(21):
+            budget.spend(Operation.METADATA_QUERY)
 
 
 def test_a_refusal_is_not_mistaken_for_an_unreadable_limit(

@@ -1,9 +1,13 @@
 from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 
 import pytest
 
+from ksef_mcp import allowance as allowance_module
 from ksef_mcp import audit, preflight
+from ksef_mcp.allowance import Allowance, now_utc
+from ksef_mcp.config import KsefEnvironment
 
 
 def raiser(error: Exception) -> Callable[..., object]:
@@ -13,6 +17,28 @@ def raiser(error: Exception) -> Callable[..., object]:
         raise error
 
     return raise_it
+
+
+def an_allowance(
+    *,
+    nip: str,
+    environment: KsefEnvironment,
+    root: Path | None = None,
+    clock: Callable[[], datetime] = now_utc,
+) -> Allowance:
+    """The protection a service is given, with both roots under the test's own.
+
+    One `root` rather than two, because a test never cares which convention a
+    file follows — only that neither lands in the directory of whoever ran the
+    suite.
+    """
+    return Allowance(
+        nip=nip,
+        environment=environment,
+        data_root=root,
+        cache_root=root,
+        clock=clock,
+    )
 
 
 @pytest.fixture
@@ -28,6 +54,15 @@ def audit_root(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     root = tmp_path / "dane"
     monkeypatch.setattr(audit, "user_data_path", lambda *, appname: root)
     return root
+
+
+@pytest.fixture(autouse=True)
+def allowance_roots(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # Same reason as the audit trail above, and a sharper one: a spent counter
+    # left in the runner's data directory would refuse that person's real calls
+    # for an hour, against an allowance the suite never touched.
+    monkeypatch.setattr(allowance_module, "user_data_path", lambda *, appname: tmp_path / "dane")
+    monkeypatch.setattr(allowance_module, "user_cache_path", lambda *, appname: tmp_path / "cache")
 
 
 @pytest.fixture(autouse=True)

@@ -50,6 +50,7 @@ from typing import Final, Self
 
 from platformdirs import user_data_path
 
+from ksef_mcp.allowance import Allowance
 from ksef_mcp.archive import INVOICE_SUFFIX, InvoiceArchive, digest_of
 from ksef_mcp.config import (
     INVOICE_DIRECTORY_MODE,
@@ -57,7 +58,6 @@ from ksef_mcp.config import (
     cloud_sync_marker,
     prepare_invoice_directory,
 )
-from ksef_mcp.ksef_port.budget import QueryBudget
 from ksef_mcp.ksef_port.protocol import KsefPort
 from ksef_mcp.ksef_port.types import DateType, InvoiceDirection, InvoiceMetadata, Period
 from ksef_mcp.listing import CurrencyTotal, gross_totals, invoices_phrase
@@ -421,6 +421,7 @@ class StatementComposer:
     port: KsefPort
     cache: PeriodCache
     archive: InvoiceArchive
+    allowance: Allowance
     clock: Callable[[], datetime] = now_utc
 
     def run(
@@ -436,7 +437,7 @@ class StatementComposer:
         with self.port.session(nip=nip, token=token) as session:
             reader = PeriodMetadataReader(
                 cache=self.cache,
-                budget=QueryBudget(limits=session.read_limits().rates, clock=self.clock),
+                budget=self.allowance.budget(session=session),
             )
             answer = reader.read(
                 session=session,

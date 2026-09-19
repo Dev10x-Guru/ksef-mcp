@@ -52,8 +52,8 @@ from typing import Final
 
 from platformdirs import user_data_path
 
+from ksef_mcp.allowance import Allowance
 from ksef_mcp.config import KsefEnvironment
-from ksef_mcp.ksef_port.budget import QueryBudget
 from ksef_mcp.ksef_port.protocol import KsefPort
 from ksef_mcp.ksef_port.types import MAX_QUERY_WINDOW, DateType, InvoiceMetadata, Period
 from ksef_mcp.listing import (
@@ -414,6 +414,7 @@ class InvoiceReviewer:
     port: KsefPort
     cache: PeriodCache
     store: ReviewStore
+    allowance: Allowance
     clock: Callable[[], datetime] = now_utc
 
     def run(self, *, nip: str, token: str) -> InvoiceReview:
@@ -426,7 +427,7 @@ class InvoiceReviewer:
         with self.port.session(nip=nip, token=token) as session:
             reader = PeriodMetadataReader(
                 cache=self.cache,
-                budget=QueryBudget(limits=session.read_limits().rates, clock=self.clock),
+                budget=self.allowance.budget(session=session),
             )
             for direction in SYNCHRONISED_DIRECTIONS:
                 question = Question(

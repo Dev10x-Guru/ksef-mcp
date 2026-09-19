@@ -10,6 +10,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import BaseModel
 
 from ksef_mcp import config, token_store
+from ksef_mcp.allowance import Allowance
 from ksef_mcp.archive import InvoiceArchive
 from ksef_mcp.audit import (
     ARCHIVE_BASIS,
@@ -276,6 +277,7 @@ def synchronise() -> SynchronisationResult:
     synchroniser = Synchroniser(
         port=Ksef2Port(environment=configuration.environment),
         store=SyncStore(nip=configuration.nip, environment=configuration.environment),
+        allowance=Allowance(nip=configuration.nip, environment=configuration.environment),
     )
     report = synchroniser.run(nip=configuration.nip, token=stored.value)
     trail = trail_for(configuration)
@@ -433,6 +435,7 @@ def list_invoices() -> InvoiceListingResult:
     lister = InvoiceLister(
         port=Ksef2Port(environment=configuration.environment),
         cache=PeriodCache(nip=configuration.nip, environment=configuration.environment),
+        allowance=Allowance(nip=configuration.nip, environment=configuration.environment),
     )
     listing = lister.run(nip=configuration.nip, token=stored.value)
     trail = trail_for(configuration)
@@ -552,6 +555,7 @@ def export_statement(*, period: str, working_directory: str | None) -> Statement
             nip=configuration.nip,
             environment=configuration.environment,
         ),
+        allowance=Allowance(nip=configuration.nip, environment=configuration.environment),
     )
     statement = composer.run(
         nip=configuration.nip,
@@ -727,6 +731,7 @@ def review_invoices() -> InvoiceReviewResult:
         port=Ksef2Port(environment=configuration.environment),
         cache=PeriodCache(nip=configuration.nip, environment=configuration.environment),
         store=ReviewStore(nip=configuration.nip, environment=configuration.environment),
+        allowance=Allowance(nip=configuration.nip, environment=configuration.environment),
     )
     review = reviewer.run(nip=configuration.nip, token=stored.value)
     trail = trail_for(configuration)
