@@ -40,6 +40,16 @@ udokumentowane.
   u podatnika przy pierwszej próbie wydrukowania faktury. Nota zostaje
   źródłem prawdy, zmieniło się tylko to, że ktoś ją wreszcie sprawdza
   (GH-108).
+- O podatności w bibliotece dowiadujemy się my, a nie podatnik. Co
+  tydzień — i przy każdej zmianie przypięć — skanowane są wszystkie
+  wersje z `uv.lock`, czyli dokładnie to, co instaluje się razem z
+  paczką, a nie to, co akurat rozwiązałby świeży instalator. Osobno
+  pilnowana jest aktualność samych przypięć: biblioteki, z których
+  korzysta działający serwer, dostają każda własne zgłoszenie zmiany, a
+  narzędzia deweloperskie jedno wspólne. Podniesienie `cryptography`,
+  która strzeże kluczy do paczek z danymi osobowymi, ma być widoczne, a
+  nie schowane w zbiorczej zmianie obok poprawki formatowania kodu
+  (GH-109).
 
 ### Poprawione
 

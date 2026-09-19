@@ -67,6 +67,11 @@ packages = ["src/ksef_mcp"]
 dev = [
     "anyio==4.15.1",
     "bump-my-version==1.5.1",
+    # The scanner belongs in the lock file rather than in a `--with` flag on
+    # the workflow: a scanner pinned only in CI is a version nobody updates,
+    # and a stale advisory database is the one failure this job cannot report.
+    # Here Dependabot bumps it along with the rest of the dev group (#109).
+    "pip-audit==2.9.0",
     "pytest==9.1.1",
     "pytest-cov==7.1.0",
     "ruff==0.16.7",
