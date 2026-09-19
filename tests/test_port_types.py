@@ -10,7 +10,6 @@ from ksef_mcp.ksef_port import (
     KsefRequestRejected,
     MetadataPage,
     Period,
-    SubjectContext,
 )
 from ksef_mcp.ksef_port.types import MAX_QUERY_WINDOW, WIRE_SUBJECT_TYPES
 from ksef_mcp.synchronisation import INITIAL_LOOKBACK
@@ -53,16 +52,6 @@ def test_a_ksef_number_carries_the_day_it_was_assigned() -> None:
 def test_eight_digits_that_are_not_a_date_are_refused() -> None:
     with pytest.raises(KsefRequestRejected, match="not a date"):
         KsefNumber("1234567890-20260231-0100AB12CD34-56")
-
-
-@pytest.mark.parametrize("rejected", ["12345678", "12345678901", "123456789a"])
-def test_a_subject_needs_a_ten_digit_nip(rejected: str) -> None:
-    with pytest.raises(KsefRequestRejected):
-        SubjectContext(rejected)
-
-
-def test_a_subject_keeps_its_nip() -> None:
-    assert SubjectContext("1234567890").nip == "1234567890"
 
 
 def test_a_window_that_ends_before_it_starts_is_refused() -> None:

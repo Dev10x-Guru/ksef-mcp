@@ -1258,6 +1258,169 @@ def test_purge_refuses_without_configuration(configuration_file: Path) -> None:
     )
 
 
+@pytest.mark.parametrize("traversal", ["../../..", "../1234567890", "1234567890/../.."])
+def test_purge_refuses_a_nip_that_points_outside_the_subject_tree(
+    configured: Path,
+    archived_invoices: InvoiceArchive,
+    traversal: str,
+) -> None:
+    # GH-112. Everything this touches is under `tmp_path` — the archive fixture
+    # writes there and the refusal has to come before any plan is built, so no
+    # deletion is even considered.
+    recorder = Recorder()
+
+    code = cli.main(
+        ["purge", "--nip", traversal],
+        console=recorder.console,
+        configuration_file=configured,
+    )
+
+    assert (code, len(list(archived_invoices.invoice_directory.iterdir()))) == (
+        cli.EXIT_INVALID_NIP,
+        3,
+    )
+
+
+def test_purge_says_it_touched_nothing_when_it_refuses_the_nip(
+    configured: Path,
+    archived_invoices: InvoiceArchive,
+) -> None:
+    recorder = Recorder()
+
+    cli.main(
+        ["purge", "--nip", "../../.."], console=recorder.console, configuration_file=configured
+    )
+
+    assert "nie ruszam żadnego katalogu" in recorder.transcript
+
+
+def test_purge_never_asks_for_confirmation_on_a_refused_nip(
+    configured: Path,
+    archived_invoices: InvoiceArchive,
+) -> None:
+    # The confirmation prompt is a guard against a mistake, not against bad
+    # input. A refusal that reached it would be asking the person to approve a
+    # plan the tool should never have drawn up.
+    recorder = Recorder()
+
+    cli.main(
+        ["purge", "--nip", "../../.."], console=recorder.console, configuration_file=configured
+    )
+
+    assert recorder.prompts == []
+
+
+def test_purge_accepts_a_grouped_nip_as_the_same_subject(
+    configured: Path,
+    archived_invoices: InvoiceArchive,
+) -> None:
+    recorder = Recorder(answers=["t"])
+
+    code = cli.main(
+        ["purge", "--nip", "123-456-78-90", "--do", "2025-12-31"],
+        console=recorder.console,
+        configuration_file=configured,
+    )
+
+    assert (code, "123-456-78-90" in recorder.transcript) == (cli.EXIT_OK, False)
+
+
+def test_token_status_refuses_a_nip_that_is_not_one() -> None:
+    recorder = Recorder()
+
+    code = cli.main(["token", "status", "--nip", "../../.."], console=recorder.console)
+
+    assert (code, "dziesięć cyfr" in recorder.transcript) == (cli.EXIT_INVALID_NIP, True)
+
+
+def test_token_status_reads_a_grouped_nip_as_the_stored_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The keyring key is the NIP, so two spellings used to store two tokens for
+    # one taxpayer — and the second read looked like a token that had vanished.
+    asked: list[str] = []
+
+    def read(*, nip: str) -> token_store.StoredToken | None:
+        asked.append(nip)
+        return token_store.StoredToken(value=TOKEN, source=token_store.TokenSource.KEYRING)
+
+    monkeypatch.setattr(token_store, "read_token", read)
+    recorder = Recorder()
+
+    cli.main(["token", "status", "--nip", "123-456-78-90"], console=recorder.console)
+
+    assert asked == [NIP]
+
+
+def test_verify_refuses_a_configuration_whose_nip_is_not_one(
+    tmp_path: Path,
+    invoice_directory: Path,
+) -> None:
+    path = tmp_path / "state" / config.CONFIGURATION_FILE
+    config.save_configuration(
+        Configuration(
+            nip="nie-jest-nipem",
+            environment=KsefEnvironment.TEST,
+            keyring_backend="keyring.backends.SecretService",
+            invoice_directory=invoice_directory,
+        ),
+        path=path,
+    )
+    recorder = Recorder()
+
+    code = cli.main(["verify"], console=recorder.console, configuration_file=path)
+
+    assert (code, "dziesięć cyfr" in recorder.transcript) == (cli.EXIT_INVALID_NIP, True)
+
+
+def test_onboarding_asks_again_when_the_nip_is_not_one(
+    healthy_node: None,
+    usable_keyring: preflight.KeyringReport,
+    accepting_token_store: list[tuple[str, str]],
+    configuration_file: Path,
+    invoice_directory: Path,
+) -> None:
+    recorder = Recorder(
+        answers=["nie-nip", NIP, "", "", str(invoice_directory), "n", "n", ""],
+        secrets=[TOKEN],
+    )
+
+    cli.main(
+        ["onboarding"],
+        console=recorder.console,
+        working_directory=configuration_file.parent,
+        configuration_file=configuration_file,
+        home=configuration_file.parent,
+    )
+
+    assert accepting_token_store == [(NIP, TOKEN)]
+
+
+def test_onboarding_stores_one_spelling_however_the_nip_was_typed(
+    healthy_node: None,
+    usable_keyring: preflight.KeyringReport,
+    accepting_token_store: list[tuple[str, str]],
+    configuration_file: Path,
+    invoice_directory: Path,
+) -> None:
+    # GH-111: the grouped spelling used to become both a second keyring entry
+    # and a second archive directory, with nothing said about either.
+    recorder = Recorder(
+        answers=["123-456-78-90", "", "", str(invoice_directory), "n", "n", ""],
+        secrets=[TOKEN],
+    )
+
+    cli.main(
+        ["onboarding"],
+        console=recorder.console,
+        working_directory=configuration_file.parent,
+        configuration_file=configuration_file,
+        home=configuration_file.parent,
+    )
+
+    assert config.load_configuration(path=configuration_file).nip == NIP  # type: ignore[union-attr]
+
+
 def test_purge_refuses_a_window_that_ends_before_it_begins(configured: Path) -> None:
     recorder = Recorder()
 
