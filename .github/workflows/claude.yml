@@ -34,14 +34,14 @@ jobs:
       actions: read
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.ref || github.event.issue.pull_request && format('refs/pull/{0}/head', github.event.issue.number) || github.ref }}
 
       - name: Run Claude Code
         id: claude
-        uses: anthropics/claude-code-action@f87768c6d25f92ae6efa7175e223ef77d4cbf97f # v1.0.166
+        uses: anthropics/claude-code-action@7b0b255830a1fab6e602658672acad11c12d841d # v1.0.226
         env:
           COMMENT_BODY: ${{ github.event.comment.body || github.event.review.body || '' }}
           PR_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number || '' }}
