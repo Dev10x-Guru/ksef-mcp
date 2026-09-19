@@ -10,6 +10,19 @@ udokumentowane.
 
 ## Bez wydania
 
+### Zmienione
+
+- Odpowiedzi narzędzi `synchronise_invoices`, `list_recent_invoices`
+  i `review_new_invoices` nazywają rolę podmiotu jednym słowem: pola
+  `subject_types` i `subject_type` nazywają się teraz `subject_roles`
+  i `subject_role`. To samo pojęcie miało dotąd cztery nazwy — dwie
+  z nich w jednej linii kodu — a „kierunek" obiecywał dwie wartości,
+  choć podmiot trzeci i podmiot upoważniony kierunkiem nie są. Agent
+  czytający odpowiedź dostaje jedną nazwę zamiast czterech. Zapisy na
+  dysku — punkty kontynuacji i podręczna pamięć okresów — zachowują
+  dotychczasowy klucz, więc nic nie wymaga ponownej synchronizacji
+  (GH-144).
+
 ### Bezpieczeństwo
 
 - Wydruk faktury do PDF-a ostrzega o katalogu synchronizowanym z chmurą

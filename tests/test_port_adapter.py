@@ -55,7 +55,6 @@ from ksef_mcp.ksef_port import (
     DateType,
     ExportPart,
     ExportState,
-    InvoiceDirection,
     KsefAuthenticationFailed,
     KsefRateLimited,
     KsefRefused,
@@ -66,6 +65,7 @@ from ksef_mcp.ksef_port import (
     PackageLinkExpired,
     Period,
     QueryBudget,
+    SubjectRole,
 )
 from ksef_mcp.ksef_port import adapter as port_adapter
 from ksef_mcp.ksef_port.adapter import (
@@ -219,7 +219,7 @@ def test_the_token_reaches_authentication(session: KsefSession, plan: Plan) -> N
 
 
 def test_metadata_is_requested_newest_first(session: KsefSession, plan: Plan) -> None:
-    session.query_metadata(period=WINDOW, direction=InvoiceDirection.BUYER)
+    session.query_metadata(period=WINDOW, subject_role=SubjectRole.BUYER)
 
     assert plan.service.metadata_calls[0][1].sort_order == "desc"
 
@@ -228,13 +228,13 @@ def test_the_page_size_is_the_ceiling_not_the_sdk_default(
     session: KsefSession,
     plan: Plan,
 ) -> None:
-    session.query_metadata(period=WINDOW, direction=InvoiceDirection.BUYER)
+    session.query_metadata(period=WINDOW, subject_role=SubjectRole.BUYER)
 
     assert plan.service.metadata_calls[0][1].page_size == PAGE_SIZE == 250
 
 
-def test_the_direction_reaches_the_sdk_as_a_role(session: KsefSession, plan: Plan) -> None:
-    session.query_metadata(period=WINDOW, direction=InvoiceDirection.SELLER)
+def test_the_subject_role_reaches_the_sdk_as_a_role(session: KsefSession, plan: Plan) -> None:
+    session.query_metadata(period=WINDOW, subject_role=SubjectRole.SELLER)
 
     assert plan.service.metadata_calls[0][0].role == "seller"
 
@@ -248,7 +248,7 @@ def test_a_synchronisation_window_asks_ksef_to_stop_at_the_high_water_mark(
             since=datetime(2026, 8, 1, tzinfo=UTC),
             now=datetime(2026, 9, 1, tzinfo=UTC),
         ),
-        direction=InvoiceDirection.BUYER,
+        subject_role=SubjectRole.BUYER,
     )
     sent = plan.service.metadata_calls[0][0]
 
@@ -261,7 +261,7 @@ def test_a_synchronisation_window_asks_ksef_to_stop_at_the_high_water_mark(
 def test_an_invoice_arrives_as_the_eight_columns_plus_its_counterparties(
     session: KsefSession,
 ) -> None:
-    page = session.query_metadata(period=WINDOW, direction=InvoiceDirection.BUYER)
+    page = session.query_metadata(period=WINDOW, subject_role=SubjectRole.BUYER)
     first = page.invoices[0]
 
     assert (
@@ -284,7 +284,7 @@ def test_an_invoice_arrives_as_the_eight_columns_plus_its_counterparties(
 def test_amounts_arrive_as_decimals_so_a_comparison_cannot_invent_a_grosz(
     session: KsefSession,
 ) -> None:
-    page = session.query_metadata(period=WINDOW, direction=InvoiceDirection.BUYER)
+    page = session.query_metadata(period=WINDOW, subject_role=SubjectRole.BUYER)
     first = page.invoices[0]
 
     assert (first.gross_amount, first.net_amount, first.vat_amount) == (
@@ -297,7 +297,7 @@ def test_amounts_arrive_as_decimals_so_a_comparison_cannot_invent_a_grosz(
 def test_a_page_carries_the_high_water_mark_the_next_window_starts_from(
     session: KsefSession,
 ) -> None:
-    page = session.query_metadata(period=WINDOW, direction=InvoiceDirection.BUYER)
+    page = session.query_metadata(period=WINDOW, subject_role=SubjectRole.BUYER)
 
     assert page.hwm_date == HWM
 
@@ -349,13 +349,13 @@ def stopped_session(stopped: Plan, port: Ksef2Port) -> Iterator[KsefSession]:
 
 
 def test_the_first_page_is_asked_for_by_the_number_zero(session: KsefSession, plan: Plan) -> None:
-    session.query_metadata(period=WINDOW, direction=InvoiceDirection.BUYER)
+    session.query_metadata(period=WINDOW, subject_role=SubjectRole.BUYER)
 
     assert plan.service.metadata_calls[0][1].page_offset == 0
 
 
 def test_a_first_page_reports_the_continuation_behind_it(paged_session: KsefSession) -> None:
-    page = paged_session.query_metadata(period=WINDOW, direction=InvoiceDirection.BUYER)
+    page = paged_session.query_metadata(period=WINDOW, subject_role=SubjectRole.BUYER)
 
     assert page.has_more is True
 
@@ -363,7 +363,7 @@ def test_a_first_page_reports_the_continuation_behind_it(paged_session: KsefSess
 def test_the_page_number_asked_for_reaches_the_sdk(paged_session: KsefSession, paged: Plan) -> None:
     paged_session.query_metadata(
         period=WINDOW,
-        direction=InvoiceDirection.BUYER,
+        subject_role=SubjectRole.BUYER,
         page_offset=1,
     )
 
@@ -373,7 +373,7 @@ def test_the_page_number_asked_for_reaches_the_sdk(paged_session: KsefSession, p
 def test_a_page_says_which_number_it_came_back_from(paged_session: KsefSession) -> None:
     page = paged_session.query_metadata(
         period=WINDOW,
-        direction=InvoiceDirection.BUYER,
+        subject_role=SubjectRole.BUYER,
         page_offset=1,
     )
 
@@ -385,7 +385,7 @@ def test_the_page_behind_the_first_brings_what_the_first_left_out(
 ) -> None:
     page = paged_session.query_metadata(
         period=WINDOW,
-        direction=InvoiceDirection.BUYER,
+        subject_role=SubjectRole.BUYER,
         page_offset=1,
     )
 
@@ -395,7 +395,7 @@ def test_the_page_behind_the_first_brings_what_the_first_left_out(
 def test_the_last_page_of_a_window_stops_reporting_more(paged_session: KsefSession) -> None:
     page = paged_session.query_metadata(
         period=WINDOW,
-        direction=InvoiceDirection.BUYER,
+        subject_role=SubjectRole.BUYER,
         page_offset=1,
     )
 
@@ -407,7 +407,7 @@ def test_a_further_page_is_still_asked_for_at_the_ceiling_size_and_newest_first(
 ) -> None:
     paged_session.query_metadata(
         period=WINDOW,
-        direction=InvoiceDirection.BUYER,
+        subject_role=SubjectRole.BUYER,
         page_offset=1,
     )
     sent = paged.service.metadata_calls[0][1]
@@ -418,7 +418,7 @@ def test_a_further_page_is_still_asked_for_at_the_ceiling_size_and_newest_first(
 def test_a_package_ksef_cut_short_arrives_marked_as_cut_short(
     stopped_session: KsefSession,
 ) -> None:
-    page = stopped_session.query_metadata(period=WINDOW, direction=InvoiceDirection.BUYER)
+    page = stopped_session.query_metadata(period=WINDOW, subject_role=SubjectRole.BUYER)
 
     assert page.truncated is True
 
@@ -526,7 +526,7 @@ def test_a_refusal_is_not_mistaken_for_an_unreadable_limit(
 
 
 def test_an_export_keeps_the_key_it_was_minted_with(session: KsefSession) -> None:
-    handle = session.start_export(period=WINDOW, direction=InvoiceDirection.BUYER)
+    handle = session.start_export(period=WINDOW, subject_role=SubjectRole.BUYER)
 
     assert (handle.reference, handle.encryption.key, handle.encryption.initialisation_vector) == (
         "EXP-1",
@@ -536,7 +536,7 @@ def test_an_export_keeps_the_key_it_was_minted_with(session: KsefSession) -> Non
 
 
 def test_a_ready_export_reports_where_its_parts_live(session: KsefSession) -> None:
-    handle = session.start_export(period=WINDOW, direction=InvoiceDirection.BUYER)
+    handle = session.start_export(period=WINDOW, subject_role=SubjectRole.BUYER)
 
     status = session.check_export(handle=handle)
 
@@ -550,7 +550,7 @@ def test_a_ready_export_reports_where_its_parts_live(session: KsefSession) -> No
 def test_a_truncated_export_names_the_date_the_next_window_starts_from(
     session: KsefSession,
 ) -> None:
-    handle = session.start_export(period=WINDOW, direction=InvoiceDirection.BUYER)
+    handle = session.start_export(period=WINDOW, subject_role=SubjectRole.BUYER)
 
     status = session.check_export(handle=handle)
 
@@ -580,7 +580,7 @@ def test_an_export_without_a_package_is_running_or_failed(
     plan.install(monkeypatch)
 
     with port.session(nip=NIP, token=TOKEN) as session:
-        handle = session.start_export(period=WINDOW, direction=InvoiceDirection.BUYER)
+        handle = session.start_export(period=WINDOW, subject_role=SubjectRole.BUYER)
         status = session.check_export(handle=handle)
 
     assert status.state is expected
@@ -590,7 +590,7 @@ def test_an_invoice_is_downloaded_as_the_bytes_ksef_holds(
     session: KsefSession,
     plan: Plan,
 ) -> None:
-    page = session.query_metadata(period=WINDOW, direction=InvoiceDirection.BUYER)
+    page = session.query_metadata(period=WINDOW, subject_role=SubjectRole.BUYER)
 
     body = session.download_invoice(ksef_number=page.invoices[0].ksef_number)
 
@@ -652,7 +652,7 @@ def test_a_failure_mid_call_is_translated_too(
     Plan(call_error=KSeFSessionError("sesja padła")).install(monkeypatch)
 
     with pytest.raises(KsefRefused), port.session(nip=NIP, token=TOKEN) as session:
-        session.query_metadata(period=WINDOW, direction=InvoiceDirection.BUYER)
+        session.query_metadata(period=WINDOW, subject_role=SubjectRole.BUYER)
 
 
 PART = ExportPart(
@@ -676,7 +676,7 @@ def test_a_package_part_arrives_encrypted_and_untouched(
     plan: Plan,
 ) -> None:
     session.transport = answering(lambda request: httpx.Response(200, content=b"\x00encrypted"))
-    handle = session.start_export(period=WINDOW, direction=InvoiceDirection.BUYER)
+    handle = session.start_export(period=WINDOW, subject_role=SubjectRole.BUYER)
 
     assert session.fetch_part(handle=handle, part=PART) == b"\x00encrypted"
 
@@ -687,7 +687,7 @@ def test_an_expired_package_link_says_so_by_type(session: KsefSession, status: i
     # caller has to tell it apart to know that asking KSeF again is the move
     # (GH-93).
     session.transport = answering(lambda request: httpx.Response(status))
-    handle = session.start_export(period=WINDOW, direction=InvoiceDirection.BUYER)
+    handle = session.start_export(period=WINDOW, subject_role=SubjectRole.BUYER)
 
     with pytest.raises(PackageLinkExpired):
         session.fetch_part(handle=handle, part=PART)
@@ -699,7 +699,7 @@ def test_storage_refusing_for_another_reason_stays_an_ordinary_refusal(
     # A 500 from storage is an outage, and an outage does heal by waiting —
     # reading it as an expiry would drop a package that is still there.
     session.transport = answering(lambda request: httpx.Response(500))
-    handle = session.start_export(period=WINDOW, direction=InvoiceDirection.BUYER)
+    handle = session.start_export(period=WINDOW, subject_role=SubjectRole.BUYER)
 
     with pytest.raises(KsefRefused) as refusal:
         session.fetch_part(handle=handle, part=PART)
@@ -711,7 +711,7 @@ def test_storage_that_cannot_be_reached_says_so(session: KsefSession) -> None:
         raise httpx.ConnectError("brak sieci")
 
     session.transport = answering(refuse)
-    handle = session.start_export(period=WINDOW, direction=InvoiceDirection.BUYER)
+    handle = session.start_export(period=WINDOW, subject_role=SubjectRole.BUYER)
 
     with pytest.raises(KsefUnreachable):
         session.fetch_part(handle=handle, part=PART)

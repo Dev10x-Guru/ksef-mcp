@@ -75,7 +75,7 @@ from ksef_mcp.listing import (
 from ksef_mcp.paths import SubjectScope
 from ksef_mcp.period_cache import PeriodCache, PeriodMetadataReader
 from ksef_mcp.storage import exclusive_write, require_schema, written_atomically
-from ksef_mcp.synchronisation import SYNCHRONISED_DIRECTIONS
+from ksef_mcp.synchronisation import SYNCHRONISED_SUBJECT_ROLES
 
 REVIEW_FILE: Final[str] = "review.json"
 
@@ -276,7 +276,7 @@ def arrived_before_this_month(invoice: InvoiceMetadata, *, moment: datetime) -> 
 
 
 @dataclass(frozen=True)
-class DirectionReview:
+class SubjectRoleReview:
     """One subject type's delta, already worded for the chat window."""
 
     question: Question
@@ -299,7 +299,7 @@ class InvoiceReview:
     threshold: int
     period: Period
     ledger_path: str
-    directions: tuple[DirectionReview, ...]
+    subject_roles: tuple[SubjectRoleReview, ...]
 
 
 def _incompleteness(complete: bool, *, budget_bound: bool) -> str:
@@ -352,7 +352,7 @@ def assess(
     moment: datetime,
     queried_at: datetime,
     from_cache: bool,
-) -> DirectionReview:
+) -> SubjectRoleReview:
     """Split the window into what has been shown before and what has not."""
     fresh = tuple(invoice for invoice in invoices if str(invoice.ksef_number) not in reviewed)
     count = len(fresh)
@@ -361,7 +361,7 @@ def assess(
     )
     totals = gross_totals(fresh)
     if count == 0:
-        return DirectionReview(
+        return SubjectRoleReview(
             question=question,
             outcome=ReviewOutcome.NOTHING_NEW,
             message=(
@@ -381,7 +381,7 @@ def assess(
         # Nothing is marked as seen here on purpose: the rows were not written
         # out, so nobody saw them, and a ledger that says otherwise is worse than
         # no ledger. The next call reports them again.
-        return DirectionReview(
+        return SubjectRoleReview(
             question=question,
             outcome=ReviewOutcome.SUMMARISED,
             message=(
@@ -401,7 +401,7 @@ def assess(
             queried_at=queried_at,
             from_cache=from_cache,
         )
-    return DirectionReview(
+    return SubjectRoleReview(
         question=question,
         outcome=ReviewOutcome.REPORTED,
         message=(
@@ -429,8 +429,8 @@ def assess(
     )
 
 
-def unasked(*, question: Question, refusal: AllowanceRefusal) -> DirectionReview:
-    return DirectionReview(
+def unasked(*, question: Question, refusal: AllowanceRefusal) -> SubjectRoleReview:
+    return SubjectRoleReview(
         question=question,
         outcome=ReviewOutcome.BUDGET_SPENT,
         message=(
@@ -468,7 +468,7 @@ class InvoiceReviewer:
         period = review_period(moment=moment)
         ledger = self.store.load()
         reviewed = ledger.reviewed
-        reviews: list[DirectionReview] = []
+        reviews: list[SubjectRoleReview] = []
         shown: list[ReviewedInvoice] = []
         with self.port.session(nip=nip, token=token) as opened:
             session = self.allowance.guarded(session=opened)
@@ -476,15 +476,15 @@ class InvoiceReviewer:
                 cache=self.cache,
                 budget=self.allowance.budget(session=session),
             )
-            for direction in SYNCHRONISED_DIRECTIONS:
+            for subject_role in SYNCHRONISED_SUBJECT_ROLES:
                 question = Question(
                     nip=nip,
                     environment=self.port.environment,
-                    direction=direction,
+                    subject_role=subject_role,
                     period=period,
                 )
                 try:
-                    answer = reader.read(session=session, period=period, direction=direction)
+                    answer = reader.read(session=session, period=period, subject_role=subject_role)
                 except ALLOWANCE_REFUSALS as refusal:
                     # One exhausted subject type must not take the other three
                     # with it, and its own answer says the delta is unknown
@@ -522,5 +522,5 @@ class InvoiceReviewer:
             threshold=LISTING_THRESHOLD,
             period=period,
             ledger_path=str(self.store.path),
-            directions=tuple(reviews),
+            subject_roles=tuple(reviews),
         )

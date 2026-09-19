@@ -13,11 +13,11 @@ from ksef_mcp.ksef_port.types import (
     ExportHandle,
     ExportPart,
     ExportStatus,
-    InvoiceDirection,
     KsefLimits,
     KsefNumber,
     MetadataPage,
     Period,
+    SubjectRole,
 )
 
 Result = TypeVar("Result")
@@ -82,13 +82,13 @@ class GuardedSession:
         self,
         *,
         period: Period,
-        direction: InvoiceDirection,
+        subject_role: SubjectRole,
         page_offset: int = 0,
     ) -> MetadataPage:
         return self._guarded(
             lambda: self.inner.query_metadata(
                 period=period,
-                direction=direction,
+                subject_role=subject_role,
                 page_offset=page_offset,
             )
         )
@@ -97,9 +97,11 @@ class GuardedSession:
         self,
         *,
         period: Period,
-        direction: InvoiceDirection,
+        subject_role: SubjectRole,
     ) -> ExportHandle:
-        return self._guarded(lambda: self.inner.start_export(period=period, direction=direction))
+        return self._guarded(
+            lambda: self.inner.start_export(period=period, subject_role=subject_role)
+        )
 
     def check_export(self, *, handle: ExportHandle) -> ExportStatus:
         return self._guarded(lambda: self.inner.check_export(handle=handle))

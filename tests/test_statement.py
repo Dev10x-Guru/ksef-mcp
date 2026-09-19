@@ -27,13 +27,13 @@ from ksef_mcp.archive import InvoiceArchive, digest_of
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port import (
     DateType,
-    InvoiceDirection,
     KsefLimits,
     MetadataPage,
     OperationLimit,
     Period,
     RateLimits,
     SessionCeilings,
+    SubjectRole,
 )
 from ksef_mcp.paths import SUBJECT_DIRECTORY
 from ksef_mcp.period_cache import PeriodCache
@@ -115,7 +115,7 @@ class RecordingSession:
     """Liczy, ile z dwudziestu zapytań na godzinę naprawdę poszło do KSeF-u."""
 
     page: MetadataPage
-    asked: list[InvoiceDirection] = field(default_factory=list)
+    asked: list[SubjectRole] = field(default_factory=list)
     offsets: list[int] = field(default_factory=list)
     # Pages beyond the first, keyed by their zero-based number, so a test can
     # put a real second page behind a `has_more` instead of miming one.
@@ -128,10 +128,10 @@ class RecordingSession:
         self,
         *,
         period: Period,
-        direction: InvoiceDirection,
+        subject_role: SubjectRole,
         page_offset: int = 0,
     ) -> MetadataPage:
-        self.asked.append(direction)
+        self.asked.append(subject_role)
         self.offsets.append(page_offset)
         return self.further.get(page_offset, self.page)
 
@@ -561,7 +561,7 @@ def test_zestawienie_pyta_ksef_tylko_o_role_nabywcy(
 ) -> None:
     # Kontrahentem w każdej z ośmiu kolumn jest sprzedawca, więc podmiot
     # pytający jest nabywcą — jedno zapytanie zamiast czterech.
-    assert session.asked == [InvoiceDirection.BUYER]
+    assert session.asked == [SubjectRole.BUYER]
 
 
 def test_drugie_zlozenie_tego_samego_miesiaca_nie_kosztuje_zapytania(
@@ -655,7 +655,7 @@ def test_skasowanie_katalogu_roboczego_nie_rusza_archiwum_ani_cache(
 ) -> None:
     # Sedno D-032: katalog roboczy jest produktem, magazyn jest wewnętrzny.
     body = archived.invoice_directory / f"{synthetic_number(1)}.xml"
-    remembered = cache.path_for(period=SEPTEMBER.queried, direction=InvoiceDirection.BUYER)
+    remembered = cache.path_for(period=SEPTEMBER.queried, subject_role=SubjectRole.BUYER)
 
     shutil.rmtree(working)
 

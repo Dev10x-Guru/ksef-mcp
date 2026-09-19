@@ -27,7 +27,6 @@ from ksef_mcp.allowance import Allowance
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port import (
     DateType,
-    InvoiceDirection,
     InvoiceMetadata,
     KsefLimits,
     KsefNumber,
@@ -37,6 +36,7 @@ from ksef_mcp.ksef_port import (
     Period,
     RateLimits,
     SessionCeilings,
+    SubjectRole,
 )
 from ksef_mcp.ksef_port.types import MAX_QUERY_WINDOW
 from ksef_mcp.listing import LISTING_THRESHOLD, Question
@@ -44,13 +44,13 @@ from ksef_mcp.metadata import SERVER_NAME
 from ksef_mcp.period_cache import PeriodCache
 from ksef_mcp.review import (
     REVIEW_WINDOW,
-    DirectionReview,
     InvoiceReviewer,
     ReviewedInvoice,
     ReviewLedger,
     ReviewLedgerUnreadable,
     ReviewOutcome,
     ReviewStore,
+    SubjectRoleReview,
     arrived_before_this_month,
     assess,
     now_utc,
@@ -119,11 +119,11 @@ def many(count: int) -> tuple[InvoiceMetadata, ...]:
 class RecordingSession:
     page: MetadataPage
     allowance: OperationLimit = GENEROUS
-    asked: list[InvoiceDirection] = field(default_factory=list)
+    asked: list[SubjectRole] = field(default_factory=list)
     offsets: list[int] = field(default_factory=list)
     # What KSeF itself answers for a given subject type, so a test can put a
     # real 429 in the middle of the loop and ask what the earlier types kept.
-    refusals: dict[InvoiceDirection, Exception] = field(default_factory=dict)
+    refusals: dict[SubjectRole, Exception] = field(default_factory=dict)
 
     def read_limits(self) -> KsefLimits:
         return limits(self.allowance)
@@ -132,12 +132,12 @@ class RecordingSession:
         self,
         *,
         period: Period,
-        direction: InvoiceDirection,
+        subject_role: SubjectRole,
         page_offset: int = 0,
     ) -> MetadataPage:
-        self.asked.append(direction)
+        self.asked.append(subject_role)
         self.offsets.append(page_offset)
-        refusal = self.refusals.get(direction)
+        refusal = self.refusals.get(subject_role)
         if refusal is not None:
             raise refusal
         return self.page
@@ -158,7 +158,7 @@ def question() -> Question:
     return Question(
         nip=NIP,
         environment=KsefEnvironment.TEST,
-        direction=InvoiceDirection.BUYER,
+        subject_role=SubjectRole.BUYER,
         period=WINDOW,
     )
 
@@ -336,7 +336,7 @@ def assessed(
     reviewed: frozenset[str] = frozenset(),
     complete: bool = True,
     budget_bound: bool = False,
-) -> DirectionReview:
+) -> SubjectRoleReview:
     return assess(
         question=question,
         invoices=invoices,
@@ -445,27 +445,27 @@ def test_the_answer_never_carries_an_invoice_body(question: Question) -> None:
     assert "<Faktura" not in assessed(question, (arrived(IN_JULY),)).message
 
 
-def test_the_review_covers_every_subject_type(reviewer: InvoiceReviewer) -> None:
+def test_the_review_covers_every_subject_role(reviewer: InvoiceReviewer) -> None:
     reviewed = reviewer.run(nip=NIP, token=CREDENTIAL)
 
-    assert [one.question.direction for one in reviewed.directions] == [
-        InvoiceDirection.SELLER,
-        InvoiceDirection.BUYER,
-        InvoiceDirection.THIRD_SUBJECT,
-        InvoiceDirection.AUTHORIZED_SUBJECT,
+    assert [one.question.subject_role for one in reviewed.subject_roles] == [
+        SubjectRole.SELLER,
+        SubjectRole.BUYER,
+        SubjectRole.THIRD_SUBJECT,
+        SubjectRole.AUTHORIZED_SUBJECT,
     ]
 
 
 def test_the_first_pass_reports_the_invoice_as_new(reviewer: InvoiceReviewer) -> None:
     reviewed = reviewer.run(nip=NIP, token=CREDENTIAL)
 
-    assert reviewed.directions[0].outcome is ReviewOutcome.REPORTED
+    assert reviewed.subject_roles[0].outcome is ReviewOutcome.REPORTED
 
 
 def test_the_second_pass_reports_nothing_new(reviewer: InvoiceReviewer) -> None:
     reviewer.run(nip=NIP, token=CREDENTIAL)
 
-    assert [one.outcome for one in reviewer.run(nip=NIP, token=CREDENTIAL).directions] == [
+    assert [one.outcome for one in reviewer.run(nip=NIP, token=CREDENTIAL).subject_roles] == [
         ReviewOutcome.NOTHING_NEW
     ] * 4
 
@@ -528,7 +528,7 @@ def test_asking_again_within_the_hour_spends_no_further_query(
     assert len(session.asked) == 4
 
 
-def test_an_unfetched_subject_type_reports_the_delta_as_unknown(
+def test_an_unfetched_subject_role_reports_the_delta_as_unknown(
     cache: PeriodCache, store: ReviewStore, protection: Allowance
 ) -> None:
     reviewer = InvoiceReviewer(
@@ -541,7 +541,7 @@ def test_an_unfetched_subject_type_reports_the_delta_as_unknown(
         clock=lambda: ASKED_AT,
     )
 
-    assert [one.outcome for one in reviewer.run(nip=NIP, token=CREDENTIAL).directions] == [
+    assert [one.outcome for one in reviewer.run(nip=NIP, token=CREDENTIAL).subject_roles] == [
         ReviewOutcome.BUDGET_SPENT
     ] * 4
 
@@ -558,7 +558,7 @@ def a_reviewer_meeting(
         port=RecordingPort(
             session_object=RecordingSession(
                 page=page_of((arrived(IN_JULY),)),
-                refusals={InvoiceDirection.BUYER: refusal},
+                refusals={SubjectRole.BUYER: refusal},
             )
         ),
         cache=cache,
@@ -568,7 +568,7 @@ def a_reviewer_meeting(
     )
 
 
-def test_a_rate_limit_on_one_subject_type_keeps_the_rest_of_the_review(
+def test_a_rate_limit_on_one_subject_role_keeps_the_rest_of_the_review(
     cache: PeriodCache, store: ReviewStore, protection: Allowance
 ) -> None:
     # GH-95, the review side. Losing the whole pass to a 429 would also lose
@@ -580,7 +580,7 @@ def test_a_rate_limit_on_one_subject_type_keeps_the_rest_of_the_review(
         protection=protection,
     )
 
-    assert [one.outcome for one in reviewer.run(nip=NIP, token=CREDENTIAL).directions] == [
+    assert [one.outcome for one in reviewer.run(nip=NIP, token=CREDENTIAL).subject_roles] == [
         ReviewOutcome.REPORTED,
         ReviewOutcome.BUDGET_SPENT,
         ReviewOutcome.REPORTED,
@@ -588,7 +588,7 @@ def test_a_rate_limit_on_one_subject_type_keeps_the_rest_of_the_review(
     ]
 
 
-def test_a_rate_limited_subject_type_says_it_does_not_know(
+def test_a_rate_limited_subject_role_says_it_does_not_know(
     cache: PeriodCache, store: ReviewStore, protection: Allowance
 ) -> None:
     reviewer = a_reviewer_meeting(
@@ -599,11 +599,12 @@ def test_a_rate_limited_subject_type_says_it_does_not_know(
     )
 
     assert (
-        "nie wiem, czy coś doszło" in reviewer.run(nip=NIP, token=CREDENTIAL).directions[1].message
+        "nie wiem, czy coś doszło"
+        in reviewer.run(nip=NIP, token=CREDENTIAL).subject_roles[1].message
     )
 
 
-def test_an_unfetched_subject_type_does_not_claim_anything_was_shown(
+def test_an_unfetched_subject_role_does_not_claim_anything_was_shown(
     cache: PeriodCache, store: ReviewStore, protection: Allowance
 ) -> None:
     reviewer = InvoiceReviewer(
@@ -620,7 +621,7 @@ def test_an_unfetched_subject_type_does_not_claim_anything_was_shown(
     assert store.path.exists() is False
 
 
-def test_an_unfetched_subject_type_says_it_does_not_know(
+def test_an_unfetched_subject_role_says_it_does_not_know(
     cache: PeriodCache, store: ReviewStore, protection: Allowance
 ) -> None:
     reviewer = InvoiceReviewer(
@@ -635,7 +636,7 @@ def test_an_unfetched_subject_type_says_it_does_not_know(
 
     reviewed = reviewer.run(nip=NIP, token=CREDENTIAL)
 
-    assert "nie wiem, czy coś doszło" in reviewed.directions[0].message
+    assert "nie wiem, czy coś doszło" in reviewed.subject_roles[0].message
 
 
 def test_the_default_clock_reads_utc() -> None:

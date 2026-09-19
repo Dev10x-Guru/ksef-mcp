@@ -42,12 +42,12 @@ from ksef_mcp.ksef_port.budget import QueryBudget
 from ksef_mcp.ksef_port.protocol import KsefSession
 from ksef_mcp.ksef_port.types import (
     DateType,
-    InvoiceDirection,
     InvoiceMetadata,
     KsefNumber,
     MetadataPage,
     Operation,
     Period,
+    SubjectRole,
 )
 from ksef_mcp.metadata import SERVER_NAME
 from ksef_mcp.paths import SubjectScope
@@ -108,7 +108,7 @@ def is_cacheable(period: Period) -> bool:
     return period.date_type is not DateType.PERMANENT_STORAGE
 
 
-def cache_key(*, period: Period, direction: InvoiceDirection) -> str:
+def cache_key(*, period: Period, subject_role: SubjectRole) -> str:
     """The identity of one answer: the window, how it was dated, and whose role.
 
     Per period *and* per subject type, because the same company is seller on one
@@ -117,7 +117,7 @@ def cache_key(*, period: Period, direction: InvoiceDirection) -> str:
     """
     spelling = f"{period.date_type}|{period.date_from.isoformat()}|{period.date_to.isoformat()}"
     digest = hashlib.sha256(spelling.encode("utf-8")).hexdigest()[:KEY_LENGTH]
-    return f"{direction}-{digest}"
+    return f"{subject_role}-{digest}"
 
 
 @dataclass(frozen=True)
@@ -130,7 +130,7 @@ class CachedPeriod:
     """
 
     period: Period
-    direction: InvoiceDirection
+    subject_role: SubjectRole
     page: MetadataPage
     queried_at: datetime
 
@@ -209,7 +209,10 @@ def _encode(
         "schema_version": SCHEMA_VERSION,
         "nip": nip,
         "environment": str(environment),
-        "direction": str(remembered.direction),
+        # The key keeps its old spelling, like the synchronisation record's: a
+        # rename would refuse every entry written before this build, and an
+        # entry refused is a metadata query spent again out of twenty an hour.
+        "direction": str(remembered.subject_role),
         "queried_at": remembered.queried_at.isoformat(),
         "period": {
             "date_from": remembered.period.date_from.isoformat(),
@@ -237,7 +240,7 @@ def _decode(document: dict[str, object]) -> CachedPeriod:
             date_to=_decode_end(period["date_to"]),
             date_type=DateType(period["date_type"]),
         ),
-        direction=InvoiceDirection(document["direction"]),
+        subject_role=SubjectRole(document["direction"]),
         page=MetadataPage(
             invoices=tuple(_decode_invoice(invoice) for invoice in invoices),
             has_more=bool(page["has_more"]),
@@ -270,17 +273,17 @@ class PeriodCache:
         scope = SubjectScope.parsed(nip=self.nip, environment=self.environment)
         return scope.cache_root(override=self.root) / PERIOD_DIRECTORY
 
-    def path_for(self, *, period: Period, direction: InvoiceDirection) -> Path:
-        key = cache_key(period=period, direction=direction)
+    def path_for(self, *, period: Period, subject_role: SubjectRole) -> Path:
+        key = cache_key(period=period, subject_role=subject_role)
         return self.directory / f"{key}{CACHE_FILE_SUFFIX}"
 
     def remembered(
         self,
         *,
         period: Period,
-        direction: InvoiceDirection,
+        subject_role: SubjectRole,
     ) -> CachedPeriod | None:
-        path = self.path_for(period=period, direction=direction)
+        path = self.path_for(period=period, subject_role=subject_role)
         if not path.is_file():
             return None
         try:
@@ -304,7 +307,7 @@ class PeriodCache:
         self,
         *,
         period: Period,
-        direction: InvoiceDirection,
+        subject_role: SubjectRole,
         page: MetadataPage,
     ) -> CachedPeriod:
         """Stamp the answer with the moment it was paid for, and keep it on disk.
@@ -320,13 +323,13 @@ class PeriodCache:
         """
         entry = CachedPeriod(
             period=period,
-            direction=direction,
+            subject_role=subject_role,
             page=page,
             queried_at=self.clock(),
         )
         if not is_cacheable(period) or not page.complete:
             return entry
-        path = self.path_for(period=period, direction=direction)
+        path = self.path_for(period=period, subject_role=subject_role)
         document = _encode(entry, nip=self.nip, environment=self.environment)
         # temp → rename (D-006) here too. A half-written entry would be read as a
         # miss and cost the query this file exists to save, and the interrupted
@@ -356,9 +359,9 @@ class PeriodMetadataReader:
         *,
         session: KsefSession,
         period: Period,
-        direction: InvoiceDirection,
+        subject_role: SubjectRole,
     ) -> PeriodAnswer:
-        remembered = self.cache.remembered(period=period, direction=direction)
+        remembered = self.cache.remembered(period=period, subject_role=subject_role)
         if remembered is not None:
             return PeriodAnswer(
                 page=remembered.page,
@@ -369,14 +372,14 @@ class PeriodMetadataReader:
         # consumed the allowance, and a counter that only counts successes walks
         # the subject into the breach the Ministry logs (D-020).
         self.budget.spend(Operation.METADATA_QUERY)
-        first = session.query_metadata(period=period, direction=direction, page_offset=0)
+        first = session.query_metadata(period=period, subject_role=subject_role, page_offset=0)
         whole = self._completed(
             session=session,
             period=period,
-            direction=direction,
+            subject_role=subject_role,
             page=first,
         )
-        recorded = self.cache.remember(period=period, direction=direction, page=whole)
+        recorded = self.cache.remember(period=period, subject_role=subject_role, page=whole)
         return PeriodAnswer(page=whole, queried_at=recorded.queried_at, from_cache=False)
 
     def _completed(
@@ -384,7 +387,7 @@ class PeriodMetadataReader:
         *,
         session: KsefSession,
         period: Period,
-        direction: InvoiceDirection,
+        subject_role: SubjectRole,
         page: MetadataPage,
     ) -> MetadataPage:
         """Fetch the rest of the window, one metadata query per further page.
@@ -402,7 +405,7 @@ class PeriodMetadataReader:
             self.budget.spend(Operation.METADATA_QUERY)
             page = session.query_metadata(
                 period=period,
-                direction=direction,
+                subject_role=subject_role,
                 page_offset=page.page_offset + 1,
             )
             gathered.extend(page.invoices)
@@ -420,7 +423,7 @@ class PeriodMetadataReader:
         *,
         session: KsefSession,
         period: Period,
-        direction: InvoiceDirection,
+        subject_role: SubjectRole,
     ) -> MetadataPage:
         """The `PeriodReader` the port asks for, over the answer this class gives.
 
@@ -428,7 +431,7 @@ class PeriodMetadataReader:
         they were paid for — but `check_connection` lives inside the port and
         cannot name `PeriodAnswer`, so the narrow half is spelled out here.
         """
-        return self.read(session=session, period=period, direction=direction).page
+        return self.read(session=session, period=period, subject_role=subject_role).page
 
 
 @dataclass(frozen=True)

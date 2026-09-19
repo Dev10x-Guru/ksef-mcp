@@ -7,10 +7,10 @@ from ksef_mcp.ksef_port.protocol import KsefPort, KsefSession
 from ksef_mcp.ksef_port.types import (
     Credential,
     DateType,
-    InvoiceDirection,
     InvoiceMetadata,
     MetadataPage,
     Period,
+    SubjectRole,
 )
 
 DEFAULT_WINDOW: Final[timedelta] = timedelta(days=30)
@@ -32,7 +32,7 @@ class PeriodReader(Protocol):
         *,
         session: KsefSession,
         period: Period,
-        direction: InvoiceDirection,
+        subject_role: SubjectRole,
     ) -> MetadataPage:
         """Answer the window, from disk when it can and from KSeF when it must."""
 
@@ -106,7 +106,7 @@ def check_connection(
         page = readers.reader_for(session=session).page_for(
             session=session,
             period=period,
-            direction=InvoiceDirection.BUYER,
+            subject_role=SubjectRole.BUYER,
         )
     found = page.invoices[:limit]
     return ConnectionCheck(

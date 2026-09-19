@@ -24,7 +24,6 @@ from ksef_mcp.ksef_port import (
     ExportState,
     ExportStatus,
     GuardedSession,
-    InvoiceDirection,
     KsefAuthenticationFailed,
     KsefLimits,
     KsefNumber,
@@ -36,6 +35,7 @@ from ksef_mcp.ksef_port import (
     MetadataPage,
     Period,
     RetryPolicy,
+    SubjectRole,
 )
 
 WINDOW = Period(
@@ -84,13 +84,13 @@ class ScriptedSession:
         self,
         *,
         period: Period,
-        direction: InvoiceDirection,
+        subject_role: SubjectRole,
         page_offset: int = 0,
     ) -> MetadataPage:
         self._answer("query_metadata")
         return MetadataPage(invoices=(), has_more=False, truncated=False, hwm_date=None)
 
-    def start_export(self, *, period: Period, direction: InvoiceDirection) -> ExportHandle:
+    def start_export(self, *, period: Period, subject_role: SubjectRole) -> ExportHandle:
         self._answer("start_export")
         return ExportHandle(reference="EXP-1", encryption=None)
 
@@ -152,7 +152,7 @@ def test_the_wrapper_is_still_a_session(guarded: GuardedSession) -> None:
 def test_a_call_that_works_reaches_the_session_underneath(
     guarded: GuardedSession, inner: ScriptedSession
 ) -> None:
-    guarded.query_metadata(period=WINDOW, direction=InvoiceDirection.BUYER)
+    guarded.query_metadata(period=WINDOW, subject_role=SubjectRole.BUYER)
 
     assert inner.calls == ["query_metadata"]
 
@@ -160,7 +160,7 @@ def test_a_call_that_works_reaches_the_session_underneath(
 def test_a_call_that_works_says_the_run_is_over(
     guarded: GuardedSession, breaker: RecordingBreaker
 ) -> None:
-    guarded.query_metadata(period=WINDOW, direction=InvoiceDirection.BUYER)
+    guarded.query_metadata(period=WINDOW, subject_role=SubjectRole.BUYER)
 
     assert breaker.successes == 1
 
@@ -178,7 +178,7 @@ def test_every_way_ksef_says_no_is_counted(breaker: RecordingBreaker, refusal: E
     guarded = GuardedSession(inner=ScriptedSession(failure=refusal), breaker=breaker)
 
     with pytest.raises(type(refusal)):
-        guarded.query_metadata(period=WINDOW, direction=InvoiceDirection.BUYER)
+        guarded.query_metadata(period=WINDOW, subject_role=SubjectRole.BUYER)
 
     assert len(breaker.refusals) == 1
 
@@ -192,7 +192,7 @@ def test_no_answer_at_all_is_not_a_refusal(breaker: RecordingBreaker) -> None:
     )
 
     with pytest.raises(KsefUnreachable):
-        guarded.query_metadata(period=WINDOW, direction=InvoiceDirection.BUYER)
+        guarded.query_metadata(period=WINDOW, subject_role=SubjectRole.BUYER)
 
     assert breaker.refusals == []
 
@@ -204,7 +204,7 @@ def test_only_ksef_s_own_wait_is_passed_on(breaker: RecordingBreaker) -> None:
     )
 
     with pytest.raises(KsefRateLimited):
-        guarded.query_metadata(period=WINDOW, direction=InvoiceDirection.BUYER)
+        guarded.query_metadata(period=WINDOW, subject_role=SubjectRole.BUYER)
 
     assert breaker.refusals == [90]
 
@@ -216,7 +216,7 @@ def test_a_refusal_that_names_no_wait_invents_none(breaker: RecordingBreaker) ->
     )
 
     with pytest.raises(KsefRefused):
-        guarded.query_metadata(period=WINDOW, direction=InvoiceDirection.BUYER)
+        guarded.query_metadata(period=WINDOW, subject_role=SubjectRole.BUYER)
 
     assert breaker.refusals == [None]
 
@@ -228,7 +228,7 @@ def test_a_blocked_breaker_stops_the_call_before_it_is_sent(
     guarded = GuardedSession(inner=inner, breaker=breaker)
 
     with pytest.raises(KsefRequestRejected):
-        guarded.query_metadata(period=WINDOW, direction=InvoiceDirection.BUYER)
+        guarded.query_metadata(period=WINDOW, subject_role=SubjectRole.BUYER)
 
     assert inner.calls == []
 
@@ -248,7 +248,7 @@ def test_a_package_part_is_delegated_without_the_fuse(
     ("call", "expected"),
     [
         (
-            lambda session: session.start_export(period=WINDOW, direction=InvoiceDirection.BUYER),
+            lambda session: session.start_export(period=WINDOW, subject_role=SubjectRole.BUYER),
             "start_export",
         ),
         (lambda session: session.check_export(handle=HANDLE), "check_export"),
@@ -305,7 +305,7 @@ def test_a_policy_that_waits_uses_only_the_wait_ksef_named(
     )
 
     with pytest.raises(KsefRateLimited):
-        guarded.query_metadata(period=WINDOW, direction=InvoiceDirection.BUYER)
+        guarded.query_metadata(period=WINDOW, subject_role=SubjectRole.BUYER)
 
     assert naps == [30]
 
@@ -323,6 +323,6 @@ def test_a_policy_that_waits_still_counts_the_refusal_once(
     )
 
     with pytest.raises(KsefRateLimited):
-        guarded.query_metadata(period=WINDOW, direction=InvoiceDirection.BUYER)
+        guarded.query_metadata(period=WINDOW, subject_role=SubjectRole.BUYER)
 
     assert len(breaker.refusals) == 1

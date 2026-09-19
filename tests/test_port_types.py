@@ -9,11 +9,11 @@ from ksef_mcp.ksef_port import (
     ExportStatus,
     InvalidKsefIdentifier,
     InvalidPeriod,
-    InvoiceDirection,
     KsefNumber,
     KsefPortError,
     MetadataPage,
     Period,
+    SubjectRole,
 )
 from ksef_mcp.ksef_port.types import MAX_QUERY_WINDOW, WIRE_SUBJECT_TYPES
 from ksef_mcp.synchronisation import INITIAL_LOOKBACK
@@ -125,16 +125,16 @@ def test_the_first_lookback_is_defined_from_the_ceiling_not_independently() -> N
 
 
 @pytest.mark.parametrize(
-    ("direction", "wire"),
+    ("subject_role", "wire"),
     [
-        (InvoiceDirection.SELLER, "Subject1"),
-        (InvoiceDirection.BUYER, "Subject2"),
-        (InvoiceDirection.THIRD_SUBJECT, "Subject3"),
-        (InvoiceDirection.AUTHORIZED_SUBJECT, "SubjectAuthorized"),
+        (SubjectRole.SELLER, "Subject1"),
+        (SubjectRole.BUYER, "Subject2"),
+        (SubjectRole.THIRD_SUBJECT, "Subject3"),
+        (SubjectRole.AUTHORIZED_SUBJECT, "SubjectAuthorized"),
     ],
 )
-def test_every_direction_has_its_wire_name(direction: InvoiceDirection, wire: str) -> None:
-    assert WIRE_SUBJECT_TYPES[direction] == wire
+def test_every_subject_role_has_its_wire_name(subject_role: SubjectRole, wire: str) -> None:
+    assert WIRE_SUBJECT_TYPES[subject_role] == wire
 
 
 def a_status(
@@ -178,13 +178,13 @@ def test_a_package_whose_marker_ksef_left_empty_names_no_point(truncated: bool) 
     assert a_status(truncated=truncated).continuation_marker is None
 
 
-def test_a_continuation_point_stays_bound_to_its_subject_type() -> None:
-    point = ContinuationPoint(direction=InvoiceDirection.THIRD_SUBJECT, reached=NOON)
+def test_a_continuation_point_stays_bound_to_its_subject_role() -> None:
+    point = ContinuationPoint(subject_role=SubjectRole.THIRD_SUBJECT, reached=NOON)
 
     moved = point.advanced_to(marker=NOON + timedelta(days=1))
 
-    assert (moved.direction, moved.reached) == (
-        InvoiceDirection.THIRD_SUBJECT,
+    assert (moved.subject_role, moved.reached) == (
+        SubjectRole.THIRD_SUBJECT,
         NOON + timedelta(days=1),
     )
 

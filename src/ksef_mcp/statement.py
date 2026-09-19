@@ -62,9 +62,9 @@ from ksef_mcp.ksef_port.protocol import KsefPort
 from ksef_mcp.ksef_port.types import (
     Credential,
     DateType,
-    InvoiceDirection,
     InvoiceMetadata,
     Period,
+    SubjectRole,
 )
 from ksef_mcp.listing import CurrencyTotal, gross_totals, invoices_phrase
 from ksef_mcp.metadata import SERVER_NAME
@@ -74,7 +74,7 @@ from ksef_mcp.storage import written_atomically
 # The counterparty on every one of the eight columns is the seller, so the
 # querying subject is the buyer: this is the purchase side of the month, the one
 # an accountant reconciles against what the taxpayer was invoiced.
-STATEMENT_DIRECTION: Final[InvoiceDirection] = InvoiceDirection.BUYER
+STATEMENT_SUBJECT_ROLE: Final[SubjectRole] = SubjectRole.BUYER
 
 STATEMENT_PREFIX: Final[str] = "zestawienie"
 
@@ -493,7 +493,7 @@ class StatementComposer:
             answer = reader.read(
                 session=session,
                 period=window,
-                direction=STATEMENT_DIRECTION,
+                subject_role=STATEMENT_SUBJECT_ROLE,
             )
         rows = rows_for(invoices=answer.page.invoices, archive=self.archive)
         totals = gross_totals(answer.page.invoices)

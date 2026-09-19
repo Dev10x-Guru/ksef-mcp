@@ -26,7 +26,7 @@ from ksef_mcp.ksef_port.types import (
     ExportPart,
     ExportState,
     ExportStatus,
-    InvoiceDirection,
+    SubjectRole,
 )
 from ksef_mcp.paths import SubjectScope
 from ksef_mcp.storage import exclusive_write, require_schema, written_atomically
@@ -54,8 +54,8 @@ STATE_FILE_MODE: Final[int] = 0o600
 # Subject 3 and the authorized subject appear rarely; the Ministry's guidance is
 # once a day in a night window. Keeping them off the daytime rotation is what
 # leaves the frequent two their share of twenty exports an hour (D-031 §5).
-OCCASIONAL_DIRECTIONS: Final[frozenset[InvoiceDirection]] = frozenset(
-    {InvoiceDirection.THIRD_SUBJECT, InvoiceDirection.AUTHORIZED_SUBJECT}
+OCCASIONAL_SUBJECT_ROLES: Final[frozenset[SubjectRole]] = frozenset(
+    {SubjectRole.THIRD_SUBJECT, SubjectRole.AUTHORIZED_SUBJECT}
 )
 
 # UTC rather than the machine's local time: a window that moves with the
@@ -112,7 +112,7 @@ class PendingExport:
     """
 
     reference: str
-    direction: InvoiceDirection
+    subject_role: SubjectRole
     started_at: datetime
     encryption: ExportEncryption | None
     state: ExportState
@@ -125,14 +125,14 @@ class PendingExport:
         cls,
         *,
         handle: ExportHandle,
-        direction: InvoiceDirection,
+        subject_role: SubjectRole,
         started_at: datetime,
         covering_from: datetime,
     ) -> Self:
         """The record written the moment KSeF accepts an export request."""
         return cls(
             reference=handle.reference,
-            direction=direction,
+            subject_role=subject_role,
             started_at=started_at,
             encryption=handle.encryption,
             state=ExportState.RUNNING,
@@ -196,7 +196,7 @@ class PendingExport:
 
 
 @dataclass(frozen=True)
-class DirectionState:
+class SubjectRoleState:
     """One subject type's place in the sequence, plus when it was last asked.
 
     `attempted_at` is scheduling, not domain: it enforces the fifteen-minute
@@ -207,10 +207,10 @@ class DirectionState:
     reached: datetime
     attempted_at: datetime | None = None
 
-    def continuation_point(self, *, direction: InvoiceDirection) -> ContinuationPoint:
-        return ContinuationPoint(direction=direction, reached=self.reached)
+    def continuation_point(self, *, subject_role: SubjectRole) -> ContinuationPoint:
+        return ContinuationPoint(subject_role=subject_role, reached=self.reached)
 
-    def is_due(self, *, direction: InvoiceDirection, moment: datetime) -> bool:
+    def is_due(self, *, subject_role: SubjectRole, moment: datetime) -> bool:
         """Whether this subject type may be asked for an export again yet.
 
         The rule this docstring has always described is now also the rule this
@@ -223,7 +223,7 @@ class DirectionState:
         which is why the caller with no record on disk builds an opening state
         rather than skipping the question: the night window still applies to it.
         """
-        occasional = direction in OCCASIONAL_DIRECTIONS
+        occasional = subject_role in OCCASIONAL_SUBJECT_ROLES
         if occasional and not in_night_window(moment):
             return False
         if self.attempted_at is None:
@@ -248,12 +248,14 @@ class SyncState:
     server look, to the Ministry, like a client working around its allowance.
     """
 
-    directions: dict[InvoiceDirection, DirectionState] = field(default_factory=dict)
+    subject_roles: dict[SubjectRole, SubjectRoleState] = field(default_factory=dict)
     pending: tuple[PendingExport, ...] = ()
     settled: tuple[PendingExport, ...] = ()
 
-    def pending_for(self, direction: InvoiceDirection) -> PendingExport | None:
-        return next((export for export in self.pending if export.direction == direction), None)
+    def pending_for(self, subject_role: SubjectRole) -> PendingExport | None:
+        return next(
+            (export for export in self.pending if export.subject_role == subject_role), None
+        )
 
     def without_pending(self, *, reference: str) -> tuple[PendingExport, ...]:
         return tuple(export for export in self.pending if export.reference != reference)
@@ -278,8 +280,8 @@ class SyncState:
     def without_export(self, *, reference: str) -> SyncState:
         return replace(self, pending=self.without_pending(reference=reference))
 
-    def with_direction(self, direction: InvoiceDirection, state: DirectionState) -> SyncState:
-        return replace(self, directions={**self.directions, direction: state})
+    def with_subject_role(self, subject_role: SubjectRole, state: SubjectRoleState) -> SyncState:
+        return replace(self, subject_roles={**self.subject_roles, subject_role: state})
 
 
 def _encode_part(part: ExportPart) -> dict[str, object]:
@@ -320,7 +322,11 @@ def _encode_pending(export: PendingExport) -> dict[str, object]:
     encryption = export.encryption
     return {
         "reference": export.reference,
-        "direction": str(export.direction),
+        # The key keeps its old spelling on purpose. Renaming it would make
+        # every record written before this build unreadable, and an unreadable
+        # continuation point costs the full resynchronisation this file exists
+        # to prevent — a price nobody should pay for a word.
+        "direction": str(export.subject_role),
         "started_at": export.started_at.isoformat(),
         "state": str(export.state),
         "invoice_count": export.invoice_count,
@@ -350,7 +356,7 @@ def _decode_pending(stored: dict[str, object]) -> PendingExport:
     covering = stored.get("covering_from")
     return PendingExport(
         reference=str(stored["reference"]),
-        direction=InvoiceDirection(stored["direction"]),
+        subject_role=SubjectRole(stored["direction"]),
         started_at=datetime.fromisoformat(str(stored["started_at"])),
         encryption=_decode_encryption(stored),
         state=ExportState(stored["state"]),
@@ -366,22 +372,22 @@ def _encode(state: SyncState, *, nip: str, environment: KsefEnvironment) -> dict
         "nip": nip,
         "environment": str(environment),
         "continuation_points": {
-            str(direction): {
+            str(subject_role): {
                 "reached": stored.reached.isoformat(),
                 "attempted_at": None
                 if stored.attempted_at is None
                 else stored.attempted_at.isoformat(),
             }
-            for direction, stored in state.directions.items()
+            for subject_role, stored in state.subject_roles.items()
         },
         "pending_exports": [_encode_pending(export) for export in state.pending],
         "settled_exports": [_encode_pending(export) for export in state.settled],
     }
 
 
-def _decode_direction(stored: dict[str, object]) -> DirectionState:
+def _decode_subject_role(stored: dict[str, object]) -> SubjectRoleState:
     attempted = stored["attempted_at"]
-    return DirectionState(
+    return SubjectRoleState(
         reached=datetime.fromisoformat(str(stored["reached"])),
         attempted_at=None if attempted is None else datetime.fromisoformat(str(attempted)),
     )
@@ -403,9 +409,9 @@ def _decode(document: dict[str, object]) -> SyncState:
     settled: list[dict[str, object]] = document.get("settled_exports", [])  # type: ignore[assignment]
     queued = tuple(_decode_pending(export) for export in exports)
     return SyncState(
-        directions={
-            InvoiceDirection(direction): _decode_direction(stored)
-            for direction, stored in points.items()
+        subject_roles={
+            SubjectRole(subject_role): _decode_subject_role(stored)
+            for subject_role, stored in points.items()
         },
         # A document written before the journal existed keeps its finished
         # exports in the queue — that is the deadlock GH-94 reports. They move

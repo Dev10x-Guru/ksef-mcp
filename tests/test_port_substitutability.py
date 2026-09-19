@@ -27,7 +27,6 @@ from ksef_mcp.ksef_port import (
     ExportPart,
     ExportState,
     ExportStatus,
-    InvoiceDirection,
     InvoiceMetadata,
     KsefLimits,
     KsefNumber,
@@ -38,6 +37,7 @@ from ksef_mcp.ksef_port import (
     Period,
     RateLimits,
     SessionCeilings,
+    SubjectRole,
     check_connection,
 )
 from ksef_mcp.ksef_port.adapter import Ksef2Port
@@ -77,7 +77,7 @@ class InMemoryKsefSession:
         self,
         *,
         period: Period,
-        direction: InvoiceDirection,
+        subject_role: SubjectRole,
         page_offset: int = 0,
     ) -> MetadataPage:
         return MetadataPage(
@@ -87,7 +87,7 @@ class InMemoryKsefSession:
             hwm_date=HWM,
         )
 
-    def start_export(self, *, period: Period, direction: InvoiceDirection) -> ExportHandle:
+    def start_export(self, *, period: Period, subject_role: SubjectRole) -> ExportHandle:
         return ExportHandle(
             reference="EXP-1",
             encryption=ExportEncryption(key=b"k" * 32, initialisation_vector=b"i" * 16),
@@ -213,7 +213,7 @@ def test_an_export_is_scheduled_and_polled_either_way(port: KsefPort) -> None:
     )
 
     with port.session(nip=NIP, token=TOKEN) as session:
-        handle = session.start_export(period=window, direction=InvoiceDirection.BUYER)
+        handle = session.start_export(period=window, subject_role=SubjectRole.BUYER)
         status = session.check_export(handle=handle)
 
     assert (status.state, status.parts[0].ordinal) == (ExportState.READY, 1)
@@ -226,7 +226,7 @@ def test_a_part_comes_back_as_bytes_either_way(port: KsefPort) -> None:
     )
 
     with port.session(nip=NIP, token=TOKEN) as session:
-        handle = session.start_export(period=window, direction=InvoiceDirection.BUYER)
+        handle = session.start_export(period=window, subject_role=SubjectRole.BUYER)
         part = session.check_export(handle=handle).parts[0]
         session.transport = _mock_storage()
         fetched = session.fetch_part(handle=handle, part=part)

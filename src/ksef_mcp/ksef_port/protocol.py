@@ -7,11 +7,11 @@ from ksef_mcp.ksef_port.types import (
     ExportHandle,
     ExportPart,
     ExportStatus,
-    InvoiceDirection,
     KsefLimits,
     KsefNumber,
     MetadataPage,
     Period,
+    SubjectRole,
 )
 
 
@@ -31,7 +31,7 @@ class KsefSession(Protocol):
         self,
         *,
         period: Period,
-        direction: InvoiceDirection,
+        subject_role: SubjectRole,
         page_offset: int = 0,
     ) -> MetadataPage:
         """List invoice metadata for a window. Never invoice bodies.
@@ -43,7 +43,7 @@ class KsefSession(Protocol):
         self,
         *,
         period: Period,
-        direction: InvoiceDirection,
+        subject_role: SubjectRole,
     ) -> ExportHandle:
         """Queue a package export and keep the AES key it was minted with."""
 

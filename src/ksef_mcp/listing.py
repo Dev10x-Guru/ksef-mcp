@@ -35,13 +35,13 @@ from ksef_mcp.ksef_port.protocol import KsefPort
 from ksef_mcp.ksef_port.types import (
     Credential,
     DateType,
-    InvoiceDirection,
     InvoiceMetadata,
     MetadataPage,
     Period,
+    SubjectRole,
 )
 from ksef_mcp.period_cache import PeriodCache, PeriodMetadataReader
-from ksef_mcp.synchronisation import SYNCHRONISED_DIRECTIONS
+from ksef_mcp.synchronisation import SYNCHRONISED_SUBJECT_ROLES
 
 # D-023, and the number is dimensioned against the need rather than against the
 # API: a month in the studied archive is about thirteen invoices and a full
@@ -53,11 +53,11 @@ LISTING_THRESHOLD: Final[int] = 50
 # this project.
 LISTING_WINDOW: Final[timedelta] = timedelta(days=30)
 
-DIRECTION_LABELS: Final[dict[InvoiceDirection, str]] = {
-    InvoiceDirection.SELLER: "sprzedawca",
-    InvoiceDirection.BUYER: "nabywca",
-    InvoiceDirection.THIRD_SUBJECT: "podmiot trzeci",
-    InvoiceDirection.AUTHORIZED_SUBJECT: "podmiot uprawniony",
+SUBJECT_ROLE_LABELS: Final[dict[SubjectRole, str]] = {
+    SubjectRole.SELLER: "sprzedawca",
+    SubjectRole.BUYER: "nabywca",
+    SubjectRole.THIRD_SUBJECT: "podmiot trzeci",
+    SubjectRole.AUTHORIZED_SUBJECT: "podmiot uprawniony",
 }
 
 DATE_TYPE_LABELS: Final[dict[DateType, str]] = {
@@ -156,14 +156,14 @@ class Question:
 
     nip: str
     environment: KsefEnvironment
-    direction: InvoiceDirection
+    subject_role: SubjectRole
     period: Period
 
     @property
     def restated(self) -> str:
         return (
             f"NIP {self.nip}, środowisko {self.environment}, "
-            f"rola podmiotu: {DIRECTION_LABELS[self.direction]}, "
+            f"rola podmiotu: {SUBJECT_ROLE_LABELS[self.subject_role]}, "
             f"okres od {self.period.date_from.isoformat()} "
             f"do {self.period.date_to.isoformat()} "
             f"wg {DATE_TYPE_LABELS[self.period.date_type]}"
@@ -171,7 +171,7 @@ class Question:
 
 
 @dataclass(frozen=True)
-class DirectionListing:
+class SubjectRoleListing:
     """One subject type's answer, already worded for the chat window."""
 
     question: Question
@@ -191,7 +191,7 @@ class InvoiceListing:
     environment: KsefEnvironment
     threshold: int
     period: Period
-    directions: tuple[DirectionListing, ...]
+    subject_roles: tuple[SubjectRoleListing, ...]
 
 
 def summarise(
@@ -200,7 +200,7 @@ def summarise(
     page: MetadataPage,
     queried_at: datetime,
     from_cache: bool = False,
-) -> DirectionListing:
+) -> SubjectRoleListing:
     """Turn one page into one of three answers, and never into a silent fourth."""
     invoices = page.invoices
     count = len(invoices)
@@ -210,7 +210,7 @@ def summarise(
         # A distinct answer, not an empty list: the question comes back with it,
         # because "nothing here" and "you asked about the wrong month" look
         # identical otherwise.
-        return DirectionListing(
+        return SubjectRoleListing(
             question=question,
             outcome=ListingOutcome.EMPTY,
             message=(
@@ -225,7 +225,7 @@ def summarise(
             from_cache=from_cache,
         )
     if count > LISTING_THRESHOLD:
-        return DirectionListing(
+        return SubjectRoleListing(
             question=question,
             outcome=ListingOutcome.SUMMARISED,
             message=(
@@ -241,7 +241,7 @@ def summarise(
             queried_at=queried_at,
             from_cache=from_cache,
         )
-    return DirectionListing(
+    return SubjectRoleListing(
         question=question,
         outcome=ListingOutcome.LISTED,
         message=(
@@ -270,8 +270,8 @@ def describe_refusal(refusal: AllowanceRefusal) -> str:
     return f"{refusal} KSeF prosi o odczekanie {refusal.retry_after} s."
 
 
-def refused(*, question: Question, refusal: AllowanceRefusal) -> DirectionListing:
-    return DirectionListing(
+def refused(*, question: Question, refusal: AllowanceRefusal) -> SubjectRoleListing:
+    return SubjectRoleListing(
         question=question,
         outcome=ListingOutcome.BUDGET_SPENT,
         message=(
@@ -303,22 +303,22 @@ class InvoiceLister:
 
     def run(self, *, nip: str, token: Credential) -> InvoiceListing:
         period = listing_period(moment=self.clock())
-        listings: list[DirectionListing] = []
+        listings: list[SubjectRoleListing] = []
         with self.port.session(nip=nip, token=token) as opened:
             session = self.allowance.guarded(session=opened)
             reader = PeriodMetadataReader(
                 cache=self.cache,
                 budget=self.allowance.budget(session=session),
             )
-            for direction in SYNCHRONISED_DIRECTIONS:
+            for subject_role in SYNCHRONISED_SUBJECT_ROLES:
                 question = Question(
                     nip=nip,
                     environment=self.port.environment,
-                    direction=direction,
+                    subject_role=subject_role,
                     period=period,
                 )
                 try:
-                    answer = reader.read(session=session, period=period, direction=direction)
+                    answer = reader.read(session=session, period=period, subject_role=subject_role)
                 except ALLOWANCE_REFUSALS as refusal:
                     # One exhausted subject type must not take the other three
                     # with it: the answers already gathered are the ones the
@@ -339,5 +339,5 @@ class InvoiceLister:
             environment=self.port.environment,
             threshold=LISTING_THRESHOLD,
             period=period,
-            directions=tuple(listings),
+            subject_roles=tuple(listings),
         )

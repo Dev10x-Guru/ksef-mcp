@@ -34,7 +34,6 @@ from ksef_mcp.ksef_port import (
     ExportHandle,
     ExportPart,
     ExportStatus,
-    InvoiceDirection,
     KsefLimits,
     KsefNumber,
     KsefRequestRejected,
@@ -44,6 +43,7 @@ from ksef_mcp.ksef_port import (
     Period,
     RateLimits,
     SessionCeilings,
+    SubjectRole,
 )
 
 NIP = "1234567890"
@@ -96,12 +96,12 @@ class CountingSession:
         self,
         *,
         period: Period,
-        direction: InvoiceDirection,
+        subject_role: SubjectRole,
         page_offset: int = 0,
     ) -> MetadataPage:
         raise AssertionError("sięgnięto do KSeF")
 
-    def start_export(self, *, period: Period, direction: InvoiceDirection) -> ExportHandle:
+    def start_export(self, *, period: Period, subject_role: SubjectRole) -> ExportHandle:
         raise AssertionError("sięgnięto do KSeF")
 
     def check_export(self, *, handle: ExportHandle) -> ExportStatus:

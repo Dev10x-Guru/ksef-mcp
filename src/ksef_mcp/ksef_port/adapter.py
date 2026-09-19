@@ -33,7 +33,6 @@ from ksef_mcp.ksef_port.types import (
     ExportPart,
     ExportState,
     ExportStatus,
-    InvoiceDirection,
     InvoiceMetadata,
     KsefLimits,
     KsefNumber,
@@ -42,6 +41,7 @@ from ksef_mcp.ksef_port.types import (
     Period,
     RateLimits,
     SessionCeilings,
+    SubjectRole,
 )
 
 # The SDK constructor defaults to PRODUCTION. Every call site here passes the
@@ -139,10 +139,10 @@ def as_amount(value: float) -> Decimal:
     return Decimal(str(value))
 
 
-def as_filters(*, period: Period, direction: InvoiceDirection) -> InvoicesFilter:
+def as_filters(*, period: Period, subject_role: SubjectRole) -> InvoicesFilter:
     synchronising = period.date_type is DateType.PERMANENT_STORAGE
     return InvoicesFilter(
-        role=direction.value,
+        role=subject_role.value,
         date_type=period.date_type.value,
         date_from=period.date_from,
         # Both ends come from the `Period`, and neither is invented here. This
@@ -278,7 +278,7 @@ class Ksef2Session:
         self,
         *,
         period: Period,
-        direction: InvoiceDirection,
+        subject_role: SubjectRole,
         page_offset: int = 0,
     ) -> MetadataPage:
         # Descending, because the SDK sorts ascending by default and the last
@@ -290,7 +290,7 @@ class Ksef2Session:
         )
         with translated():
             page = self.authenticated.invoices.query_metadata(
-                filters=as_filters(period=period, direction=direction),
+                filters=as_filters(period=period, subject_role=subject_role),
                 params=params,
             )
         return MetadataPage(
@@ -305,11 +305,11 @@ class Ksef2Session:
         self,
         *,
         period: Period,
-        direction: InvoiceDirection,
+        subject_role: SubjectRole,
     ) -> ExportHandle:
         with translated():
             scheduled = self.authenticated.invoices.schedule_export(
-                filters=as_filters(period=period, direction=direction),
+                filters=as_filters(period=period, subject_role=subject_role),
             )
         # The key never goes to the keyring: it lives minutes to hours and is
         # worthless once the package is archived (D-033).
