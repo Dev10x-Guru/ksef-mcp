@@ -310,7 +310,7 @@ class WorkingDirectory:
         if self.cloud_marker is not None:
             told.append(
                 f"Katalog roboczy wygląda na synchronizowany do chmury "
-                f"({self.cloud_marker}). Zestawienie nazywa kontrahentów — "
+                f"({self.cloud_marker}). Dokument nazywa kontrahentów — "
                 f"kopia trafi na cudzy serwer."
             )
         if self.mode != INVOICE_DIRECTORY_MODE:

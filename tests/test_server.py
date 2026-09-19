@@ -1156,6 +1156,24 @@ def test_a_caller_may_declare_the_directory_for_one_render(
     assert Path(result.path).parent == elsewhere
 
 
+def test_a_cloud_synced_directory_is_named_before_the_pdf_leaves(
+    rendering: None,
+    tmp_path: Path,
+) -> None:
+    result = render_invoice(
+        ksef_number=RENDER_NUMBER,
+        working_directory=str(tmp_path / "OneDrive" / "faktury"),
+    )
+
+    assert "onedrive" in result.warnings[0]
+
+
+def test_a_private_directory_leaves_the_render_answer_without_caveats(
+    rendered: RenderedInvoiceResult,
+) -> None:
+    assert rendered.warnings == []
+
+
 def test_an_unsynchronised_invoice_is_refused_rather_than_fetched(rendering: None) -> None:
     with pytest.raises(InvoiceNotArchived, match="Uruchom najpierw"):
         render_invoice(
