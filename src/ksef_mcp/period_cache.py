@@ -391,3 +391,6 @@ class MeteredPeriods:
             cache=self.cache,
             budget=self.allowance.budget(session=session),
         )
+
+    def guarded(self, *, session: KsefSession) -> KsefSession:
+        return self.allowance.guarded(session=session)

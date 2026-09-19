@@ -10,6 +10,7 @@ czyszczarkę dysku: licznik w katalogu danych, zapamiętane limity w cache
 (D-032).
 """
 
+import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -18,13 +19,18 @@ import pytest
 from ksef_mcp.allowance import (
     LEDGER_FILE,
     LIMITS_FILE,
+    REFUSAL_COOLDOWN,
+    REFUSAL_LIMIT,
+    REFUSALS_FILE,
     SCHEMA_VERSION,
     Allowance,
     BudgetLedger,
     LimitsCache,
+    RefusalRun,
 )
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port import (
+    NO_AUTOMATIC_RETRY,
     ExportHandle,
     ExportPart,
     ExportStatus,
@@ -397,6 +403,161 @@ def test_the_default_roots_are_the_platform_ones(clock: MovableClock) -> None:
     everyday = Allowance(nip=NIP, environment=KsefEnvironment.TEST, clock=clock)
 
     assert (everyday.ledger.root, everyday.limits.root) == (None, None)
+
+
+def test_a_fresh_fuse_lets_the_call_through(protection: Allowance) -> None:
+    protection.breaker.refuse_early()
+
+
+def test_a_few_refusals_are_not_yet_a_pattern(protection: Allowance) -> None:
+    # Jeden pechowy telefon albo wygasły token, zauważony i poprawiony, nie może
+    # zamykać podmiotu na godzinę.
+    for _ in range(REFUSAL_LIMIT - 1):
+        protection.breaker.note_refusal(retry_after=None)
+
+    protection.breaker.refuse_early()
+
+
+def test_a_run_of_refusals_stops_the_next_call_locally(protection: Allowance) -> None:
+    for _ in range(REFUSAL_LIMIT):
+        protection.breaker.note_refusal(retry_after=None)
+
+    with pytest.raises(KsefRequestRejected):
+        protection.breaker.refuse_early()
+
+
+def test_the_local_refusal_says_from_when_asking_is_allowed_again(
+    protection: Allowance,
+) -> None:
+    # „Spróbuj później" bez momentu zamienia bezpiecznik w zagadkę.
+    for _ in range(REFUSAL_LIMIT):
+        protection.breaker.note_refusal(retry_after=None)
+
+    with pytest.raises(
+        KsefRequestRejected,
+        match=re.escape((NOON + REFUSAL_COOLDOWN).isoformat()),
+    ):
+        protection.breaker.refuse_early()
+
+
+def test_one_answer_ends_the_run(protection: Allowance) -> None:
+    for _ in range(REFUSAL_LIMIT - 1):
+        protection.breaker.note_refusal(retry_after=None)
+
+    protection.breaker.note_success()
+    protection.breaker.note_refusal(retry_after=None)
+
+    protection.breaker.refuse_early()
+
+
+def test_a_healthy_pass_writes_no_fuse_at_all(protection: Allowance) -> None:
+    # Każde udane wywołanie zapisujące plik byłoby zapisem na dysk na każde
+    # zapytanie do KSeF-u, żeby skasować zero.
+    protection.breaker.note_success()
+
+    assert protection.breaker.path.exists() is False
+
+
+def test_the_block_lifts_when_the_moment_it_named_has_passed(
+    protection: Allowance, clock: MovableClock
+) -> None:
+    for _ in range(REFUSAL_LIMIT):
+        protection.breaker.note_refusal(retry_after=None)
+
+    clock.advance(REFUSAL_COOLDOWN + timedelta(seconds=1))
+
+    protection.breaker.refuse_early()
+
+
+def test_a_longer_wait_named_by_ksef_is_obeyed(protection: Allowance) -> None:
+    # Honorowanie `Retry-After` to wymaganie, nie detal (D-017).
+    for _ in range(REFUSAL_LIMIT):
+        protection.breaker.note_refusal(retry_after=int(REFUSAL_COOLDOWN.total_seconds()) * 3)
+
+    assert protection.breaker.load().blocked_until == NOON + REFUSAL_COOLDOWN * 3
+
+
+def test_a_shorter_wait_named_by_ksef_does_not_cut_the_fuse_short(
+    protection: Allowance,
+) -> None:
+    # Bezpiecznik jest zatrzymaniem, nie ponowieniem. Wrócić po trzydziestu
+    # sekundach, które bywają w 429, to wznowić dokładnie ten wzorzec.
+    for _ in range(REFUSAL_LIMIT):
+        protection.breaker.note_refusal(retry_after=30)
+
+    assert protection.breaker.load().blocked_until == NOON + REFUSAL_COOLDOWN
+
+
+def test_the_fuse_lives_in_the_data_root(protection: Allowance, tmp_path: Path) -> None:
+    assert protection.breaker.path == tmp_path / "dane" / "subjects" / NIP / "test" / REFUSALS_FILE
+
+
+def test_the_fuse_outlives_the_process_that_blew_it(
+    protection: Allowance, tmp_path: Path, clock: MovableClock
+) -> None:
+    # Sedno GH-99. Licznik zerowany przez `uvx` pozwalałby wznawiać serię przy
+    # każdym uruchomieniu, a szkodę robi właśnie wytrwałość klienta.
+    for _ in range(REFUSAL_LIMIT):
+        protection.breaker.note_refusal(retry_after=None)
+
+    next_process = Allowance(
+        nip=NIP,
+        environment=KsefEnvironment.TEST,
+        data_root=tmp_path / "dane",
+        cache_root=tmp_path / "cache",
+        clock=clock,
+    )
+
+    with pytest.raises(KsefRequestRejected):
+        next_process.breaker.refuse_early()
+
+
+@pytest.mark.parametrize(
+    "damage",
+    ["nie-jest-json", '{"schema_version": 99}', '{"schema_version": 1, "consecutive": 3}'],
+    ids=["truncated", "other-schema", "missing-key"],
+)
+def test_a_damaged_fuse_reads_as_an_intact_one(protection: Allowance, damage: str) -> None:
+    protection.breaker.note_refusal(retry_after=None)
+    protection.breaker.path.write_text(damage, encoding="utf-8")
+
+    assert protection.breaker.load() == RefusalRun()
+
+
+def test_two_subjects_do_not_blow_each_other_s_fuse(tmp_path: Path, clock: MovableClock) -> None:
+    mine = Allowance(
+        nip=NIP,
+        environment=KsefEnvironment.TEST,
+        data_root=tmp_path,
+        cache_root=tmp_path,
+        clock=clock,
+    )
+    theirs = Allowance(
+        nip="9876543210",
+        environment=KsefEnvironment.TEST,
+        data_root=tmp_path,
+        cache_root=tmp_path,
+        clock=clock,
+    )
+    for _ in range(REFUSAL_LIMIT):
+        mine.breaker.note_refusal(retry_after=None)
+
+    theirs.breaker.refuse_early()
+
+
+def test_the_guarded_session_carries_this_subject_s_fuse(
+    protection: Allowance, session: CountingSession
+) -> None:
+    guarded = protection.guarded(session=session)
+
+    assert guarded.breaker == protection.breaker
+
+
+def test_the_guarded_session_keeps_the_single_attempt_default(
+    protection: Allowance, session: CountingSession
+) -> None:
+    # GH-100: podłączona, ale nie zmieniająca ruchu do KSeF-u.
+    assert protection.guarded(session=session).retry is NO_AUTOMATIC_RETRY
 
 
 def test_the_default_clock_is_the_wall_clock_in_utc(tmp_path: Path) -> None:

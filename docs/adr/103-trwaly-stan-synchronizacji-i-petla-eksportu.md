@@ -137,9 +137,11 @@ port już robi na `Retry-After`.
 ze strefą operatora i ze zmianą czasu nie jest regułą, którą da się
 potem odtworzyć z rekordu na dysku.
 
-**Znane ograniczenie:** `QueryBudget` liczy w pamięci procesu i zeruje
-się przy restarcie. Trwałym strażnikiem tempa jest `attempted_at` w
-rekordzie na dysku; licznik jest strażnikiem wewnątrz przebiegu.
+**Ograniczenie zdjęte (GH-97):** `QueryBudget` liczył w pamięci procesu
+i zerował się przy restarcie, więc trwałym strażnikiem tempa był wyłącznie
+`attempted_at` w rekordzie na dysku. Licznik ma teraz własny trwały
+dziennik obok `synchronisation.json` — okno godzinowe obejmuje godzinę,
+a nie jedno wywołanie narzędzia.
 
 ### 5. Odpytywanie statusu jest ograniczone i nie kończy się czekaniem
 
@@ -204,9 +206,9 @@ ten mechanizm ma chronić. Cenę pokrywa niezmiennik z §3.
 - Cały dokument przepisywany przy każdej zmianie. Przy tej wielkości
   stanu bez znaczenia; przy tysiącach oczekujących eksportów wymagałby
   rewizji.
-- `QueryBudget` nie przeżywa restartu, więc proces uruchamiany w pętli
-  co minutę mógłby obejść licznik. Powstrzymuje go `attempted_at` na
-  dysku, ale to dwa mechanizmy zamiast jednego.
+- ~~`QueryBudget` nie przeżywa restartu, więc proces uruchamiany w pętli
+  co minutę mógłby obejść licznik.~~ Zdjęte w GH-97: licznik zapisuje
+  zużycie na dysku, w korzeniu danych, per NIP i środowisko.
 - Brak migracji schematu: rekord w nowszej wersji jest odrzucany, a nie
   konwertowany. Świadome do czasu, aż schemat zmieni się pierwszy raz.
 

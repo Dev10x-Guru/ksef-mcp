@@ -29,6 +29,8 @@ from platformdirs import user_cache_path, user_data_path
 
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port.budget import HOUR, Operation, QueryBudget
+from ksef_mcp.ksef_port.errors import KsefRequestRejected
+from ksef_mcp.ksef_port.guard import GuardedSession
 from ksef_mcp.ksef_port.protocol import KsefSession
 from ksef_mcp.ksef_port.types import KsefLimits, OperationLimit, RateLimits, SessionCeilings
 from ksef_mcp.metadata import SERVER_NAME
@@ -37,6 +39,8 @@ from ksef_mcp.sync_store import SUBJECT_DIRECTORY
 LEDGER_FILE: Final[str] = "budget.json"
 
 LIMITS_FILE: Final[str] = "limits.json"
+
+REFUSALS_FILE: Final[str] = "refusals.json"
 
 STAGING_SUFFIX: Final[str] = ".tmp"
 
@@ -54,6 +58,16 @@ FILE_MODE: Final[int] = 0o600
 # and long enough that opening ten sessions costs one pair of reads instead of
 # twenty (D-031 §8).
 LIMITS_FRESHNESS: Final[timedelta] = HOUR
+
+# How many refusals in a row before this server stops asking on its own. Low
+# enough that a run is caught while it is still short, high enough that a single
+# unlucky call, or one expired token noticed and fixed, never trips it.
+REFUSAL_LIMIT: Final[int] = 5
+
+# How long the local refusal lasts when KSeF named no wait of its own. The same
+# hour the allowance is counted in — not a number invented for the occasion, and
+# not a guess at when the registry will relent (D-017).
+REFUSAL_COOLDOWN: Final[timedelta] = HOUR
 
 
 def now_utc() -> datetime:
@@ -248,6 +262,116 @@ class LimitsCache:
 
 
 @dataclass(frozen=True)
+class RefusalRun:
+    """How many times in a row KSeF has said no, and until when to stop asking."""
+
+    consecutive: int = 0
+    blocked_until: datetime | None = None
+
+
+@dataclass(frozen=True)
+class RefusalLedger:
+    """The local fuse, beside the spent counter and for the same reason.
+
+    `QueryBudget` protects against being answered too often. Nothing protected
+    against being refused too often — and a run of refusals is the pattern MF
+    analyses as working around a limit, answering it with a block that grows
+    longer each time it recurs (D-020, D-031 §8). The harm there comes from the
+    client's persistence, not from any one call, so the fuse has to outlive the
+    process: a counter reset by `uvx` would let every restart resume the run.
+
+    Data root, never cache, for the same reason the spent counter is there: this
+    is a guard, and a guard a disk cleaner may delete is not one.
+    """
+
+    nip: str
+    environment: KsefEnvironment
+    root: Path | None = None
+    clock: Callable[[], datetime] = now_utc
+    limit: int = REFUSAL_LIMIT
+    cooldown: timedelta = REFUSAL_COOLDOWN
+
+    @property
+    def path(self) -> Path:
+        base = user_data_path(appname=SERVER_NAME) if self.root is None else self.root
+        return base / SUBJECT_DIRECTORY / self.nip / str(self.environment) / REFUSALS_FILE
+
+    def load(self) -> RefusalRun:
+        if not self.path.is_file():
+            return RefusalRun()
+        try:
+            document = json.loads(self.path.read_text(encoding="utf-8"))
+            if document["schema_version"] != SCHEMA_VERSION:
+                return RefusalRun()
+            blocked = document["blocked_until"]
+            return RefusalRun(
+                consecutive=int(document["consecutive"]),
+                blocked_until=None if blocked is None else datetime.fromisoformat(str(blocked)),
+            )
+        except (OSError, ValueError, KeyError, TypeError):
+            # A damaged fuse reads as an intact one. Refusing to start would
+            # turn a truncated file into an outage; the cost of the shrug is
+            # one run of refusals counted from zero.
+            return RefusalRun()
+
+    def refuse_early(self) -> None:
+        blocked_until = self.load().blocked_until
+        if blocked_until is None or blocked_until <= self.clock():
+            return
+        raise KsefRequestRejected(
+            f"Refusing locally: KSeF has said no {self.limit} times in a row, "
+            f"and asking again is the pattern that lengthens a block. Nothing "
+            f"will be sent before {blocked_until.isoformat()}."
+        )
+
+    def note_refusal(self, *, retry_after: int | None) -> None:
+        consecutive = self.load().consecutive + 1
+        self._save(
+            RefusalRun(
+                consecutive=consecutive,
+                blocked_until=self._blocked_until(retry_after)
+                if consecutive >= self.limit
+                else None,
+            )
+        )
+
+    def note_success(self) -> None:
+        """Clear the run — and only when there is one, so a healthy pass writes nothing."""
+        if self.load() == RefusalRun():
+            return
+        self._save(RefusalRun())
+
+    def _blocked_until(self, retry_after: int | None) -> datetime:
+        """The later of what KSeF asked and this server's own floor.
+
+        Honouring `Retry-After` is a requirement, not a detail (D-017), so a
+        longer wait named by the registry is always obeyed. But the fuse is a
+        stop, not a retry: after a run this long, coming back in the thirty
+        seconds a 429 sometimes names is resuming the very pattern being
+        guarded against, so the floor stands underneath it.
+        """
+        moment = self.clock()
+        floor = moment + self.cooldown
+        if retry_after is None:
+            return floor
+        return max(floor, moment + timedelta(seconds=retry_after))
+
+    def _save(self, run: RefusalRun) -> None:
+        _write_document(
+            path=self.path,
+            document={
+                "schema_version": SCHEMA_VERSION,
+                "nip": self.nip,
+                "environment": str(self.environment),
+                "consecutive": run.consecutive,
+                "blocked_until": (
+                    None if run.blocked_until is None else run.blocked_until.isoformat()
+                ),
+            },
+        )
+
+
+@dataclass(frozen=True)
 class Allowance:
     """One subject's protection against a block, as a single collaborator.
 
@@ -285,6 +409,24 @@ class Allowance:
             root=self.cache_root,
             clock=self.clock,
         )
+
+    @property
+    def breaker(self) -> RefusalLedger:
+        return RefusalLedger(
+            nip=self.nip,
+            environment=self.environment,
+            root=self.data_root,
+            clock=self.clock,
+        )
+
+    def guarded(self, *, session: KsefSession) -> GuardedSession:
+        """The session a tool should actually talk to.
+
+        Wrapping at the composition root rather than inside the adapter keeps
+        the port ignorant of where the fuse is kept, and keeps the wrapping
+        visible at the four places that open a session.
+        """
+        return GuardedSession(inner=session, breaker=self.breaker)
 
     def read_limits(self, *, session: KsefSession) -> KsefLimits:
         cache = self.limits

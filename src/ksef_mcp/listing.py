@@ -315,7 +315,8 @@ class InvoiceLister:
     def run(self, *, nip: str, token: str) -> InvoiceListing:
         period = listing_period(moment=self.clock())
         listings: list[DirectionListing] = []
-        with self.port.session(nip=nip, token=token) as session:
+        with self.port.session(nip=nip, token=token) as opened:
+            session = self.allowance.guarded(session=opened)
             reader = PeriodMetadataReader(
                 cache=self.cache,
                 budget=self.allowance.budget(session=session),

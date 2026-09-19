@@ -27,6 +27,22 @@ udokumentowane.
   na pełnej godzinie, więc powtórzenie w tej samej godzinie nie kosztuje
   nic. Limity kontekstu, dwa żądania przy każdym otwarciu sesji i dotąd
   nieliczone, zapamiętywane są na godzinę (GH-98).
+- Po serii odmów z KSeF-u serwer przestaje pytać sam z siebie. Limit
+  chronił przed zbyt częstym pytaniem zakończonym powodzeniem; nic nie
+  chroniło przed zbyt częstym pytaniem zakończonym odmową — a to właśnie
+  ten wzorzec Ministerstwo Finansów analizuje jako próbę obchodzenia
+  limitów i odpowiada na niego blokadą tym dłuższą, im częściej się
+  powtarza. Po pięciu odmowach pod rząd serwer odmawia lokalnie i podaje
+  moment, od którego wolno spróbować ponownie. Licznik leży na dysku, bo
+  szkodę robi wytrwałość klienta, a nie pojedyncze wywołanie: zerowany
+  przy każdym starcie pozwalałby wznawiać serię bez końca. Jedna udana
+  odpowiedź kończy serię (GH-99).
+- Polityka ponawiania jest wreszcie używana. Klasa umiejąca uszanować
+  czas oczekiwania podany przez KSeF miała testy i żadnego wywołującego
+  w kodzie produkcyjnym — testy przechodziły, a mechanizm nie działał.
+  Ruch do KSeF-u nie zmienia się ani o jedno żądanie: domyślnie wciąż
+  jedna próba, bez wycofania wykładniczego, bo zgadywanie czasu
+  oczekiwania to wzorzec, za który blokada się wydłuża (GH-100).
 - Odrzucony eksport przestaje blokować swój typ podmiotu. Gdy KSeF odmówił
   zbudowania paczki, jej wpis zostawał w kolejce roboczej na zawsze —
   a kolejka rozstrzyga, o co prosić dalej, więc ten typ podmiotu zamawiał

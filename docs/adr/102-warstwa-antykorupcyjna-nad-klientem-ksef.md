@@ -145,6 +145,33 @@ zgadywanie czasu oczekiwania to dokładnie ten wzorzec, za który MF
 wydłuża blokadę, a agent czekający minutę w środku wywołania narzędzia
 wygląda na zawieszonego.
 
+Polityka jest podłączona przez `GuardedSession`, która owija sesję portu
+w miejscu jej otwarcia (GH-100). Wcześniej miała testy i zero
+wywołujących w produkcji — faktyczne zachowanie brało się z
+`SINGLE_ATTEMPT` w adapterze, więc klasa umiejąca uszanować
+`Retry-After` nigdy nie działała. Podłączenie nie zmienia ruchu do
+KSeF-u ani o jedno żądanie: domyślna wciąż wysyła jedną próbę. Zmienia
+się to, że wołający, który chce uszanować czas podany przez serwer, ma
+gdzie to powiedzieć.
+
+### Bezpiecznik odmów
+
+`GuardedSession` prowadzi też licznik **kolejnych odmów** z KSeF-u
+(GH-99). Budżet chroni przed sukcesem zbyt częstym; seria odmów to
+osobne zagrożenie i dokładnie ten wzorzec, który MF analizuje jako próbę
+obchodzenia limitów [D-031 §8]. Po pięciu odmowach pod rząd serwer
+odmawia lokalnie i podaje moment, od którego wolno spróbować — późniejszy
+z dwóch: czasu podanego przez KSeF w `Retry-After` oraz własnej godziny
+karencji. To zatrzymanie, nie ponowienie, więc krótki `Retry-After` nie
+skraca bezpiecznika; wydłużyć go może.
+
+Za odmowę liczy się `KsefRateLimited`, `KsefAuthenticationFailed` i
+`KsefRefused` — trzy sposoby, na które KSeF mówi „nie". `KsefUnreachable`
+nie, bo odpowiedź w ogóle nie powstała, a zamykanie podmiotu za cudzą
+awarię sieci byłoby gorsze od problemu. Pobranie części paczki idzie z
+pominięciem bezpiecznika: to podpisany URL do zewnętrznego magazynu, bez
+poświadczeń KSeF-u i poza jakimkolwiek limitem.
+
 ### Licznik budżetu, i sprostowanie co do endpointu
 
 `QueryBudget` liczy przesuwane okno godzinowe osobno dla

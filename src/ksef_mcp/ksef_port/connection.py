@@ -48,6 +48,9 @@ class PeriodReaders(Protocol):
     def reader_for(self, *, session: KsefSession) -> PeriodReader:
         """The reader for this session, counting against what KSeF granted it."""
 
+    def guarded(self, *, session: KsefSession) -> KsefSession:
+        """The session with the local fuse in front of it (GH-99)."""
+
 
 def check_period(*, moment: datetime, window: timedelta = DEFAULT_WINDOW) -> Period:
     """The window the check asks about — ending on the hour, so a repeat is free.
@@ -97,7 +100,8 @@ def check_connection(
     would be the same bypass with a shorter call site.
     """
     period = check_period(moment=datetime.now(tz=UTC), window=window)
-    with port.session(nip=nip, token=token) as session:
+    with port.session(nip=nip, token=token) as opened:
+        session = readers.guarded(session=opened)
         page = readers.reader_for(session=session).page_for(
             session=session,
             period=period,
