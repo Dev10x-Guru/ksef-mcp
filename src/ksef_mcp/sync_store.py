@@ -29,7 +29,7 @@ from ksef_mcp.ksef_port.types import (
     SubjectRole,
 )
 from ksef_mcp.paths import SubjectScope
-from ksef_mcp.storage import exclusive_write, require_schema, written_atomically
+from ksef_mcp.storage import exclusive_write, json_written_atomically, require_schema
 
 STATE_FILE: Final[str] = "synchronisation.json"
 
@@ -483,8 +483,8 @@ class SyncStore:
             # point would cost the full resynchronisation this file exists to
             # prevent. The staging name is unique and the directory entry is
             # persisted after the swap (ADR-107 §3, §4).
-            return written_atomically(
+            return json_written_atomically(
                 self.path,
-                content=(json.dumps(document, indent=2, ensure_ascii=False) + "\n").encode("utf-8"),
+                document=document,
                 file_mode=STATE_FILE_MODE,
             )

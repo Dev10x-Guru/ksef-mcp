@@ -51,7 +51,7 @@ from ksef_mcp.ksef_port.types import (
 )
 from ksef_mcp.metadata import SERVER_NAME
 from ksef_mcp.paths import SubjectScope
-from ksef_mcp.storage import exclusive_write, written_atomically
+from ksef_mcp.storage import exclusive_write, json_written_atomically
 
 PERIOD_DIRECTORY: Final[str] = "periods"
 
@@ -335,9 +335,9 @@ class PeriodCache:
         # miss and cost the query this file exists to save, and the interrupted
         # write would have destroyed a good entry to do it.
         with exclusive_write(self.directory, directory_mode=CACHE_DIRECTORY_MODE):
-            written_atomically(
+            json_written_atomically(
                 path,
-                content=(json.dumps(document, indent=2, ensure_ascii=False) + "\n").encode("utf-8"),
+                document=document,
                 file_mode=CACHE_FILE_MODE,
             )
         return entry

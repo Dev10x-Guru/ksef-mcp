@@ -12,6 +12,12 @@ udokumentowane.
 
 ### Zmienione
 
+- Obietnica, że przerwany zapis nigdy nie zostawia połowy pliku, jest
+  odtąd własnością jednego miejsca w kodzie, a nie siedmiu kopii, które
+  musiały się zgadzać. Dla podatnika nic się nie zmienia dziś — zmienia
+  się to, że jutrzejsza poprawka trwałości zapisu trafi do wszystkich
+  plików, jakie narzędzie prowadzi, a nie do sześciu z siedmiu (GH-145).
+
 - Odpowiedzi narzędzi `synchronise_invoices`, `list_recent_invoices`
   i `review_new_invoices` nazywają rolę podmiotu jednym słowem: pola
   `subject_types` i `subject_type` nazywają się teraz `subject_roles`

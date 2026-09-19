@@ -127,7 +127,7 @@ def test_an_interrupted_write_leaves_the_previous_configuration_intact(
     def full_disk(*arguments: object, **keywords: object) -> None:
         raise OSError("No space left on device")
 
-    monkeypatch.setattr(config, "written_atomically", full_disk)
+    monkeypatch.setattr(config, "json_written_atomically", full_disk)
 
     with pytest.raises(OSError, match="No space left"):
         config.save_configuration(

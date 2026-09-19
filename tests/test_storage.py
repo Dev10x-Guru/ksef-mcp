@@ -21,6 +21,7 @@ from ksef_mcp.storage import (
     STAGING_SUFFIX,
     WriteExclusivityUnavailable,
     exclusive_write,
+    json_written_atomically,
     replaced_durably,
     reserved_staging,
     written_atomically,
@@ -218,3 +219,37 @@ def test_the_replacement_takes_the_staging_name_out_of_the_directory(target: Pat
     replaced_durably(staging, target)
 
     assert not staging.exists()
+
+
+def test_a_stored_document_is_indented_and_ends_with_a_newline(target: Path) -> None:
+    json_written_atomically(target, document={"nip": "1234567890"}, file_mode=FILE_MODE)
+
+    assert target.read_text(encoding="utf-8") == '{\n  "nip": "1234567890"\n}\n'
+
+
+def test_a_stored_document_keeps_polish_letters_as_letters(target: Path) -> None:
+    """A taxpayer opening the file to see what is remembered about them reads a name."""
+    json_written_atomically(target, document={"seller_name": "Żółw"}, file_mode=FILE_MODE)
+
+    assert "Żółw" in target.read_text(encoding="utf-8")
+
+
+def test_a_stored_document_is_readable_only_by_its_owner(target: Path) -> None:
+    json_written_atomically(target, document={}, file_mode=FILE_MODE)
+
+    assert stat.S_IMODE(target.stat().st_mode) == FILE_MODE
+
+
+def test_a_failed_document_write_leaves_the_previous_document_intact(
+    target: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The document primitive inherits the whole guarantee, it does not restate it."""
+    json_written_atomically(target, document={"round": 1}, file_mode=FILE_MODE)
+    monkeypatch.setattr(os, "fsync", refuse_the_disk)
+
+    with pytest.raises(OSError, match="the disk answered no"):
+        json_written_atomically(target, document={"round": 2}, file_mode=FILE_MODE)
+
+    assert '"round": 1' in target.read_text(encoding="utf-8")
+    assert list(target.parent.glob(f"*{STAGING_SUFFIX}")) == []

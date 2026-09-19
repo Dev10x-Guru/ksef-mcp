@@ -15,6 +15,12 @@ either reached its rename. `replaced_durably` finishes the job the stores
 started: the file's own bytes were flushed, the directory entry naming them was
 not, so a power cut could leave a `rename(2)` that never happened.
 
+Above them sits `json_written_atomically`, which is where a stored JSON document
+gets its spelling. Every store had written that one expression itself, so the
+durability invariant D-006 held only as long as seven copies agreed — and the
+next store to be written would inherit whichever copy its author happened to
+read (GH-145).
+
 The lock refuses instead of waiting. A blocked MCP tool is a hung agent session,
 and an unbounded wait against a lock a dead process left behind is worse than a
 refusal that says which directory is busy.
@@ -23,6 +29,7 @@ refusal that says which directory is busy.
 from __future__ import annotations
 
 import fcntl
+import json
 import os
 import tempfile
 import threading
@@ -40,6 +47,12 @@ LOCK_FILE: Final[str] = ".lock"
 LOCK_FILE_MODE: Final[int] = 0o600
 
 STAGING_SUFFIX: Final[str] = ".tmp"
+
+# Indented and un-escaped because a taxpayer opening one of these files to see
+# what the tool remembers about them is a supported thing to do, and a Polish
+# counterparty name spelled `ł` answers nothing. The trailing newline keeps
+# the files usable from a shell.
+DOCUMENT_INDENT: Final[int] = 2
 
 # `flock` is held per open file description, so two threads of one process
 # opening the lock file separately do contend — which is what makes the thread
@@ -176,3 +189,20 @@ def written_atomically(target: Path, *, content: bytes, file_mode: int) -> Path:
         raise
     replaced_durably(staging, target)
     return target
+
+
+def json_written_atomically(
+    target: Path,
+    *,
+    document: Mapping[str, object],
+    file_mode: int,
+) -> Path:
+    """One stored JSON document, in the one spelling every store here writes.
+
+    Named rather than repeated because the serialisation and the durability are
+    one promise: a store that indents differently is merely inconsistent, but a
+    store that reaches past this to `written_atomically` with bytes of its own is
+    one `fsync` away from breaking D-006 on its own (GH-145).
+    """
+    content = json.dumps(document, indent=DOCUMENT_INDENT, ensure_ascii=False) + "\n"
+    return written_atomically(target, content=content.encode("utf-8"), file_mode=file_mode)
