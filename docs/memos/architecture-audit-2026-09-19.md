@@ -499,7 +499,7 @@ i `RetryPolicy`.
 | **M14** | Kontrakt, dokumentacja, `README` | MEDIUM | S+M | — |
 | **M15** | Spójna sygnalizacja błędu i trwałość konfiguracji | HIGH | M+S+S | — |
 | **M16** | Testy, które sprawdzają zachowanie, nie linie | HIGH | S+M+M+L | — |
-| **M17** | Kompletność odpowiedzi ponad 250 faktur | HIGH | S+S+L | M1 |
+| **M17** | Kompletność odpowiedzi ponad 250 faktur | HIGH | S+S+M | M1 |
 
 \* wpływ warunkowy wobec weryfikacji, czy KSeF udostępnia typ dokumentu.
 
@@ -540,10 +540,25 @@ params = InvoiceMetadataParams(page_size=PAGE_SIZE, sort_order="desc")
 # brak parametru strony
 ```
 
-Zweryfikowane osobiście. To nie jest „nie zrobiono", tylko **nie da się przez
-ten interfejs**. `has_more` jest raportowane i nie ma jak na nie zareagować.
-Tymczasem synchronizacja ma pełny mechanizm punktów kontynuacji — dwa
-niezgodne paradygmaty w jednym systemie.
+**SDK to potrafi — luka jest wyłącznie po naszej stronie.**
+`ksef2/domain/models/pagination.py` daje `InvoiceMetadataParams` dziedziczące
+po `PageOffsetMixin`, z gotowymi `with_page_offset(n)` i `next_page()`;
+`page_size` ma `ge=10, le=250`, więc `PAGE_SIZE` jest faktycznym sufitem API.
+Nasz adapter po prostu **nigdy nie ustawia `page_offset`**, a nasz
+`MetadataPage` nie ma pola, którym offset mógłby wrócić do wołającego. To
+zaniechanie w naszej warstwie, nie ograniczenie dostawcy.
+
+`has_more` jest więc raportowane i nie ma dziś jak na nie zareagować, choć
+narzędzie do tego leży w zasięgu ręki. Tymczasem synchronizacja ma pełny
+mechanizm punktów kontynuacji — dwa niezgodne paradygmaty w jednym systemie.
+
+Skutkiem jest **niższy nakład, a przez to wyższy priorytet**: trzeba przewlec
+`page_offset` przez `MetadataPage` i dodać pętlę dopełniającą w
+`PeriodMetadataReader.read` (`period_cache.py:338-358`), ograniczoną
+`budget.spend(...)` na każdą kolejną stronę. Wycena M, nie L. ADR zostaje
+zasadny wyłącznie dla polityki budżetowej — dociągać do skutku czy przerwać
+po N i powiedzieć wprost „niekompletne, bo budżet, nie bo KSeF" — a nie dla
+samego mechanizmu.
 
 Skutek dla produktu: `review_new_invoices` obiecuje „co przyszło od ostatniego
 przeglądu" w oknie 89 dni dla czterech typów podmiotu. Powyżej 250 faktur
@@ -595,11 +610,17 @@ jest już napisana; brakuje wyłącznie budżetu, który faktycznie się wyczerp
 `REFUSALS` (`server.py:105-112`) ma sześć pozycji; poza nią zostaje dziewięć
 własnych wyjątków magazynów plus `JSONDecodeError` i `OSError`.
 `refuse_a_locked_collection()` jest wołane przed każdym dotknięciem sekretu,
-a kolekcja keyringu zamyka się sama po uśpieniu maszyny. Wszystkie pięć
-narzędzi MCP idzie przez `authenticated_subject()` → `read_token()`, więc po
-uśpieniu laptopa każde zwróci gołe „Error executing tool …" — mając gotowy,
-napisany na tę sytuację komunikat z instrukcją wyjścia. `cli.py:667` go
-pokazuje, serwer gubi.
+a kolekcja keyringu zamyka się sama po uśpieniu maszyny. **Cztery z pięciu**
+narzędzi MCP idą przez `authenticated_subject()` → `read_token()`
+(`server.py:275`, `:432`, `:542`, `:725`), więc po uśpieniu laptopa każde
+zwróci gołe „Error executing tool …" — mając gotowy, napisany na tę sytuację
+komunikat z instrukcją wyjścia. `cli.py:667` go pokazuje, serwer gubi.
+
+Piąte narzędzie, `render_invoice_pdf` (`server.py:836`), tokenu nie czyta
+wcale — i to jest decyzja, nie przeoczenie: jego docstring obiecuje działanie
+bez sieci, na tym, co już leży w archiwum. Wypada z tego symetria warta
+odnotowania: to jedyne narzędzie z pełnym pokryciem w `REFUSALS` i zarazem
+jedyne, które nie dotyka keyringa.
 
 Pokrycie `REFUSALS` jest odwrotnie proporcjonalne do ryzyka: najlepiej pokryte
 jest `render_invoice_pdf`, czyli narzędzie, którego autor pisał tę krotkę.
