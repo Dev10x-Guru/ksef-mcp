@@ -21,6 +21,17 @@ udokumentowane.
   wydrukowania faktury. Manifest wymienia teraz te pliki wprost, a test
   buduje paczkę i zagląda do archiwum, zamiast wierzyć manifestowi na
   słowo (GH-106).
+- Wydania nie da się podmienić przez przejęcie cudzej akcji GitHub
+  Actions. Wszystkie akcje we wszystkich przebiegach wskazują teraz
+  konkretny commit, a nie ruchomy tag czy gałąź — łącznie z akcją
+  publikującą, która działa z uprawnieniem do wydania paczki jako
+  `ksef-mcp`. Ruchomy tag wygląda jak wersja, a jest wskaźnikiem, który
+  właściciel akcji może przestawić w dowolnej chwili (GH-107).
+- Integrator może maszynowo sprawdzić, skąd wzięła się paczka z PyPI.
+  Wydanie niesie atestację pochodzenia wiążącą skrót każdego archiwum
+  z tym repozytorium, tym przebiegiem i tym commitem. Zaufane wydawanie
+  OIDC mówiło dotąd tylko, kto wgrał plik; teraz da się sprawdzić także,
+  z czego on powstał (GH-110).
 
 ### Poprawione
 
