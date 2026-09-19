@@ -30,7 +30,7 @@ from ksef_mcp.archive import (
     InvoiceArchive,
     PackageArchivist,
 )
-from ksef_mcp.ksef_port.budget import Operation, QueryBudget
+from ksef_mcp.ksef_port.budget import QueryBudget
 from ksef_mcp.ksef_port.errors import (
     KsefPortError,
     KsefRefused,
@@ -45,6 +45,7 @@ from ksef_mcp.ksef_port.types import (
     ExportState,
     ExportStatus,
     InvoiceDirection,
+    Operation,
     Period,
 )
 from ksef_mcp.package import PackageRetriever, PackageUnreadable

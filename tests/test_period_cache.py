@@ -28,8 +28,8 @@ from ksef_mcp.ksef_port import (
     QueryBudget,
     RateLimits,
 )
-from ksef_mcp.ksef_port.budget import Operation
 from ksef_mcp.ksef_port.errors import KsefRequestRejected, KsefUnreachable
+from ksef_mcp.ksef_port.types import Operation
 from ksef_mcp.metadata import SERVER_NAME
 from ksef_mcp.period_cache import (
     SCHEMA_VERSION,

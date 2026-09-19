@@ -85,6 +85,13 @@ def test_the_allowance_is_whatever_ksef_granted(
     assert budget.remaining(operation) == expected
 
 
+def test_every_operation_family_maps_to_an_allowance() -> None:
+    """A fifth family added without its allowance fails here, not mid-synchronisation."""
+    limits = granted(metadata=20, exports=20, downloads=64)
+
+    assert set(limits.by_operation) == set(Operation)
+
+
 def test_spending_one_call_leaves_one_fewer(budget: QueryBudget) -> None:
     budget.spend(Operation.EXPORT)
 
