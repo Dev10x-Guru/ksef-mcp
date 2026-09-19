@@ -32,8 +32,12 @@ class KsefSession(Protocol):
         *,
         period: Period,
         direction: InvoiceDirection,
+        page_offset: int = 0,
     ) -> MetadataPage:
-        """List invoice metadata for a window. Never invoice bodies."""
+        """List invoice metadata for a window. Never invoice bodies.
+
+        `page_offset` is a zero-based page number, not a row index.
+        """
 
     def start_export(
         self,

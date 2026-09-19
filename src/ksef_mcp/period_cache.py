@@ -28,7 +28,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -57,11 +57,18 @@ PERIOD_DIRECTORY: Final[str] = "periods"
 
 CACHE_FILE_SUFFIX: Final[str] = ".json"
 
-# Raised to 2 when a window's end stopped being nullable (GH-84). The version
-# check is the searchable mechanism for "this entry predates a format change";
-# leaning on the decoder's exception instead would make a format change
-# indistinguishable from a truncated file.
-SCHEMA_VERSION: Final[int] = 2
+# Raised to 2 when a window's end stopped being nullable (GH-84), and to 3 when
+# a page started carrying the offset it came from (GH-182). The version check is
+# the searchable mechanism for "this entry predates a format change"; leaning on
+# the decoder's exception instead would make a format change indistinguishable
+# from a truncated file.
+SCHEMA_VERSION: Final[int] = 3
+
+# The completing loop stops while this many metadata queries are still unspent.
+# One question covers four subject types (D-031 §5) out of one hourly allowance,
+# so a window that drank the hour would leave the other three reported as
+# unknown — and the reserve is the three that would otherwise go unasked.
+METADATA_RESERVE: Final[int] = 3
 
 CACHE_DIRECTORY_MODE: Final[int] = 0o700
 
@@ -213,6 +220,8 @@ def _encode(
             "has_more": remembered.page.has_more,
             "truncated": remembered.page.truncated,
             "hwm_date": _encode_moment(remembered.page.hwm_date),
+            "page_offset": remembered.page.page_offset,
+            "budget_bound": remembered.page.budget_bound,
             "invoices": [_encode_invoice(invoice) for invoice in remembered.page.invoices],
         },
     }
@@ -234,6 +243,8 @@ def _decode(document: dict[str, object]) -> CachedPeriod:
             has_more=bool(page["has_more"]),
             truncated=bool(page["truncated"]),
             hwm_date=_decode_moment(page["hwm_date"]),
+            page_offset=int(str(page["page_offset"])),
+            budget_bound=bool(page["budget_bound"]),
         ),
         queried_at=datetime.fromisoformat(str(document["queried_at"])),
     )
@@ -297,6 +308,12 @@ class PeriodCache:
 
         The entry comes back either way, because the caller needs that moment to
         report; an open window simply leaves nothing behind for the next run.
+
+        An incomplete page is not written. Nothing here expires, so remembering
+        a window the allowance could not finish would freeze the part that fit
+        as the answer forever — and the call that could finish it, an hour later
+        with the allowance restored, would be served the stump from disk instead
+        (GH-182).
         """
         entry = CachedPeriod(
             period=period,
@@ -304,7 +321,7 @@ class PeriodCache:
             page=page,
             queried_at=self.clock(),
         )
-        if not is_cacheable(period):
+        if not is_cacheable(period) or page.has_more or page.truncated:
             return entry
         path = self.path_for(period=period, direction=direction)
         document = _encode(entry, nip=self.nip, environment=self.environment)
@@ -349,9 +366,51 @@ class PeriodMetadataReader:
         # consumed the allowance, and a counter that only counts successes walks
         # the subject into the breach the Ministry logs (D-020).
         self.budget.spend(Operation.METADATA_QUERY)
-        page = session.query_metadata(period=period, direction=direction)
-        recorded = self.cache.remember(period=period, direction=direction, page=page)
-        return PeriodAnswer(page=page, queried_at=recorded.queried_at, from_cache=False)
+        first = session.query_metadata(period=period, direction=direction, page_offset=0)
+        whole = self._completed(
+            session=session,
+            period=period,
+            direction=direction,
+            page=first,
+        )
+        recorded = self.cache.remember(period=period, direction=direction, page=whole)
+        return PeriodAnswer(page=whole, queried_at=recorded.queried_at, from_cache=False)
+
+    def _completed(
+        self,
+        *,
+        session: KsefSession,
+        period: Period,
+        direction: InvoiceDirection,
+        page: MetadataPage,
+    ) -> MetadataPage:
+        """Fetch the rest of the window, one metadata query per further page.
+
+        To completion rather than to a page count, because a count is a guessed
+        number and the persistent ledger already knows the true bound (ADR-109).
+        What stops the loop is therefore the allowance, and the page that comes
+        back says so: `has_more` with `budget_bound` is a window worth asking
+        about again, `has_more` alone is one KSeF itself cut short.
+        """
+        gathered = list(page.invoices)
+        while page.has_more:
+            if not self._affordable():
+                return replace(page, invoices=tuple(gathered), budget_bound=True)
+            self.budget.spend(Operation.METADATA_QUERY)
+            page = session.query_metadata(
+                period=period,
+                direction=direction,
+                page_offset=page.page_offset + 1,
+            )
+            gathered.extend(page.invoices)
+        return replace(page, invoices=tuple(gathered))
+
+    def _affordable(self) -> bool:
+        # Unknown headroom counts as unaffordable. A counter that cannot refuse
+        # would let a server answering `has_more` forever turn this loop into
+        # the sustained hammering the Ministry blocks subjects for (D-020).
+        left = self.budget.remaining(Operation.METADATA_QUERY)
+        return left is not None and left > METADATA_RESERVE
 
     def page_for(
         self,

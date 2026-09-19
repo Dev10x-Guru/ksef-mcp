@@ -211,10 +211,27 @@ class InvoiceMetadata:
 
 @dataclass(frozen=True)
 class MetadataPage:
+    """One page of a window, and where in the window it sits.
+
+    `page_offset` is the SDK's zero-based page number, carried back so a caller
+    can ask for the next one: without it `has_more` was reported and nothing
+    could be done about it. A page assembled from several fetched ones carries
+    the number of the last page it holds, so `page_offset + 1` is where a
+    continuation resumes.
+
+    `budget_bound` separates "incomplete because the allowance ran out" from
+    "incomplete because KSeF said so" — two different pieces of news for the
+    person reading the answer, and only the first one is worth waiting out. The
+    adapter never sets it; it belongs to the reader that does the completing
+    (ADR-109).
+    """
+
     invoices: tuple[InvoiceMetadata, ...]
     has_more: bool
     truncated: bool
     hwm_date: datetime | None
+    page_offset: int = 0
+    budget_bound: bool = False
 
 
 @dataclass(frozen=True)

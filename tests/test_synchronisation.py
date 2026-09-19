@@ -199,7 +199,13 @@ class ScriptedSession:
     def read_limits(self) -> KsefLimits:
         return self.limits
 
-    def query_metadata(self, *, period: Period, direction: InvoiceDirection) -> MetadataPage:
+    def query_metadata(
+        self,
+        *,
+        period: Period,
+        direction: InvoiceDirection,
+        page_offset: int = 0,
+    ) -> MetadataPage:
         raise AssertionError("Synchronizacja nie odpytuje metadanych — idzie przez eksport.")
 
     def start_export(self, *, period: Period, direction: InvoiceDirection) -> ExportHandle:

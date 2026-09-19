@@ -75,18 +75,43 @@ class CountingSession:
 
     page: MetadataPage
     asked: list[tuple[Period, InvoiceDirection]] = field(default_factory=list)
+    offsets: list[int] = field(default_factory=list)
+    # Pages beyond the first, keyed by their zero-based number, so the
+    # completing loop meets a real continuation rather than the same page twice.
+    further: dict[int, MetadataPage] = field(default_factory=dict)
 
-    def query_metadata(self, *, period: Period, direction: InvoiceDirection) -> MetadataPage:
+    def query_metadata(
+        self,
+        *,
+        period: Period,
+        direction: InvoiceDirection,
+        page_offset: int = 0,
+    ) -> MetadataPage:
         self.asked.append((period, direction))
-        return self.page
+        self.offsets.append(page_offset)
+        return self.further.get(page_offset, self.page)
 
 
 @pytest.fixture
 def page() -> MetadataPage:
+    # Complete, because since GH-182 only a complete window is written to disk:
+    # nothing in this root expires, so remembering a stump would make it the
+    # answer forever.
     return MetadataPage(
         invoices=(synthetic_metadata(1), synthetic_metadata(2, seller_name=None)),
+        has_more=False,
+        truncated=False,
+        hwm_date=datetime(2026, 9, 30, 23, 59, tzinfo=UTC),
+    )
+
+
+@pytest.fixture
+def opening() -> MetadataPage:
+    """A first page KSeF says has a continuation behind it."""
+    return MetadataPage(
+        invoices=(synthetic_metadata(1),),
         has_more=True,
-        truncated=True,
+        truncated=False,
         hwm_date=datetime(2026, 9, 30, 23, 59, tzinfo=UTC),
     )
 
@@ -568,6 +593,192 @@ def test_deleting_the_cache_root_makes_the_period_cost_one_query_again(
     reader.read(session=session, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
 
     assert len(session.asked) == 2
+
+
+@pytest.fixture
+def closing() -> MetadataPage:
+    """What is behind the `has_more`, and the end of the window."""
+    return MetadataPage(
+        invoices=(synthetic_metadata(2),),
+        has_more=False,
+        truncated=False,
+        hwm_date=datetime(2026, 9, 30, 23, 59, tzinfo=UTC),
+        page_offset=1,
+    )
+
+
+@pytest.fixture
+def paging(opening: MetadataPage, closing: MetadataPage) -> CountingSession:
+    return CountingSession(page=opening, further={1: closing})
+
+
+@pytest.fixture
+def scarce(cache: PeriodCache) -> PeriodMetadataReader:
+    """A reader with four metadata queries left: one page, then the reserve."""
+    return PeriodMetadataReader(
+        cache=cache,
+        budget=QueryBudget(
+            limits=RateLimits(
+                metadata_queries=OperationLimit(per_second=None, per_minute=None, per_hour=4),
+                exports=GENEROUS,
+                export_statuses=GENEROUS,
+                invoice_downloads=GENEROUS,
+            ),
+            clock=lambda: ASKED_AT,
+        ),
+    )
+
+
+@pytest.fixture
+def uncounted(cache: PeriodCache) -> PeriodMetadataReader:
+    """A reader whose counter was told no ceiling, so it can refuse nothing."""
+    unlimited = OperationLimit(per_second=None, per_minute=None, per_hour=None)
+    return PeriodMetadataReader(
+        cache=cache,
+        budget=QueryBudget(
+            limits=RateLimits(
+                metadata_queries=unlimited,
+                exports=unlimited,
+                export_statuses=unlimited,
+                invoice_downloads=unlimited,
+            ),
+            clock=lambda: ASKED_AT,
+        ),
+    )
+
+
+def test_a_window_too_big_for_one_page_comes_back_whole(
+    reader: PeriodMetadataReader, paging: CountingSession
+) -> None:
+    answer = reader.read(session=paging, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+
+    assert len(answer.page.invoices) == 2
+
+
+def test_the_page_behind_the_first_is_asked_for_by_its_number(
+    reader: PeriodMetadataReader, paging: CountingSession
+) -> None:
+    reader.read(session=paging, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+
+    assert paging.offsets == [0, 1]
+
+
+def test_a_window_fetched_to_the_end_stops_saying_there_is_more(
+    reader: PeriodMetadataReader, paging: CountingSession
+) -> None:
+    answer = reader.read(session=paging, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+
+    assert answer.page.has_more is False
+
+
+def test_every_further_page_is_paid_for_from_the_hourly_allowance(
+    reader: PeriodMetadataReader, paging: CountingSession, budget: QueryBudget
+) -> None:
+    reader.read(session=paging, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+
+    assert budget.remaining(Operation.METADATA_QUERY) == 18
+
+
+def test_a_whole_window_carries_the_number_of_the_last_page_it_holds(
+    reader: PeriodMetadataReader, paging: CountingSession
+) -> None:
+    answer = reader.read(session=paging, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+
+    assert answer.page.page_offset == 1
+
+
+def test_a_whole_window_is_not_blamed_on_the_allowance(
+    reader: PeriodMetadataReader, paging: CountingSession
+) -> None:
+    answer = reader.read(session=paging, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+
+    assert answer.page.budget_bound is False
+
+
+def test_the_loop_stops_before_it_drinks_the_other_subject_types_share(
+    scarce: PeriodMetadataReader, paging: CountingSession
+) -> None:
+    scarce.read(session=paging, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+
+    assert paging.offsets == [0]
+
+
+def test_a_window_the_allowance_cut_short_says_that_is_what_happened(
+    scarce: PeriodMetadataReader, paging: CountingSession
+) -> None:
+    answer = scarce.read(session=paging, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+
+    assert answer.page.budget_bound is True
+
+
+def test_a_window_the_allowance_cut_short_still_says_there_is_more(
+    scarce: PeriodMetadataReader, paging: CountingSession
+) -> None:
+    answer = scarce.read(session=paging, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+
+    assert answer.page.has_more is True
+
+
+def test_a_window_the_allowance_cut_short_keeps_the_page_that_did_arrive(
+    scarce: PeriodMetadataReader, paging: CountingSession
+) -> None:
+    answer = scarce.read(session=paging, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+
+    assert len(answer.page.invoices) == 1
+
+
+def test_a_counter_that_can_refuse_nothing_does_not_get_to_page_forever(
+    uncounted: PeriodMetadataReader, paging: CountingSession
+) -> None:
+    uncounted.read(session=paging, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+
+    assert paging.offsets == [0]
+
+
+def test_a_window_the_allowance_cut_short_is_not_written_to_disk(
+    scarce: PeriodMetadataReader, paging: CountingSession, cache: PeriodCache
+) -> None:
+    scarce.read(session=paging, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+
+    assert cache.remembered(period=SEPTEMBER, direction=InvoiceDirection.BUYER) is None
+
+
+def test_the_call_after_a_cut_window_finishes_it_instead_of_serving_the_stump(
+    scarce: PeriodMetadataReader,
+    reader: PeriodMetadataReader,
+    paging: CountingSession,
+) -> None:
+    scarce.read(session=paging, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+    answer = reader.read(session=paging, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+
+    assert len(answer.page.invoices) == 2
+
+
+def test_a_window_ksef_itself_cut_short_is_not_written_to_disk(
+    reader: PeriodMetadataReader, cache: PeriodCache
+) -> None:
+    stopped = CountingSession(
+        page=MetadataPage(
+            invoices=(synthetic_metadata(1),),
+            has_more=False,
+            truncated=True,
+            hwm_date=None,
+        )
+    )
+
+    reader.read(session=stopped, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+
+    assert cache.remembered(period=SEPTEMBER, direction=InvoiceDirection.BUYER) is None
+
+
+def test_a_remembered_window_carries_the_page_number_it_reached(
+    reader: PeriodMetadataReader, paging: CountingSession, cache: PeriodCache
+) -> None:
+    reader.read(session=paging, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+    kept = cache.remembered(period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+    assert kept is not None
+
+    assert kept.page.page_offset == 1
 
 
 def _erase(directory: Path) -> None:
