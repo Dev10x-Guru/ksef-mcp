@@ -61,7 +61,7 @@ from typing import Final
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.errors import KsefMcpError
 from ksef_mcp.paths import SubjectScope
-from ksef_mcp.storage import exclusive_write
+from ksef_mcp.storage import exclusive_write, require_schema
 
 AUDIT_FILE: Final[str] = "audit.jsonl"
 
@@ -172,13 +172,15 @@ def _encode(entry: AuditEntry) -> dict[str, object]:
 
 
 def _decode(document: dict[str, object]) -> AuditEntry:
-    found = document["schema_version"]
-    if found != SCHEMA_VERSION:
-        raise AuditTrailUnreadable(
-            f"An audit line is schema {found}, this build reads {SCHEMA_VERSION}. "
-            f"Refusing to guess: a misread trail either invents an access that "
-            f"never happened or hides one that did."
-        )
+    require_schema(
+        document,
+        expected=SCHEMA_VERSION,
+        named="An audit line",
+        refused_as=AuditTrailUnreadable,
+        consequence=(
+            "a misread trail either invents an access that never happened or hides one that did."
+        ),
+    )
     role = document["subject_role"]
     path = document["output_path"]
     return AuditEntry(

@@ -26,7 +26,7 @@ import fcntl
 import os
 import tempfile
 import threading
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Final
@@ -52,6 +52,30 @@ _reentry = threading.local()
 
 class WriteExclusivityUnavailable(KsefMcpError):
     """Another writer holds this subject's directory, and waiting is not the answer."""
+
+
+def require_schema(
+    document: Mapping[str, object],
+    *,
+    expected: int,
+    named: str,
+    refused_as: type[KsefMcpError],
+    consequence: str,
+) -> None:
+    """Refuse a document this build does not claim to understand.
+
+    `.get` rather than indexing, so a document written before versioning existed
+    — or one a crash truncated to the first few keys — is refused by name
+    instead of raising a `KeyError` the reader cannot tell from corruption
+    (GH-169). The consequence is spelled out per document because "refusing to
+    guess" is only convincing when it says what the guess would cost.
+    """
+    found = document.get("schema_version")
+    if found == expected:
+        return
+    raise refused_as(
+        f"{named} is schema {found}, this build reads {expected}. Refusing to guess: {consequence}"
+    )
 
 
 def _depths() -> dict[Path, int]:

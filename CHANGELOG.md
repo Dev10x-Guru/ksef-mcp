@@ -22,6 +22,18 @@ udokumentowane.
 
 ### Poprawione
 
+- Przerwany zapis konfiguracji nie zablokuje już startu. Plik
+  `configuration.json` powstawał dotąd przez nadpisanie samego siebie —
+  jako jedyny z siedmiu zapisów w pakiecie — więc brak miejsca na dysku
+  albo zamknięta sesja zostawiały go obciętym, a serwer i wiersz poleceń
+  odmawiały startu bez słowa wyjaśnienia; jedynym wyjściem było ręczne
+  skasowanie pliku. Teraz zapis idzie przez plik przejściowy i podmianę,
+  więc poprzednia konfiguracja zostaje nietknięta, a uszkodzony plik jest
+  nazwany wprost, razem z poleceniem `ksef-mcp onboarding` (GH-168).
+- Konfiguracja mówi, w jakim formacie została zapisana, więc przyszła
+  zmiana pola zostanie rozpoznana jako zmiana formatu, a nie pomylona
+  z uszkodzeniem pliku. Plik konfiguracji był jedynym z sześciu
+  dokumentów trwałych bez tej informacji (GH-169).
 - Po uśpieniu laptopa narzędzia MCP mówią, że kolekcja keyringu jest
   zamknięta i jak ją otworzyć, zamiast odpowiadać „Error executing tool".
   Kolekcja zamyka się sama, gdy maszyna zasypia, a token czytają cztery
