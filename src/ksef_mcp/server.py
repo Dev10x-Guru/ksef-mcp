@@ -855,6 +855,9 @@ class RenderedInvoiceResult(BaseModel):
     byte_count: int
     generator_version: str
     verification_url: str | None
+    # A PDF carries the same counterparty personal data the CSV statement does,
+    # so the working-directory caveats travel with it too (#172).
+    warnings: list[str]
 
 
 def describe_rendered(
@@ -862,6 +865,7 @@ def describe_rendered(
     *,
     nip: str,
     environment: config.KsefEnvironment,
+    warnings: tuple[str, ...],
 ) -> RenderedInvoiceResult:
     return RenderedInvoiceResult(
         nip=nip,
@@ -871,6 +875,7 @@ def describe_rendered(
         byte_count=rendered.byte_count,
         generator_version=rendered.generator_version,
         verification_url=rendered.verification_url,
+        warnings=list(warnings),
     )
 
 
@@ -909,10 +914,11 @@ def render_invoice(*, ksef_number: str, working_directory: str | None) -> Render
         if working_directory is None
         else Path(working_directory).expanduser()
     )
+    working = prepare_working_directory(directory)
     renderer = InvoiceRenderer(
         environment=subject.environment,
         archive_directory=subject.archive.invoice_directory,
-        working_directory=prepare_working_directory(directory).path,
+        working_directory=working.path,
     )
     rendered = renderer(ksef_number)
     trail = subject.trail
@@ -929,6 +935,7 @@ def render_invoice(*, ksef_number: str, working_directory: str | None) -> Render
         rendered,
         nip=subject.nip,
         environment=subject.environment,
+        warnings=working.warnings,
     )
 
 
@@ -952,7 +959,9 @@ def render_invoice_pdf(
 
     `working_directory` overrides the directory declared during onboarding for
     this one call, under the same rules as the statement: created `0700` if new,
-    refused inside the cache or data root.
+    refused inside the cache or data root, and reported in `warnings` when its
+    path looks like a cloud sync folder or its permissions are wider than `0700`.
+    The PDF names the counterparty exactly as the statement does.
 
     On production the document carries the QR code and verification link, and
     `verification_url` repeats it here. Test and demo invoices have no

@@ -10,6 +10,16 @@ udokumentowane.
 
 ## Bez wydania
 
+### Bezpieczeństwo
+
+- Wydruk faktury do PDF-a ostrzega o katalogu synchronizowanym z chmurą
+  dokładnie tak, jak robi to zestawienie CSV. PDF faktury nazywa
+  kontrahenta z imienia, nazwiska i adresu tak samo jak zestawienie, a
+  ostrzeżenie o tym, że kopia trafi na cudzy serwer, powstawało i było
+  wyrzucane, zanim ktokolwiek je zobaczył. Odpowiedź narzędzia niesie je
+  teraz w polu `warnings` — razem z uwagą o katalogu szerszym niż `0700`
+  (GH-172).
+
 ### Poprawione
 
 - Faktura, która nie zmieściła się w odpowiedzi KSeF, nie zniknie już na
