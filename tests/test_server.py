@@ -16,12 +16,12 @@ from ksef_mcp.config import Configuration, KsefEnvironment
 from ksef_mcp.errors import KsefMcpError
 from ksef_mcp.ksef_port import (
     DateType,
-    InvoiceDirection,
     KsefNumber,
     KsefPortError,
     KsefRefused,
     MetadataPage,
     Period,
+    SubjectRole,
 )
 from ksef_mcp.listing import (
     LISTING_THRESHOLD,
@@ -58,7 +58,7 @@ from ksef_mcp.server import (
     window_criteria,
 )
 from ksef_mcp.statement import AccountingPeriod, Statement, WorkingDirectoryRefused
-from ksef_mcp.synchronisation import DirectionReport, SynchronisationReport, SyncOutcome
+from ksef_mcp.synchronisation import SubjectRoleReport, SynchronisationReport, SyncOutcome
 from synthetic import synthetic_fa3_invoice, synthetic_metadata
 
 
@@ -108,9 +108,9 @@ class StubSynchroniser:
 
     def run(self, *, nip: str, token: str) -> SynchronisationReport:
         return SynchronisationReport(
-            directions=(
-                DirectionReport(
-                    direction=InvoiceDirection.BUYER,
+            subject_roles=(
+                SubjectRoleReport(
+                    subject_role=SubjectRole.BUYER,
                     outcome=SyncOutcome.ARCHIVED,
                     detail="Paczka EXP-1 trafiła do archiwum.",
                     invoice_count=7,
@@ -120,8 +120,8 @@ class StubSynchroniser:
                     already_held=(HELD_NUMBER,),
                     archive_directory=ARCHIVE_DIRECTORY,
                 ),
-                DirectionReport(
-                    direction=InvoiceDirection.THIRD_SUBJECT,
+                SubjectRoleReport(
+                    subject_role=SubjectRole.THIRD_SUBJECT,
                     outcome=SyncOutcome.NOT_DUE,
                     detail="Za wcześnie na kolejny eksport dla tego typu podmiotu.",
                 ),
@@ -351,54 +351,54 @@ def test_the_answer_names_the_environment_it_spoke_to(
     assert synchronised.environment == "test"
 
 
-def test_the_answer_reports_every_subject_type(synchronised: SynchronisationResult) -> None:
-    assert [one.subject_type for one in synchronised.subject_types] == [
+def test_the_answer_reports_every_subject_role(synchronised: SynchronisationResult) -> None:
+    assert [one.subject_role for one in synchronised.subject_roles] == [
         "buyer",
         "third_subject",
     ]
 
 
-def test_the_answer_says_how_far_each_subject_type_reached(
+def test_the_answer_says_how_far_each_subject_role_reached(
     synchronised: SynchronisationResult,
 ) -> None:
-    assert synchronised.subject_types[0].synchronised_up_to == REACHED.isoformat()
+    assert synchronised.subject_roles[0].synchronised_up_to == REACHED.isoformat()
 
 
-def test_a_subject_type_that_never_ran_reports_no_position(
+def test_a_subject_role_that_never_ran_reports_no_position(
     synchronised: SynchronisationResult,
 ) -> None:
-    assert synchronised.subject_types[1].synchronised_up_to is None
+    assert synchronised.subject_roles[1].synchronised_up_to is None
 
 
 def test_the_answer_counts_what_the_package_carries(
     synchronised: SynchronisationResult,
 ) -> None:
     assert (
-        synchronised.subject_types[0].invoice_count,
-        synchronised.subject_types[0].part_count,
+        synchronised.subject_roles[0].invoice_count,
+        synchronised.subject_roles[0].part_count,
     ) == (7, 1)
 
 
 def test_the_answer_says_where_the_invoices_landed(
     synchronised: SynchronisationResult,
 ) -> None:
-    assert synchronised.subject_types[0].archive_directory == ARCHIVE_DIRECTORY
+    assert synchronised.subject_roles[0].archive_directory == ARCHIVE_DIRECTORY
 
 
 def test_the_answer_names_the_numbers_it_stored(synchronised: SynchronisationResult) -> None:
-    assert synchronised.subject_types[0].archived == [ARCHIVED_NUMBER]
+    assert synchronised.subject_roles[0].archived == [ARCHIVED_NUMBER]
 
 
 def test_the_answer_separates_what_was_already_held(
     synchronised: SynchronisationResult,
 ) -> None:
-    assert synchronised.subject_types[0].already_held == [HELD_NUMBER]
+    assert synchronised.subject_roles[0].already_held == [HELD_NUMBER]
 
 
-def test_a_subject_type_that_stored_nothing_reports_no_directory(
+def test_a_subject_role_that_stored_nothing_reports_no_directory(
     synchronised: SynchronisationResult,
 ) -> None:
-    assert synchronised.subject_types[1].archive_directory is None
+    assert synchronised.subject_roles[1].archive_directory is None
 
 
 @pytest.mark.anyio
@@ -435,11 +435,11 @@ async def test_the_tool_hands_back_the_pass_it_ran(with_a_token: None) -> None:
 
 def test_the_description_survives_an_empty_pass() -> None:
     described = describe(
-        SynchronisationReport(directions=(), pending_exports=(), state_path="/dane/x.json"),
+        SynchronisationReport(subject_roles=(), pending_exports=(), state_path="/dane/x.json"),
         environment=KsefEnvironment.DEMO,
     )
 
-    assert described.subject_types == []
+    assert described.subject_roles == []
 
 
 @pytest.mark.anyio
@@ -468,11 +468,11 @@ LISTING_PERIOD = Period(
 )
 
 
-def listed_question(direction: InvoiceDirection) -> Question:
+def listed_question(subject_role: SubjectRole) -> Question:
     return Question(
         nip=NIP,
         environment=KsefEnvironment.TEST,
-        direction=direction,
+        subject_role=subject_role,
         period=LISTING_PERIOD,
     )
 
@@ -491,9 +491,9 @@ class StubLister:
             environment=KsefEnvironment.TEST,
             threshold=LISTING_THRESHOLD,
             period=LISTING_PERIOD,
-            directions=(
+            subject_roles=(
                 summarise(
-                    question=listed_question(InvoiceDirection.BUYER),
+                    question=listed_question(SubjectRole.BUYER),
                     page=MetadataPage(
                         invoices=(synthetic_metadata(1),),
                         has_more=False,
@@ -504,7 +504,7 @@ class StubLister:
                     from_cache=True,
                 ),
                 summarise(
-                    question=listed_question(InvoiceDirection.SELLER),
+                    question=listed_question(SubjectRole.SELLER),
                     page=MetadataPage(invoices=(), has_more=False, truncated=False, hwm_date=None),
                     queried_at=REACHED,
                 ),
@@ -541,14 +541,14 @@ def test_the_listing_states_the_threshold_it_applied(listing: InvoiceListingResu
     assert listing.threshold == 50
 
 
-def test_the_listing_reports_every_subject_type_it_asked_about(
+def test_the_listing_reports_every_subject_role_it_asked_about(
     listing: InvoiceListingResult,
 ) -> None:
-    assert [one.subject_type for one in listing.subject_types] == ["buyer", "seller"]
+    assert [one.subject_role for one in listing.subject_roles] == ["buyer", "seller"]
 
 
-def test_a_listed_subject_type_carries_the_eight_columns(listing: InvoiceListingResult) -> None:
-    row = listing.subject_types[0].invoices[0]
+def test_a_listed_subject_role_carries_the_eight_columns(listing: InvoiceListingResult) -> None:
+    row = listing.subject_roles[0].invoices[0]
 
     assert (row.ksef_number, row.seller_invoice_number, row.currency) == (
         str(synthetic_metadata(1).ksef_number),
@@ -557,26 +557,26 @@ def test_a_listed_subject_type_carries_the_eight_columns(listing: InvoiceListing
     )
 
 
-def test_a_listed_subject_type_reports_its_gross_total(listing: InvoiceListingResult) -> None:
-    assert listing.subject_types[0].gross_totals[0].gross == Decimal("1230.00")
+def test_a_listed_subject_role_reports_its_gross_total(listing: InvoiceListingResult) -> None:
+    assert listing.subject_roles[0].gross_totals[0].gross == Decimal("1230.00")
 
 
-def test_a_listed_subject_type_says_whether_disk_answered(
+def test_a_listed_subject_role_says_whether_disk_answered(
     listing: InvoiceListingResult,
 ) -> None:
-    assert listing.subject_types[0].from_cache is True
+    assert listing.subject_roles[0].from_cache is True
 
 
-def test_a_listed_subject_type_says_when_it_was_asked(listing: InvoiceListingResult) -> None:
-    assert listing.subject_types[0].queried_at == REACHED.isoformat()
+def test_a_listed_subject_role_says_when_it_was_asked(listing: InvoiceListingResult) -> None:
+    assert listing.subject_roles[0].queried_at == REACHED.isoformat()
 
 
-def test_an_empty_subject_type_is_reported_as_such(listing: InvoiceListingResult) -> None:
-    assert (listing.subject_types[1].outcome, listing.subject_types[1].invoices) == ("empty", [])
+def test_an_empty_subject_role_is_reported_as_such(listing: InvoiceListingResult) -> None:
+    assert (listing.subject_roles[1].outcome, listing.subject_roles[1].invoices) == ("empty", [])
 
 
-def test_an_empty_subject_type_restates_the_question(listing: InvoiceListingResult) -> None:
-    assert f"NIP {NIP}" in listing.subject_types[1].message
+def test_an_empty_subject_role_restates_the_question(listing: InvoiceListingResult) -> None:
+    assert f"NIP {NIP}" in listing.subject_roles[1].message
 
 
 def test_a_described_window_names_the_end_it_asked_about() -> None:
@@ -591,7 +591,7 @@ def test_a_described_window_names_the_end_it_asked_about() -> None:
                 date_to=datetime(2026, 9, 14, tzinfo=UTC),
                 date_type=DateType.PERMANENT_STORAGE,
             ),
-            directions=(),
+            subject_roles=(),
         )
     )
 
@@ -779,11 +779,11 @@ LEDGER_PATH = "/dane/subjects/1234567890/test/review.json"
 LATE_NUMBER = "1234567890-20260707-0100AB12CD77-56"
 
 
-def reviewed_question(direction: InvoiceDirection) -> Question:
+def reviewed_question(subject_role: SubjectRole) -> Question:
     return Question(
         nip=NIP,
         environment=KsefEnvironment.TEST,
-        direction=direction,
+        subject_role=subject_role,
         period=REVIEW_PERIOD,
     )
 
@@ -812,9 +812,9 @@ class StubReviewer:
             threshold=LISTING_THRESHOLD,
             period=REVIEW_PERIOD,
             ledger_path=LEDGER_PATH,
-            directions=(
+            subject_roles=(
                 assess(
-                    question=reviewed_question(InvoiceDirection.BUYER),
+                    question=reviewed_question(SubjectRole.BUYER),
                     invoices=(late,),
                     reviewed=frozenset(),
                     complete=True,
@@ -824,7 +824,7 @@ class StubReviewer:
                     from_cache=True,
                 ),
                 assess(
-                    question=reviewed_question(InvoiceDirection.SELLER),
+                    question=reviewed_question(SubjectRole.SELLER),
                     invoices=(),
                     reviewed=frozenset(),
                     complete=True,
@@ -877,7 +877,7 @@ def test_a_new_invoice_carries_the_day_ksef_gave_it_its_number(
     review: InvoiceReviewResult,
 ) -> None:
     # Data otrzymania, nie data pobrania i nie data wystawienia sprzedawcy.
-    row = review.subject_types[0].new_invoices[0]
+    row = review.subject_roles[0].new_invoices[0]
 
     assert (row.received_on, row.issue_date) == ("2026-07-07", "2026-09-01")
 
@@ -885,32 +885,32 @@ def test_a_new_invoice_carries_the_day_ksef_gave_it_its_number(
 def test_an_invoice_from_an_earlier_month_is_counted_as_a_signal(
     review: InvoiceReviewResult,
 ) -> None:
-    assert review.subject_types[0].earlier_month_count == 1
+    assert review.subject_roles[0].earlier_month_count == 1
 
 
 def test_a_reported_invoice_is_recorded_as_shown(review: InvoiceReviewResult) -> None:
-    assert review.subject_types[0].marked_as_reviewed is True
+    assert review.subject_roles[0].marked_as_reviewed is True
 
 
-def test_a_subject_type_with_nothing_new_says_so(review: InvoiceReviewResult) -> None:
-    assert (review.subject_types[1].outcome, review.subject_types[1].new_count) == (
+def test_a_subject_role_with_nothing_new_says_so(review: InvoiceReviewResult) -> None:
+    assert (review.subject_roles[1].outcome, review.subject_roles[1].new_count) == (
         "nothing_new",
         0,
     )
 
 
 def test_the_review_says_whether_disk_answered(review: InvoiceReviewResult) -> None:
-    assert [one.from_cache for one in review.subject_types] == [True, False]
+    assert [one.from_cache for one in review.subject_roles] == [True, False]
 
 
 def test_the_review_says_when_it_was_asked(review: InvoiceReviewResult) -> None:
-    assert review.subject_types[0].queried_at == REACHED.isoformat()
+    assert review.subject_roles[0].queried_at == REACHED.isoformat()
 
 
 def test_the_review_carries_the_gross_total_of_what_is_new(
     review: InvoiceReviewResult,
 ) -> None:
-    assert review.subject_types[0].gross_totals[0].gross == Decimal("1230.00")
+    assert review.subject_roles[0].gross_totals[0].gross == Decimal("1230.00")
 
 
 @pytest.mark.anyio
@@ -935,7 +935,7 @@ async def test_the_review_tool_hands_back_what_is_new(reviewing: None) -> None:
     async with Client(server, raise_exceptions=True) as client:
         called = await client.call_tool("review_new_invoices")
 
-    assert called.structured_content["subject_types"][0]["new_count"] == 1
+    assert called.structured_content["subject_roles"][0]["new_count"] == 1
 
 
 # Ślad audytowy (#45). W sporze o wyciek to jedyny dowód, więc każde narzędzie
@@ -993,7 +993,7 @@ def test_a_synchronisation_records_where_the_invoices_landed(
     assert recorded_reads(trail)[0].output_path == ARCHIVE_DIRECTORY
 
 
-def test_a_subject_type_that_touched_nothing_leaves_no_entry(
+def test_a_subject_role_that_touched_nothing_leaves_no_entry(
     synchronised: SynchronisationResult, trail: AuditTrail
 ) -> None:
     assert len(recorded_reads(trail)) == 2
@@ -1033,7 +1033,7 @@ def test_a_listing_records_the_numbers_that_reached_the_answer(
     assert recorded_reads(trail)[0].ksef_numbers == (str(synthetic_metadata(1).ksef_number),)
 
 
-def test_a_listing_records_a_subject_type_that_returned_nothing(
+def test_a_listing_records_a_subject_role_that_returned_nothing(
     listing: InvoiceListingResult, trail: AuditTrail
 ) -> None:
     # Pytanie padło, więc zakres, o który zapytano, jest częścią śladu.
@@ -1106,7 +1106,7 @@ def test_a_review_records_the_window_and_the_count(
     )
 
 
-def test_a_review_records_a_subject_type_with_nothing_new(
+def test_a_review_records_a_subject_role_with_nothing_new(
     review: InvoiceReviewResult, trail: AuditTrail
 ) -> None:
     assert recorded_reads(trail)[1].document_count == 0

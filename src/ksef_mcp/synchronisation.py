@@ -44,16 +44,16 @@ from ksef_mcp.ksef_port.types import (
     Credential,
     ExportState,
     ExportStatus,
-    InvoiceDirection,
     Operation,
     Period,
+    SubjectRole,
 )
 from ksef_mcp.package import PackageRetriever, PackageUnreadable
 from ksef_mcp.sync_store import (
     ContinuationPointMissing,
-    DirectionState,
     ExportKeyDiscarded,
     PendingExport,
+    SubjectRoleState,
     SyncState,
     SyncStore,
 )
@@ -61,11 +61,11 @@ from ksef_mcp.sync_store import (
 # Every subject type, every run: a company appears in different roles on
 # different invoices, and only the loop lets the period be called complete
 # (D-031 §5).
-SYNCHRONISED_DIRECTIONS: Final[tuple[InvoiceDirection, ...]] = (
-    InvoiceDirection.SELLER,
-    InvoiceDirection.BUYER,
-    InvoiceDirection.THIRD_SUBJECT,
-    InvoiceDirection.AUTHORIZED_SUBJECT,
+SYNCHRONISED_SUBJECT_ROLES: Final[tuple[SubjectRole, ...]] = (
+    SubjectRole.SELLER,
+    SubjectRole.BUYER,
+    SubjectRole.THIRD_SUBJECT,
+    SubjectRole.AUTHORIZED_SUBJECT,
 )
 
 # How far back a first run reaches. This only says where the sequence starts; a
@@ -117,10 +117,10 @@ class SyncOutcome(StrEnum):
 
 
 @dataclass(frozen=True)
-class DirectionReport:
+class SubjectRoleReport:
     """One subject type's result. Paths and KSeF numbers, never invoice bodies (D-011)."""
 
-    direction: InvoiceDirection
+    subject_role: SubjectRole
     outcome: SyncOutcome
     detail: str
     invoice_count: int = 0
@@ -133,7 +133,7 @@ class DirectionReport:
 
 @dataclass(frozen=True)
 class SynchronisationReport:
-    directions: tuple[DirectionReport, ...]
+    subject_roles: tuple[SubjectRoleReport, ...]
     pending_exports: tuple[str, ...]
     state_path: str
 
@@ -150,12 +150,12 @@ def advance(point: ContinuationPoint, *, status: ExportStatus) -> ContinuationPo
     return point.advanced_to(marker=marker)
 
 
-def rolled_back_to(export: PendingExport, *, stored: DirectionState | None) -> datetime:
+def rolled_back_to(export: PendingExport, *, stored: SubjectRoleState | None) -> datetime:
     """Where a subject type's point goes once an export is confirmed unreachable.
 
     A record that kept the window start it asked for goes back to exactly that.
     One written before that field existed goes back a whole window from when the
-    export was queued — the direction to err in, because a range already held
+    export was queued — the safer way to err, because a range already held
     costs one export and deduplication by KSeF number throws the duplicates away
     (D-005), while too short a reach loses invoices nothing asks for again.
 
@@ -221,18 +221,18 @@ class Synchroniser:
 
     def _advance_all(self, *, nip: str, token: Credential) -> SynchronisationReport:
         state = self.store.load()
-        reports: list[DirectionReport] = []
+        reports: list[SubjectRoleReport] = []
         with self.port.session(nip=nip, token=token) as opened:
             session = self.allowance.guarded(session=opened)
             budget = self.allowance.budget(session=session)
             retriever = PackageRetriever(session=session, store=self.store)
-            for direction in SYNCHRONISED_DIRECTIONS:
+            for subject_role in SYNCHRONISED_SUBJECT_ROLES:
                 state, report = self._advance_one(
                     session=session,
                     budget=budget,
                     retriever=retriever,
                     state=state,
-                    direction=direction,
+                    subject_role=subject_role,
                 )
                 # Written per subject type, not once when the loop is over. A
                 # failure in a later type used to discard everything the earlier
@@ -245,7 +245,7 @@ class Synchroniser:
                 self.store.save(state)
                 reports.append(report)
         return SynchronisationReport(
-            directions=tuple(reports),
+            subject_roles=tuple(reports),
             pending_exports=tuple(export.reference for export in state.pending),
             state_path=str(self.store.path),
         )
@@ -257,14 +257,14 @@ class Synchroniser:
         budget: QueryBudget,
         retriever: PackageRetriever,
         state: SyncState,
-        direction: InvoiceDirection,
-    ) -> tuple[SyncState, DirectionReport]:
+        subject_role: SubjectRole,
+    ) -> tuple[SyncState, SubjectRoleReport]:
         state, report = self._attempt(
             session=session,
             budget=budget,
             retriever=retriever,
             state=state,
-            direction=direction,
+            subject_role=subject_role,
         )
         if report.outcome is not SyncOutcome.RECOVERED:
             return state, report
@@ -279,7 +279,7 @@ class Synchroniser:
             budget=budget,
             retriever=retriever,
             state=state,
-            direction=direction,
+            subject_role=subject_role,
         )
         return state, replace(resumed, detail=f"{report.detail} {resumed.detail}")
 
@@ -290,10 +290,10 @@ class Synchroniser:
         budget: QueryBudget,
         retriever: PackageRetriever,
         state: SyncState,
-        direction: InvoiceDirection,
-    ) -> tuple[SyncState, DirectionReport]:
-        queued = state.pending_for(direction)
-        stored = state.directions.get(direction)
+        subject_role: SubjectRole,
+    ) -> tuple[SyncState, SubjectRoleReport]:
+        queued = state.pending_for(subject_role)
+        stored = state.subject_roles.get(subject_role)
         if queued is not None and queued.state is ExportState.RUNNING:
             return self._resume(
                 session=session,
@@ -321,10 +321,10 @@ class Synchroniser:
         # due check rather than inside `_start`: the night window governs a
         # subject type nobody has ever asked for exactly as it governs one with
         # a record, so the question has to be put to a state either way.
-        opening = DirectionState(reached=moment - INITIAL_LOOKBACK) if stored is None else stored
-        if not opening.is_due(direction=direction, moment=moment):
-            return state, DirectionReport(
-                direction=direction,
+        opening = SubjectRoleState(reached=moment - INITIAL_LOOKBACK) if stored is None else stored
+        if not opening.is_due(subject_role=subject_role, moment=moment):
+            return state, SubjectRoleReport(
+                subject_role=subject_role,
                 outcome=SyncOutcome.NOT_DUE,
                 detail="Za wcześnie na kolejny eksport dla tego typu podmiotu.",
                 reached=None if stored is None else stored.reached,
@@ -334,7 +334,7 @@ class Synchroniser:
             budget=budget,
             retriever=retriever,
             state=state,
-            direction=direction,
+            subject_role=subject_role,
             opening=opening,
             moment=moment,
         )
@@ -346,15 +346,15 @@ class Synchroniser:
         budget: QueryBudget,
         retriever: PackageRetriever,
         state: SyncState,
-        direction: InvoiceDirection,
-        opening: DirectionState,
+        subject_role: SubjectRole,
+        opening: SubjectRoleState,
         moment: datetime,
-    ) -> tuple[SyncState, DirectionReport]:
+    ) -> tuple[SyncState, SubjectRoleReport]:
         try:
             budget.spend(Operation.EXPORT)
         except KsefRequestRejected as refusal:
-            return state, DirectionReport(
-                direction=direction,
+            return state, SubjectRoleReport(
+                subject_role=subject_role,
                 outcome=SyncOutcome.BUDGET_SPENT,
                 detail=str(refusal),
                 reached=opening.reached,
@@ -364,11 +364,11 @@ class Synchroniser:
             # window's two ends have to come from one instant, or a slow run
             # widens the very span the ceiling is there to bound.
             period=Period.for_synchronisation(since=opening.reached, now=moment),
-            direction=direction,
+            subject_role=subject_role,
         )
         queued = PendingExport.queued(
             handle=handle,
-            direction=direction,
+            subject_role=subject_role,
             started_at=moment,
             # Where the point stood before this export moved it. Kept with the
             # export rather than beside the point, because it is only ever read
@@ -377,9 +377,9 @@ class Synchroniser:
         )
         # The attempt is recorded before the package is, so a run that dies
         # while polling still holds the fifteen-minute floor open.
-        advanced = state.with_pending(queued).with_direction(
-            direction,
-            DirectionState(reached=opening.reached, attempted_at=moment),
+        advanced = state.with_pending(queued).with_subject_role(
+            subject_role,
+            SubjectRoleState(reached=opening.reached, attempted_at=moment),
         )
         return self._resume(
             session=session,
@@ -397,11 +397,11 @@ class Synchroniser:
         retriever: PackageRetriever,
         state: SyncState,
         export: PendingExport,
-    ) -> tuple[SyncState, DirectionReport]:
+    ) -> tuple[SyncState, SubjectRoleReport]:
         status = self._poll(session=session, budget=budget, export=export)
         if status is None:
-            return state, DirectionReport(
-                direction=export.direction,
+            return state, SubjectRoleReport(
+                subject_role=export.subject_role,
                 outcome=SyncOutcome.BUDGET_SPENT,
                 detail=(
                     "Godzinowy budżet odpytań o status jest wyczerpany; "
@@ -409,8 +409,8 @@ class Synchroniser:
                 ),
             )
         if status.state is ExportState.RUNNING:
-            return state, DirectionReport(
-                direction=export.direction,
+            return state, SubjectRoleReport(
+                subject_role=export.subject_role,
                 outcome=SyncOutcome.STILL_RUNNING,
                 detail=(
                     f"KSeF nadal buduje paczkę {export.reference}; dokończy ją kolejny przebieg."
@@ -424,8 +424,8 @@ class Synchroniser:
             # journal and not back on the queue, because KSeF will never build
             # this package and a queue entry nothing can finish blocks its
             # subject type for good (GH-94).
-            return state.with_settled(export.refused()), DirectionReport(
-                direction=export.direction,
+            return state.with_settled(export.refused()), SubjectRoleReport(
+                subject_role=export.subject_role,
                 outcome=SyncOutcome.FAILED,
                 detail=f"KSeF odrzucił eksport {export.reference}.",
             )
@@ -447,8 +447,8 @@ class Synchroniser:
         state: SyncState,
         export: PendingExport,
         status: ExportStatus,
-    ) -> tuple[SyncState, DirectionReport]:
-        stored = state.directions.get(export.direction)
+    ) -> tuple[SyncState, SubjectRoleReport]:
+        stored = state.subject_roles.get(export.subject_role)
         if stored is None:
             # A record carrying a queued export for a subject type that has no
             # continuation point: nothing says where this window began, and a
@@ -462,7 +462,7 @@ class Synchroniser:
                 f"eksportu, żeby ten typ podmiotu zaczął sekwencję od nowa."
             )
         moved = advance(
-            stored.continuation_point(direction=export.direction),
+            stored.continuation_point(subject_role=export.subject_role),
             status=status,
         )
         # The parts arrive by transition rather than by rewriting the record:
@@ -491,9 +491,9 @@ class Synchroniser:
             session=session,
             budget=budget,
             retriever=retriever,
-            state=carrying.with_direction(
-                export.direction,
-                DirectionState(reached=moved.reached, attempted_at=stored.attempted_at),
+            state=carrying.with_subject_role(
+                export.subject_role,
+                SubjectRoleState(reached=moved.reached, attempted_at=stored.attempted_at),
             ),
             export=ready,
             settled=SyncOutcome.ARCHIVED,
@@ -513,7 +513,7 @@ class Synchroniser:
         detail: str,
         reached: datetime | None,
         renewed: bool = False,
-    ) -> tuple[SyncState, DirectionReport]:
+    ) -> tuple[SyncState, SubjectRoleReport]:
         """Fetch the parts, store the invoices, and let the key go with them.
 
         Downloading a part spends no allowance and so counts against no
@@ -557,8 +557,8 @@ class Synchroniser:
             # to write the files (ADR-103 §3).
             return state, self._stalled(export=export, failure=failure, reached=reached)
         stored = archivist.reported
-        return self.store.load(), DirectionReport(
-            direction=export.direction,
+        return self.store.load(), SubjectRoleReport(
+            subject_role=export.subject_role,
             outcome=settled,
             detail=detail,
             invoice_count=export.invoice_count,
@@ -575,14 +575,14 @@ class Synchroniser:
         export: PendingExport,
         failure: Exception,
         reached: datetime | None,
-    ) -> DirectionReport:
+    ) -> SubjectRoleReport:
         """The window is still owed and the record on disk is what says so.
 
         The message names the failure, never the invoice — these exceptions
         carry no package content (D-011).
         """
-        return DirectionReport(
-            direction=export.direction,
+        return SubjectRoleReport(
+            subject_role=export.subject_role,
             outcome=SyncOutcome.NOT_ARCHIVED,
             detail=(
                 f"Paczka {export.reference} czeka na dysku z kluczem, "
@@ -605,7 +605,7 @@ class Synchroniser:
         settled: SyncOutcome,
         detail: str,
         reached: datetime | None,
-    ) -> tuple[SyncState, DirectionReport]:
+    ) -> tuple[SyncState, SubjectRoleReport]:
         """Ask KSeF for the export again before concluding the package is lost.
 
         A presigned link dies on a clock of its own, so the parts on record can
@@ -654,7 +654,7 @@ class Synchroniser:
         state: SyncState,
         export: PendingExport,
         refusal: KsefRefused | None,
-    ) -> tuple[SyncState, DirectionReport]:
+    ) -> tuple[SyncState, SubjectRoleReport]:
         """Take a lost export off the record and put the point back before it.
 
         This is the only place the continuation point moves backwards, and it
@@ -668,17 +668,17 @@ class Synchroniser:
         message carries it, so the next operator reading the report knows which
         of the two happened without going back to the registry.
         """
-        stored = state.directions.get(export.direction)
+        stored = state.subject_roles.get(export.subject_role)
         returned = rolled_back_to(export, stored=stored)
         answer = "nie ma już jej części" if refusal is None else str(refusal)
-        return state.without_export(reference=export.reference).with_direction(
-            export.direction,
-            DirectionState(
+        return state.without_export(reference=export.reference).with_subject_role(
+            export.subject_role,
+            SubjectRoleState(
                 reached=returned,
                 attempted_at=None if stored is None else stored.attempted_at,
             ),
-        ), DirectionReport(
-            direction=export.direction,
+        ), SubjectRoleReport(
+            subject_role=export.subject_role,
             outcome=SyncOutcome.RECOVERED,
             detail=(
                 f"Odnośniki do paczki {export.reference} wygasły, a KSeF "

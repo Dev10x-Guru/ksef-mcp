@@ -22,16 +22,16 @@ from ksef_mcp.ksef_port import (
     ExportEncryption,
     ExportPart,
     ExportState,
-    InvoiceDirection,
+    SubjectRole,
 )
 from ksef_mcp.storage import WriteExclusivityUnavailable
 from ksef_mcp.sync_store import (
     MINIMUM_INTERVAL,
     SCHEMA_VERSION,
     SETTLED_JOURNAL_LIMIT,
-    DirectionState,
     ExportKeyDiscarded,
     PendingExport,
+    SubjectRoleState,
     SyncState,
     SyncStateUnreadable,
     SyncStore,
@@ -76,7 +76,7 @@ def part() -> ExportPart:
 def queued(part: ExportPart) -> PendingExport:
     return PendingExport(
         reference="EXP-1",
-        direction=InvoiceDirection.BUYER,
+        subject_role=SubjectRole.BUYER,
         started_at=STARTED,
         encryption=ExportEncryption(key=b"k" * 32, initialisation_vector=b"i" * 16),
         state=ExportState.READY,
@@ -88,9 +88,9 @@ def queued(part: ExportPart) -> PendingExport:
 @pytest.fixture
 def populated(queued: PendingExport) -> SyncState:
     return SyncState(
-        directions={
-            InvoiceDirection.BUYER: DirectionState(reached=REACHED, attempted_at=STARTED),
-            InvoiceDirection.SELLER: DirectionState(reached=REACHED),
+        subject_roles={
+            SubjectRole.BUYER: SubjectRoleState(reached=REACHED, attempted_at=STARTED),
+            SubjectRole.SELLER: SubjectRoleState(reached=REACHED),
         },
         pending=(queued,),
     )
@@ -132,13 +132,13 @@ def test_the_environment_separates_two_records_of_one_subject(tmp_path: Path) ->
 
 
 def test_continuation_points_survive_the_round_trip(reloaded: SyncState) -> None:
-    assert reloaded.directions[InvoiceDirection.BUYER] == DirectionState(
+    assert reloaded.subject_roles[SubjectRole.BUYER] == SubjectRoleState(
         reached=REACHED, attempted_at=STARTED
     )
 
 
-def test_a_never_attempted_direction_reads_back_without_an_attempt(reloaded: SyncState) -> None:
-    assert reloaded.directions[InvoiceDirection.SELLER].attempted_at is None
+def test_a_never_attempted_subject_role_reads_back_without_an_attempt(reloaded: SyncState) -> None:
+    assert reloaded.subject_roles[SubjectRole.SELLER].attempted_at is None
 
 
 def test_the_queued_export_survives_the_round_trip(
@@ -213,19 +213,19 @@ def test_no_staging_file_outlives_the_write(store: SyncStore, populated: SyncSta
 
 def test_a_second_write_replaces_the_first(store: SyncStore, populated: SyncState) -> None:
     store.save(populated)
-    store.save(SyncState(directions={InvoiceDirection.BUYER: DirectionState(reached=STARTED)}))
+    store.save(SyncState(subject_roles={SubjectRole.BUYER: SubjectRoleState(reached=STARTED)}))
 
     assert store.load().pending == ()
 
 
-def test_a_queued_export_is_found_by_its_subject_type(
+def test_a_queued_export_is_found_by_its_subject_role(
     populated: SyncState, queued: PendingExport
 ) -> None:
-    assert populated.pending_for(InvoiceDirection.BUYER) == queued
+    assert populated.pending_for(SubjectRole.BUYER) == queued
 
 
-def test_a_subject_type_without_a_queued_export_finds_none(populated: SyncState) -> None:
-    assert populated.pending_for(InvoiceDirection.SELLER) is None
+def test_a_subject_role_without_a_queued_export_finds_none(populated: SyncState) -> None:
+    assert populated.pending_for(SubjectRole.SELLER) is None
 
 
 def test_re_recording_an_export_replaces_it_rather_than_duplicating(
@@ -234,7 +234,7 @@ def test_re_recording_an_export_replaces_it_rather_than_duplicating(
     advanced = populated.with_pending(
         PendingExport(
             reference=queued.reference,
-            direction=queued.direction,
+            subject_role=queued.subject_role,
             started_at=queued.started_at,
             encryption=queued.encryption,
             state=ExportState.FAILED,
@@ -244,17 +244,17 @@ def test_re_recording_an_export_replaces_it_rather_than_duplicating(
     assert [export.state for export in advanced.pending] == [ExportState.FAILED]
 
 
-def test_recording_a_direction_leaves_the_others_alone(populated: SyncState) -> None:
-    advanced = populated.with_direction(InvoiceDirection.SELLER, DirectionState(reached=STARTED))
+def test_recording_a_subject_role_leaves_the_others_alone(populated: SyncState) -> None:
+    advanced = populated.with_subject_role(SubjectRole.SELLER, SubjectRoleState(reached=STARTED))
 
-    assert advanced.directions[InvoiceDirection.BUYER].reached == REACHED
+    assert advanced.subject_roles[SubjectRole.BUYER].reached == REACHED
 
 
-def test_a_direction_state_hands_out_the_ports_continuation_point() -> None:
-    stored = DirectionState(reached=REACHED, attempted_at=STARTED)
+def test_a_subject_role_state_hands_out_the_ports_continuation_point() -> None:
+    stored = SubjectRoleState(reached=REACHED, attempted_at=STARTED)
 
-    assert stored.continuation_point(direction=InvoiceDirection.BUYER) == ContinuationPoint(
-        direction=InvoiceDirection.BUYER, reached=REACHED
+    assert stored.continuation_point(subject_role=SubjectRole.BUYER) == ContinuationPoint(
+        subject_role=SubjectRole.BUYER, reached=REACHED
     )
 
 
@@ -271,7 +271,7 @@ def test_the_handle_carries_the_key_the_package_was_minted_with(queued: PendingE
 def test_dropping_an_export_leaves_the_continuation_points_alone(
     populated: SyncState,
 ) -> None:
-    assert populated.without_export(reference="EXP-1").directions == populated.directions
+    assert populated.without_export(reference="EXP-1").subject_roles == populated.subject_roles
 
 
 def test_a_dropped_export_is_gone_from_the_record(populated: SyncState) -> None:
@@ -286,7 +286,7 @@ def test_dropping_an_export_nobody_recorded_changes_nothing(populated: SyncState
 def spent(queued: PendingExport) -> PendingExport:
     return PendingExport(
         reference=queued.reference,
-        direction=queued.direction,
+        subject_role=queued.subject_role,
         started_at=queued.started_at,
         encryption=None,
         state=ExportState.FAILED,
@@ -304,7 +304,7 @@ def test_the_window_an_export_asked_for_survives_the_round_trip(
 def test_a_record_written_before_the_window_start_existed_still_loads(
     store: SyncStore, populated: SyncState
 ) -> None:
-    # The field is additive in both directions: an older reader ignores the key
+    # The field is additive both ways: an older reader ignores the key
     # and an older document simply does not carry it, so neither needs a schema
     # bump (GH-93). Reading such a document must not fail.
     path = store.save(populated)
@@ -334,12 +334,12 @@ def test_a_finished_export_is_journalled_rather_than_queued(queued: PendingExpor
     )
 
 
-def test_a_journalled_export_stops_blocking_its_subject_type(queued: PendingExport) -> None:
+def test_a_journalled_export_stops_blocking_its_subject_role(queued: PendingExport) -> None:
     # The whole of GH-94 in one assertion: with the refusal in the queue this
     # returned it forever, and every pass ordered a package nobody collected.
     state = SyncState(pending=(queued,)).with_settled(spent(queued))
 
-    assert state.pending_for(InvoiceDirection.BUYER) is None
+    assert state.pending_for(SubjectRole.BUYER) is None
 
 
 def test_the_journal_keeps_only_the_most_recent_refusals(queued: PendingExport) -> None:
@@ -361,7 +361,7 @@ def test_the_journal_survives_the_round_trip(store: SyncStore, queued: PendingEx
 def test_a_record_written_before_the_journal_existed_still_loads(
     store: SyncStore, populated: SyncState
 ) -> None:
-    # Additive in both directions, exactly like `covering_from`: an older reader
+    # Additive both ways, exactly like `covering_from`: an older reader
     # ignores the key and an older document does not carry it, so neither needs
     # a schema bump.
     path = store.save(populated)
@@ -408,7 +408,7 @@ def test_asking_a_finished_export_for_its_handle_says_the_key_is_gone(
 
 
 def test_an_attempt_is_recorded_with_its_timestamp() -> None:
-    stored = DirectionState(reached=REACHED, attempted_at=REACHED + timedelta(minutes=15))
+    stored = SubjectRoleState(reached=REACHED, attempted_at=REACHED + timedelta(minutes=15))
 
     assert stored.attempted_at == datetime(2026, 9, 10, 0, 15, tzinfo=UTC)
 
@@ -462,10 +462,10 @@ def test_the_night_window_is_measured_in_utc(hour: int, expected: bool) -> None:
     assert in_night_window(datetime(2026, 9, 12, hour, tzinfo=UTC)) is expected
 
 
-def test_a_subject_type_recorded_without_an_attempt_is_due() -> None:
-    state = DirectionState(reached=REACHED)
+def test_a_subject_role_recorded_without_an_attempt_is_due() -> None:
+    state = SubjectRoleState(reached=REACHED)
 
-    assert state.is_due(direction=InvoiceDirection.BUYER, moment=NOON) is True
+    assert state.is_due(subject_role=SubjectRole.BUYER, moment=NOON) is True
 
 
 @pytest.mark.parametrize(
@@ -473,24 +473,24 @@ def test_a_subject_type_recorded_without_an_attempt_is_due() -> None:
     [(timedelta(minutes=14), False), (MINIMUM_INTERVAL, True), (timedelta(hours=1), True)],
 )
 def test_the_state_holds_the_interval_floor_open(elapsed: timedelta, expected: bool) -> None:
-    state = DirectionState(reached=REACHED, attempted_at=NOON - elapsed)
+    state = SubjectRoleState(reached=REACHED, attempted_at=NOON - elapsed)
 
-    assert state.is_due(direction=InvoiceDirection.BUYER, moment=NOON) is expected
+    assert state.is_due(subject_role=SubjectRole.BUYER, moment=NOON) is expected
 
 
 @pytest.mark.parametrize(
     ("elapsed", "expected"),
     [(timedelta(hours=23), False), (timedelta(days=1), True)],
 )
-def test_the_state_lets_a_rare_subject_type_through_once_a_day(
+def test_the_state_lets_a_rare_subject_role_through_once_a_day(
     elapsed: timedelta, expected: bool
 ) -> None:
-    state = DirectionState(reached=REACHED, attempted_at=MIDNIGHT - elapsed)
+    state = SubjectRoleState(reached=REACHED, attempted_at=MIDNIGHT - elapsed)
 
-    assert state.is_due(direction=InvoiceDirection.THIRD_SUBJECT, moment=MIDNIGHT) is expected
+    assert state.is_due(subject_role=SubjectRole.THIRD_SUBJECT, moment=MIDNIGHT) is expected
 
 
-def test_a_rare_subject_type_waits_for_the_night_window_even_when_never_attempted() -> None:
-    state = DirectionState(reached=REACHED)
+def test_a_rare_subject_role_waits_for_the_night_window_even_when_never_attempted() -> None:
+    state = SubjectRoleState(reached=REACHED)
 
-    assert state.is_due(direction=InvoiceDirection.THIRD_SUBJECT, moment=NOON) is False
+    assert state.is_due(subject_role=SubjectRole.THIRD_SUBJECT, moment=NOON) is False

@@ -28,7 +28,6 @@ from ksef_mcp.ksef_port.types import (
     ExportPart,
     ExportState,
     ExportStatus,
-    InvoiceDirection,
     InvoiceMetadata,
     KsefLimits,
     KsefNumber,
@@ -38,6 +37,7 @@ from ksef_mcp.ksef_port.types import (
     Period,
     RateLimits,
     SessionCeilings,
+    SubjectRole,
 )
 
 __all__ = [
@@ -54,7 +54,6 @@ __all__ = [
     "GuardedSession",
     "InvalidKsefIdentifier",
     "InvalidPeriod",
-    "InvoiceDirection",
     "InvoiceMetadata",
     "KsefAuthenticationFailed",
     "KsefLimits",
@@ -78,5 +77,6 @@ __all__ = [
     "RefusalBreaker",
     "RetryPolicy",
     "SessionCeilings",
+    "SubjectRole",
     "check_connection",
 ]

@@ -23,7 +23,6 @@ from conftest import an_allowance
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port import (
     ConnectionCheck,
-    InvoiceDirection,
     InvoiceMetadata,
     KsefLimits,
     KsefRequestRejected,
@@ -33,6 +32,7 @@ from ksef_mcp.ksef_port import (
     Period,
     RateLimits,
     SessionCeilings,
+    SubjectRole,
     check_connection,
 )
 from ksef_mcp.ksef_port.connection import DEFAULT_LIMIT, check_period
@@ -68,7 +68,7 @@ def limits(metadata: OperationLimit = GENEROUS) -> KsefLimits:
 class CountingSession:
     invoices: list[InvoiceMetadata]
     allowance: OperationLimit = GENEROUS
-    queries: list[tuple[Period, InvoiceDirection]] = field(default_factory=list)
+    queries: list[tuple[Period, SubjectRole]] = field(default_factory=list)
 
     def read_limits(self) -> KsefLimits:
         return limits(self.allowance)
@@ -77,10 +77,10 @@ class CountingSession:
         self,
         *,
         period: Period,
-        direction: InvoiceDirection,
+        subject_role: SubjectRole,
         page_offset: int = 0,
     ) -> MetadataPage:
-        self.queries.append((period, direction))
+        self.queries.append((period, subject_role))
         return MetadataPage(
             invoices=tuple(self.invoices),
             has_more=False,
@@ -103,7 +103,7 @@ class CountingPort:
         yield opened
 
     @property
-    def queries(self) -> list[tuple[Period, InvoiceDirection]]:
+    def queries(self) -> list[tuple[Period, SubjectRole]]:
         return [query for session in self.sessions for query in session.queries]
 
 
@@ -191,10 +191,10 @@ def test_the_query_asks_about_the_subject_as_a_buyer(
     checked: ConnectionCheck,
     port: CountingPort,
 ) -> None:
-    # `buyer.name` is where the company name lives, and the direction decides
+    # `buyer.name` is where the company name lives, and the subject's role decides
     # whose name comes back — asking as a seller would greet the counterparty.
-    _, direction = port.queries[0]
-    assert direction is InvoiceDirection.BUYER
+    _, subject_role = port.queries[0]
+    assert subject_role is SubjectRole.BUYER
 
 
 def test_the_window_opens_no_earlier_than_the_one_asked_for(

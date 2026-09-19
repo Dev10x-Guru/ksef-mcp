@@ -27,21 +27,21 @@ from ksef_mcp.audit import (
 from ksef_mcp.errors import KsefMcpError
 from ksef_mcp.ksef_port.errors import KsefPortError
 from ksef_mcp.ksef_port.types import InvoiceMetadata, Period
-from ksef_mcp.listing import DirectionListing, InvoiceLister, InvoiceListing
+from ksef_mcp.listing import InvoiceLister, InvoiceListing, SubjectRoleListing
 from ksef_mcp.metadata import SERVER_NAME, VERSION
 from ksef_mcp.paths import Nip
 from ksef_mcp.pdf import InvoiceRenderer, RenderedInvoice
 from ksef_mcp.period_cache import PeriodCache
-from ksef_mcp.review import DirectionReview, InvoiceReview, InvoiceReviewer, ReviewStore
+from ksef_mcp.review import InvoiceReview, InvoiceReviewer, ReviewStore, SubjectRoleReview
 from ksef_mcp.statement import (
-    STATEMENT_DIRECTION,
+    STATEMENT_SUBJECT_ROLE,
     AccountingPeriod,
     Statement,
     StatementComposer,
     prepare_working_directory,
 )
 from ksef_mcp.sync_store import SyncStore
-from ksef_mcp.synchronisation import DirectionReport, SynchronisationReport, Synchroniser
+from ksef_mcp.synchronisation import SubjectRoleReport, SynchronisationReport, Synchroniser
 
 if TYPE_CHECKING:
     from ksef_mcp.ksef_port.adapter import Ksef2Port
@@ -54,10 +54,10 @@ class ServerInfo(BaseModel):
     version: str
 
 
-class SubjectTypeResult(BaseModel):
+class SubjectRoleResult(BaseModel):
     """Paths and KSeF numbers for one subject type. Never an invoice body (D-011)."""
 
-    subject_type: str
+    subject_role: str
     outcome: str
     detail: str
     invoice_count: int
@@ -70,7 +70,7 @@ class SubjectTypeResult(BaseModel):
 
 class SynchronisationResult(BaseModel):
     environment: str
-    subject_types: list[SubjectTypeResult]
+    subject_roles: list[SubjectRoleResult]
     pending_exports: list[str]
     state_file: str
 
@@ -139,21 +139,21 @@ def describe(
 ) -> SynchronisationResult:
     return SynchronisationResult(
         environment=str(environment),
-        subject_types=[
-            SubjectTypeResult(
-                subject_type=str(direction.direction),
-                outcome=str(direction.outcome),
-                detail=direction.detail,
-                invoice_count=direction.invoice_count,
-                part_count=direction.part_count,
+        subject_roles=[
+            SubjectRoleResult(
+                subject_role=str(reported.subject_role),
+                outcome=str(reported.outcome),
+                detail=reported.detail,
+                invoice_count=reported.invoice_count,
+                part_count=reported.part_count,
                 synchronised_up_to=(
-                    None if direction.reached is None else direction.reached.isoformat()
+                    None if reported.reached is None else reported.reached.isoformat()
                 ),
-                archived=list(direction.archived),
-                already_held=list(direction.already_held),
-                archive_directory=direction.archive_directory,
+                archived=list(reported.archived),
+                already_held=list(reported.already_held),
+                archive_directory=reported.archive_directory,
             )
-            for direction in report.directions
+            for reported in report.subject_roles
         ],
         pending_exports=list(report.pending_exports),
         state_file=report.state_path,
@@ -282,35 +282,35 @@ def synchronisation_entries(
     """One entry per subject type per outcome — stored, and seen but already held."""
     return tuple(
         entry
-        for direction in report.directions
-        for entry in _direction_entries(
-            direction,
+        for reported in report.subject_roles
+        for entry in _subject_role_entries(
+            reported,
             authorisation=authorisation,
             moment=moment,
         )
     )
 
 
-def _direction_entries(
-    direction: DirectionReport,
+def _subject_role_entries(
+    reported: SubjectRoleReport,
     *,
     authorisation: Authorisation,
     moment: datetime,
 ) -> tuple[AuditEntry, ...]:
-    reached = "unknown" if direction.reached is None else direction.reached.isoformat()
+    reached = "unknown" if reported.reached is None else reported.reached.isoformat()
     common = {
         "recorded_at": moment,
         "operation": AuditedOperation.SYNCHRONISATION,
         "authorisation": authorisation,
-        "subject_role": str(direction.direction),
+        "subject_role": str(reported.subject_role),
         "criteria": f"export packages up to {reached}",
-        "output_path": direction.archive_directory,
+        "output_path": reported.archive_directory,
     }
     written = (
         AuditEntry(
             disclosure=Disclosure.DISK,
-            document_count=len(direction.archived),
-            ksef_numbers=direction.archived,
+            document_count=len(reported.archived),
+            ksef_numbers=reported.archived,
             formats=(XML_FORMAT,),
             **common,  # type: ignore[arg-type]
         ),
@@ -322,15 +322,15 @@ def _direction_entries(
     skipped = (
         AuditEntry(
             disclosure=Disclosure.DEDUPLICATION_SKIP,
-            document_count=len(direction.already_held),
-            ksef_numbers=direction.already_held,
+            document_count=len(reported.already_held),
+            ksef_numbers=reported.already_held,
             formats=(),
             **common,  # type: ignore[arg-type]
         ),
     )
     return (
-        *(written if direction.archived else ()),
-        *(skipped if direction.already_held else ()),
+        *(written if reported.archived else ()),
+        *(skipped if reported.already_held else ()),
     )
 
 
@@ -395,8 +395,8 @@ class GrossTotal(BaseModel):
     gross: Decimal
 
 
-class DirectionListingResult(BaseModel):
-    subject_type: str
+class SubjectRoleListingResult(BaseModel):
+    subject_role: str
     outcome: str
     message: str
     invoices: list[InvoiceRow]
@@ -413,12 +413,12 @@ class InvoiceListingResult(BaseModel):
     threshold: int
     period_from: str
     period_to: str
-    subject_types: list[DirectionListingResult]
+    subject_roles: list[SubjectRoleListingResult]
 
 
-def describe_direction(listing: DirectionListing) -> DirectionListingResult:
-    return DirectionListingResult(
-        subject_type=str(listing.question.direction),
+def describe_subject_role(listing: SubjectRoleListing) -> SubjectRoleListingResult:
+    return SubjectRoleListingResult(
+        subject_role=str(listing.question.subject_role),
         outcome=str(listing.outcome),
         message=listing.message,
         invoices=[
@@ -456,7 +456,7 @@ def describe_listing(listing: InvoiceListing) -> InvoiceListingResult:
         threshold=listing.threshold,
         period_from=asked.date_from.isoformat(),
         period_to=asked.date_to.isoformat(),
-        subject_types=[describe_direction(one) for one in listing.directions],
+        subject_roles=[describe_subject_role(one) for one in listing.subject_roles],
     )
 
 
@@ -479,14 +479,14 @@ def listing_entries(
             operation=AuditedOperation.LISTING,
             authorisation=authorisation,
             disclosure=Disclosure.MODEL_CONTEXT,
-            subject_role=str(direction.question.direction),
-            criteria=window_criteria(direction.question.period),
-            document_count=direction.invoice_count,
-            ksef_numbers=tuple(str(invoice.ksef_number) for invoice in direction.invoices),
+            subject_role=str(listed.question.subject_role),
+            criteria=window_criteria(listed.question.period),
+            document_count=listed.invoice_count,
+            ksef_numbers=tuple(str(invoice.ksef_number) for invoice in listed.invoices),
             output_path=None,
             formats=(),
         )
-        for direction in listing.directions
+        for listed in listing.subject_roles
     )
 
 
@@ -589,7 +589,7 @@ def statement_entries(
             operation=AuditedOperation.STATEMENT,
             authorisation=authorisation,
             disclosure=Disclosure.DISK,
-            subject_role=str(STATEMENT_DIRECTION),
+            subject_role=str(STATEMENT_SUBJECT_ROLE),
             criteria=str(statement.period),
             document_count=statement.row_count,
             ksef_numbers=statement.ksef_numbers,
@@ -673,8 +673,8 @@ class ReviewedInvoiceRow(InvoiceRow):
     received_on: str
 
 
-class DirectionReviewResult(BaseModel):
-    subject_type: str
+class SubjectRoleReviewResult(BaseModel):
+    subject_role: str
     outcome: str
     message: str
     new_invoices: list[ReviewedInvoiceRow]
@@ -694,7 +694,7 @@ class InvoiceReviewResult(BaseModel):
     period_from: str
     period_to: str
     ledger_file: str
-    subject_types: list[DirectionReviewResult]
+    subject_roles: list[SubjectRoleReviewResult]
 
 
 def reviewed_row(invoice: InvoiceMetadata) -> ReviewedInvoiceRow:
@@ -713,9 +713,9 @@ def reviewed_row(invoice: InvoiceMetadata) -> ReviewedInvoiceRow:
     )
 
 
-def describe_review_direction(review: DirectionReview) -> DirectionReviewResult:
-    return DirectionReviewResult(
-        subject_type=str(review.question.direction),
+def describe_review_subject_role(review: SubjectRoleReview) -> SubjectRoleReviewResult:
+    return SubjectRoleReviewResult(
+        subject_role=str(review.question.subject_role),
         outcome=str(review.outcome),
         message=review.message,
         new_invoices=[reviewed_row(invoice) for invoice in review.new_invoices],
@@ -742,7 +742,7 @@ def describe_review(review: InvoiceReview) -> InvoiceReviewResult:
         # lets the period cache answer a repeat of this question for free.
         period_to=asked.date_to.isoformat(),
         ledger_file=review.ledger_path,
-        subject_types=[describe_review_direction(one) for one in review.directions],
+        subject_roles=[describe_review_subject_role(one) for one in review.subject_roles],
     )
 
 
@@ -767,14 +767,14 @@ def review_entries(
             operation=AuditedOperation.REVIEW,
             authorisation=authorisation,
             disclosure=Disclosure.MODEL_CONTEXT,
-            subject_role=str(direction.question.direction),
-            criteria=window_criteria(direction.question.period),
-            document_count=direction.new_count,
-            ksef_numbers=tuple(str(invoice.ksef_number) for invoice in direction.new_invoices),
+            subject_role=str(assessed.question.subject_role),
+            criteria=window_criteria(assessed.question.period),
+            document_count=assessed.new_count,
+            ksef_numbers=tuple(str(invoice.ksef_number) for invoice in assessed.new_invoices),
             output_path=None,
             formats=(),
         )
-        for direction in review.directions
+        for assessed in review.subject_roles
     )
 
 

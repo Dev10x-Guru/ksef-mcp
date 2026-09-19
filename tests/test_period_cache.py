@@ -21,12 +21,12 @@ from ksef_mcp import period_cache as period_cache_module
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port import (
     DateType,
-    InvoiceDirection,
     MetadataPage,
     OperationLimit,
     Period,
     QueryBudget,
     RateLimits,
+    SubjectRole,
 )
 from ksef_mcp.ksef_port.errors import KsefRequestRejected, KsefUnreachable
 from ksef_mcp.ksef_port.types import Operation
@@ -41,7 +41,7 @@ from ksef_mcp.period_cache import (
     is_cacheable,
     now_utc,
 )
-from ksef_mcp.sync_store import DirectionState, SyncState, SyncStore
+from ksef_mcp.sync_store import SubjectRoleState, SyncState, SyncStore
 from synthetic import synthetic_metadata
 
 NIP = "1234567890"
@@ -75,7 +75,7 @@ class CountingSession:
     """A session that says how many of the twenty an hour were actually spent."""
 
     page: MetadataPage
-    asked: list[tuple[Period, InvoiceDirection]] = field(default_factory=list)
+    asked: list[tuple[Period, SubjectRole]] = field(default_factory=list)
     offsets: list[int] = field(default_factory=list)
     # Pages beyond the first, keyed by their zero-based number, so the
     # completing loop meets a real continuation rather than the same page twice.
@@ -85,10 +85,10 @@ class CountingSession:
         self,
         *,
         period: Period,
-        direction: InvoiceDirection,
+        subject_role: SubjectRole,
         page_offset: int = 0,
     ) -> MetadataPage:
-        self.asked.append((period, direction))
+        self.asked.append((period, subject_role))
         self.offsets.append(page_offset)
         return self.further.get(page_offset, self.page)
 
@@ -152,13 +152,13 @@ def reader(cache: PeriodCache, budget: QueryBudget) -> PeriodMetadataReader:
 
 @pytest.fixture
 def remembered(cache: PeriodCache, page: MetadataPage) -> CachedPeriod | None:
-    cache.remember(period=SEPTEMBER, direction=InvoiceDirection.BUYER, page=page)
-    return cache.remembered(period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+    cache.remember(period=SEPTEMBER, subject_role=SubjectRole.BUYER, page=page)
+    return cache.remembered(period=SEPTEMBER, subject_role=SubjectRole.BUYER)
 
 
 @pytest.fixture
 def entry_path(cache: PeriodCache) -> Path:
-    return cache.path_for(period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+    return cache.path_for(period=SEPTEMBER, subject_role=SubjectRole.BUYER)
 
 
 def _corrupt(path: Path, document: object) -> None:
@@ -166,7 +166,7 @@ def _corrupt(path: Path, document: object) -> None:
 
 
 def test_a_period_never_asked_about_is_a_miss(cache: PeriodCache) -> None:
-    assert cache.remembered(period=SEPTEMBER, direction=InvoiceDirection.BUYER) is None
+    assert cache.remembered(period=SEPTEMBER, subject_role=SubjectRole.BUYER) is None
 
 
 def test_a_remembered_period_comes_back_with_its_invoices(
@@ -183,11 +183,11 @@ def test_a_remembered_period_comes_back_with_the_window_it_answered(
     assert remembered.period == SEPTEMBER
 
 
-def test_a_remembered_period_comes_back_with_the_subject_type_it_answered(
+def test_a_remembered_period_comes_back_with_the_subject_role_it_answered(
     remembered: CachedPeriod | None,
 ) -> None:
     assert remembered is not None
-    assert remembered.direction is InvoiceDirection.BUYER
+    assert remembered.subject_role is SubjectRole.BUYER
 
 
 def test_the_marker_of_the_last_successful_query_survives_the_write(
@@ -200,18 +200,18 @@ def test_the_marker_of_the_last_successful_query_survives_the_write(
 def test_the_entry_outlives_the_object_that_wrote_it(
     cache: PeriodCache, page: MetadataPage, tmp_path: Path
 ) -> None:
-    cache.remember(period=SEPTEMBER, direction=InvoiceDirection.BUYER, page=page)
+    cache.remember(period=SEPTEMBER, subject_role=SubjectRole.BUYER, page=page)
     restarted = PeriodCache(nip=NIP, environment=KsefEnvironment.TEST, root=tmp_path)
 
-    assert restarted.remembered(period=SEPTEMBER, direction=InvoiceDirection.BUYER) is not None
+    assert restarted.remembered(period=SEPTEMBER, subject_role=SubjectRole.BUYER) is not None
 
 
 def test_the_seller_type_does_not_answer_the_buyer_question(
     cache: PeriodCache, page: MetadataPage
 ) -> None:
-    cache.remember(period=SEPTEMBER, direction=InvoiceDirection.SELLER, page=page)
+    cache.remember(period=SEPTEMBER, subject_role=SubjectRole.SELLER, page=page)
 
-    assert cache.remembered(period=SEPTEMBER, direction=InvoiceDirection.BUYER) is None
+    assert cache.remembered(period=SEPTEMBER, subject_role=SubjectRole.BUYER) is None
 
 
 @pytest.mark.parametrize(
@@ -233,40 +233,40 @@ def test_the_seller_type_does_not_answer_the_buyer_question(
 def test_a_different_window_is_a_different_question(
     cache: PeriodCache, page: MetadataPage, other: Period
 ) -> None:
-    cache.remember(period=SEPTEMBER, direction=InvoiceDirection.BUYER, page=page)
+    cache.remember(period=SEPTEMBER, subject_role=SubjectRole.BUYER, page=page)
 
-    assert cache.remembered(period=other, direction=InvoiceDirection.BUYER) is None
+    assert cache.remembered(period=other, subject_role=SubjectRole.BUYER) is None
 
 
 def test_another_subject_reads_none_of_this_ones_periods(
     cache: PeriodCache, page: MetadataPage, tmp_path: Path
 ) -> None:
-    cache.remember(period=SEPTEMBER, direction=InvoiceDirection.BUYER, page=page)
+    cache.remember(period=SEPTEMBER, subject_role=SubjectRole.BUYER, page=page)
     other = PeriodCache(nip="9876543210", environment=KsefEnvironment.TEST, root=tmp_path)
 
-    assert other.remembered(period=SEPTEMBER, direction=InvoiceDirection.BUYER) is None
+    assert other.remembered(period=SEPTEMBER, subject_role=SubjectRole.BUYER) is None
 
 
 def test_the_demonstration_environment_reads_none_of_the_test_answers(
     cache: PeriodCache, page: MetadataPage, tmp_path: Path
 ) -> None:
-    cache.remember(period=SEPTEMBER, direction=InvoiceDirection.BUYER, page=page)
+    cache.remember(period=SEPTEMBER, subject_role=SubjectRole.BUYER, page=page)
     demonstration = PeriodCache(nip=NIP, environment=KsefEnvironment.DEMO, root=tmp_path)
 
-    assert demonstration.remembered(period=SEPTEMBER, direction=InvoiceDirection.BUYER) is None
+    assert demonstration.remembered(period=SEPTEMBER, subject_role=SubjectRole.BUYER) is None
 
 
-def test_the_key_names_the_subject_type_it_belongs_to() -> None:
-    assert cache_key(period=SEPTEMBER, direction=InvoiceDirection.BUYER).startswith("buyer-")
+def test_the_key_names_the_subject_role_it_belongs_to() -> None:
+    assert cache_key(period=SEPTEMBER, subject_role=SubjectRole.BUYER).startswith("buyer-")
 
 
 def test_a_synchronisation_window_still_has_a_key_to_look_up_by() -> None:
-    assert cache_key(period=SYNCHRONISATION, direction=InvoiceDirection.BUYER).startswith("buyer-")
+    assert cache_key(period=SYNCHRONISATION, subject_role=SubjectRole.BUYER).startswith("buyer-")
 
 
 def test_two_windows_dated_differently_are_different_questions() -> None:
-    assert cache_key(period=SYNCHRONISATION, direction=InvoiceDirection.BUYER) != cache_key(
-        period=SEPTEMBER, direction=InvoiceDirection.BUYER
+    assert cache_key(period=SYNCHRONISATION, subject_role=SubjectRole.BUYER) != cache_key(
+        period=SEPTEMBER, subject_role=SubjectRole.BUYER
     )
 
 
@@ -286,15 +286,15 @@ def test_a_synchronisation_window_is_refused_although_it_states_both_ends() -> N
 def test_a_synchronisation_window_leaves_nothing_behind(
     cache: PeriodCache, page: MetadataPage
 ) -> None:
-    cache.remember(period=SYNCHRONISATION, direction=InvoiceDirection.BUYER, page=page)
+    cache.remember(period=SYNCHRONISATION, subject_role=SubjectRole.BUYER, page=page)
 
-    assert cache.remembered(period=SYNCHRONISATION, direction=InvoiceDirection.BUYER) is None
+    assert cache.remembered(period=SYNCHRONISATION, subject_role=SubjectRole.BUYER) is None
 
 
 def test_a_synchronisation_window_is_still_stamped_for_the_caller_to_report(
     cache: PeriodCache, page: MetadataPage
 ) -> None:
-    stamped = cache.remember(period=SYNCHRONISATION, direction=InvoiceDirection.BUYER, page=page)
+    stamped = cache.remember(period=SYNCHRONISATION, subject_role=SubjectRole.BUYER, page=page)
 
     assert stamped.queried_at == ASKED_AT
 
@@ -303,13 +303,13 @@ def test_an_entry_written_before_the_ceiling_is_a_miss_not_a_crash(
     cache: PeriodCache, page: MetadataPage
 ) -> None:
     """GH-84: a stored window with no end can no longer become a Period."""
-    cache.remember(period=SEPTEMBER, direction=InvoiceDirection.BUYER, page=page)
-    path = cache.path_for(period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+    cache.remember(period=SEPTEMBER, subject_role=SubjectRole.BUYER, page=page)
+    path = cache.path_for(period=SEPTEMBER, subject_role=SubjectRole.BUYER)
     document = json.loads(path.read_text(encoding="utf-8"))
     document["period"]["date_to"] = None
     path.write_text(json.dumps(document), encoding="utf-8")
 
-    assert cache.remembered(period=SEPTEMBER, direction=InvoiceDirection.BUYER) is None
+    assert cache.remembered(period=SEPTEMBER, subject_role=SubjectRole.BUYER) is None
 
 
 def test_the_default_clock_stamps_a_moment_with_a_timezone(
@@ -317,7 +317,7 @@ def test_the_default_clock_stamps_a_moment_with_a_timezone(
 ) -> None:
     unclocked = PeriodCache(nip=NIP, environment=KsefEnvironment.TEST, root=tmp_path)
 
-    stamped = unclocked.remember(period=SEPTEMBER, direction=InvoiceDirection.BUYER, page=page)
+    stamped = unclocked.remember(period=SEPTEMBER, subject_role=SubjectRole.BUYER, page=page)
 
     assert stamped.queried_at.tzinfo is not None
 
@@ -345,7 +345,7 @@ def test_the_cache_root_is_not_the_data_root() -> None:
 def test_the_entry_is_readable_only_by_its_owner(
     cache: PeriodCache, page: MetadataPage, entry_path: Path
 ) -> None:
-    cache.remember(period=SEPTEMBER, direction=InvoiceDirection.BUYER, page=page)
+    cache.remember(period=SEPTEMBER, subject_role=SubjectRole.BUYER, page=page)
 
     assert stat.S_IMODE(entry_path.stat().st_mode) == 0o600
 
@@ -353,7 +353,7 @@ def test_the_entry_is_readable_only_by_its_owner(
 def test_the_directory_is_readable_only_by_its_owner(
     cache: PeriodCache, page: MetadataPage
 ) -> None:
-    cache.remember(period=SEPTEMBER, direction=InvoiceDirection.BUYER, page=page)
+    cache.remember(period=SEPTEMBER, subject_role=SubjectRole.BUYER, page=page)
 
     assert stat.S_IMODE(cache.directory.stat().st_mode) == 0o700
 
@@ -361,14 +361,14 @@ def test_the_directory_is_readable_only_by_its_owner(
 def test_the_staging_file_does_not_outlive_the_write(
     cache: PeriodCache, page: MetadataPage
 ) -> None:
-    cache.remember(period=SEPTEMBER, direction=InvoiceDirection.BUYER, page=page)
+    cache.remember(period=SEPTEMBER, subject_role=SubjectRole.BUYER, page=page)
 
     assert list(cache.directory.glob("*.tmp")) == []
 
 
 def test_an_answer_written_twice_leaves_one_entry(cache: PeriodCache, page: MetadataPage) -> None:
-    cache.remember(period=SEPTEMBER, direction=InvoiceDirection.BUYER, page=page)
-    cache.remember(period=SEPTEMBER, direction=InvoiceDirection.BUYER, page=page)
+    cache.remember(period=SEPTEMBER, subject_role=SubjectRole.BUYER, page=page)
+    cache.remember(period=SEPTEMBER, subject_role=SubjectRole.BUYER, page=page)
 
     assert len(list(cache.directory.glob("*.json"))) == 1
 
@@ -376,7 +376,7 @@ def test_an_answer_written_twice_leaves_one_entry(cache: PeriodCache, page: Meta
 def test_the_stored_amounts_are_not_binary_fractions(
     cache: PeriodCache, page: MetadataPage, entry_path: Path
 ) -> None:
-    cache.remember(period=SEPTEMBER, direction=InvoiceDirection.BUYER, page=page)
+    cache.remember(period=SEPTEMBER, subject_role=SubjectRole.BUYER, page=page)
     stored = json.loads(entry_path.read_text(encoding="utf-8"))
 
     assert stored["page"]["invoices"][0]["gross_amount"] == "1230.00"
@@ -384,11 +384,11 @@ def test_the_stored_amounts_are_not_binary_fractions(
 
 def test_a_page_without_a_high_water_mark_round_trips(cache: PeriodCache) -> None:
     unmarked = MetadataPage(invoices=(), has_more=False, truncated=False, hwm_date=None)
-    cache.remember(period=SEPTEMBER, direction=InvoiceDirection.BUYER, page=unmarked)
+    cache.remember(period=SEPTEMBER, subject_role=SubjectRole.BUYER, page=unmarked)
 
-    assert cache.remembered(period=SEPTEMBER, direction=InvoiceDirection.BUYER) == CachedPeriod(
+    assert cache.remembered(period=SEPTEMBER, subject_role=SubjectRole.BUYER) == CachedPeriod(
         period=SEPTEMBER,
-        direction=InvoiceDirection.BUYER,
+        subject_role=SubjectRole.BUYER,
         page=unmarked,
         queried_at=ASKED_AT,
     )
@@ -405,30 +405,30 @@ def test_a_page_without_a_high_water_mark_round_trips(cache: PeriodCache) -> Non
 def test_a_damaged_entry_is_a_miss_not_a_failure(
     cache: PeriodCache, page: MetadataPage, entry_path: Path, damage: dict[str, object]
 ) -> None:
-    cache.remember(period=SEPTEMBER, direction=InvoiceDirection.BUYER, page=page)
+    cache.remember(period=SEPTEMBER, subject_role=SubjectRole.BUYER, page=page)
     _corrupt(entry_path, damage)
 
-    assert cache.remembered(period=SEPTEMBER, direction=InvoiceDirection.BUYER) is None
+    assert cache.remembered(period=SEPTEMBER, subject_role=SubjectRole.BUYER) is None
 
 
 def test_an_entry_that_is_not_json_at_all_is_a_miss(
     cache: PeriodCache, page: MetadataPage, entry_path: Path
 ) -> None:
-    cache.remember(period=SEPTEMBER, direction=InvoiceDirection.BUYER, page=page)
+    cache.remember(period=SEPTEMBER, subject_role=SubjectRole.BUYER, page=page)
     entry_path.write_text("nie-json", encoding="utf-8")
 
-    assert cache.remembered(period=SEPTEMBER, direction=InvoiceDirection.BUYER) is None
+    assert cache.remembered(period=SEPTEMBER, subject_role=SubjectRole.BUYER) is None
 
 
 def test_an_entry_naming_something_that_is_not_a_ksef_number_is_a_miss(
     cache: PeriodCache, page: MetadataPage, entry_path: Path
 ) -> None:
-    cache.remember(period=SEPTEMBER, direction=InvoiceDirection.BUYER, page=page)
+    cache.remember(period=SEPTEMBER, subject_role=SubjectRole.BUYER, page=page)
     document = json.loads(entry_path.read_text(encoding="utf-8"))
     document["page"]["invoices"][0]["ksef_number"] = "FV/2026/09/001"
     _corrupt(entry_path, document)
 
-    assert cache.remembered(period=SEPTEMBER, direction=InvoiceDirection.BUYER) is None
+    assert cache.remembered(period=SEPTEMBER, subject_role=SubjectRole.BUYER) is None
 
 
 def test_an_unreachable_registry_is_not_dressed_up_as_a_cache_miss(
@@ -442,7 +442,7 @@ def test_an_unreachable_registry_is_not_dressed_up_as_a_cache_miss(
     or a refused login is not damage, and answering "not in the cache" hides the
     one failure the reader has to be told about.
     """
-    cache.remember(period=SEPTEMBER, direction=InvoiceDirection.BUYER, page=page)
+    cache.remember(period=SEPTEMBER, subject_role=SubjectRole.BUYER, page=page)
 
     def unreachable(*arguments: object, **keywords: object) -> None:
         raise KsefUnreachable("KSeF nie odpowiada.")
@@ -450,22 +450,22 @@ def test_an_unreachable_registry_is_not_dressed_up_as_a_cache_miss(
     monkeypatch.setattr(period_cache_module, "_decode", unreachable)
 
     with pytest.raises(KsefUnreachable):
-        cache.remembered(period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+        cache.remembered(period=SEPTEMBER, subject_role=SubjectRole.BUYER)
 
 
 def test_the_first_question_about_a_period_reaches_ksef(
     reader: PeriodMetadataReader, session: CountingSession
 ) -> None:
-    reader.read(session=session, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+    reader.read(session=session, period=SEPTEMBER, subject_role=SubjectRole.BUYER)
 
-    assert session.asked == [(SEPTEMBER, InvoiceDirection.BUYER)]
+    assert session.asked == [(SEPTEMBER, SubjectRole.BUYER)]
 
 
 def test_the_second_question_about_the_same_period_reaches_nobody(
     reader: PeriodMetadataReader, session: CountingSession
 ) -> None:
-    reader.read(session=session, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
-    reader.read(session=session, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+    reader.read(session=session, period=SEPTEMBER, subject_role=SubjectRole.BUYER)
+    reader.read(session=session, period=SEPTEMBER, subject_role=SubjectRole.BUYER)
 
     assert len(session.asked) == 1
 
@@ -473,8 +473,8 @@ def test_the_second_question_about_the_same_period_reaches_nobody(
 def test_the_second_question_about_the_same_period_costs_zero_of_the_allowance(
     reader: PeriodMetadataReader, session: CountingSession, budget: QueryBudget
 ) -> None:
-    reader.read(session=session, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
-    reader.read(session=session, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+    reader.read(session=session, period=SEPTEMBER, subject_role=SubjectRole.BUYER)
+    reader.read(session=session, period=SEPTEMBER, subject_role=SubjectRole.BUYER)
 
     assert budget.remaining(Operation.METADATA_QUERY) == 19
 
@@ -482,8 +482,8 @@ def test_the_second_question_about_the_same_period_costs_zero_of_the_allowance(
 def test_the_second_question_gives_back_the_same_invoices(
     reader: PeriodMetadataReader, session: CountingSession, page: MetadataPage
 ) -> None:
-    reader.read(session=session, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
-    again = reader.read(session=session, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+    reader.read(session=session, period=SEPTEMBER, subject_role=SubjectRole.BUYER)
+    again = reader.read(session=session, period=SEPTEMBER, subject_role=SubjectRole.BUYER)
 
     assert again.page == page
 
@@ -491,8 +491,8 @@ def test_the_second_question_gives_back_the_same_invoices(
 def test_the_second_question_says_it_was_answered_from_disk(
     reader: PeriodMetadataReader, session: CountingSession
 ) -> None:
-    reader.read(session=session, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
-    again = reader.read(session=session, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+    reader.read(session=session, period=SEPTEMBER, subject_role=SubjectRole.BUYER)
+    again = reader.read(session=session, period=SEPTEMBER, subject_role=SubjectRole.BUYER)
 
     assert again.from_cache is True
 
@@ -500,7 +500,7 @@ def test_the_second_question_says_it_was_answered_from_disk(
 def test_the_first_question_says_it_was_paid_for(
     reader: PeriodMetadataReader, session: CountingSession
 ) -> None:
-    first = reader.read(session=session, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+    first = reader.read(session=session, period=SEPTEMBER, subject_role=SubjectRole.BUYER)
 
     assert first.from_cache is False
 
@@ -508,16 +508,16 @@ def test_the_first_question_says_it_was_paid_for(
 def test_the_answer_carries_the_moment_the_period_was_last_paid_for(
     reader: PeriodMetadataReader, session: CountingSession
 ) -> None:
-    first = reader.read(session=session, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+    first = reader.read(session=session, period=SEPTEMBER, subject_role=SubjectRole.BUYER)
 
     assert first.queried_at == ASKED_AT
 
 
-def test_the_same_period_for_another_subject_type_is_paid_for_separately(
+def test_the_same_period_for_another_subject_role_is_paid_for_separately(
     reader: PeriodMetadataReader, session: CountingSession
 ) -> None:
-    reader.read(session=session, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
-    reader.read(session=session, period=SEPTEMBER, direction=InvoiceDirection.SELLER)
+    reader.read(session=session, period=SEPTEMBER, subject_role=SubjectRole.BUYER)
+    reader.read(session=session, period=SEPTEMBER, subject_role=SubjectRole.SELLER)
 
     assert len(session.asked) == 2
 
@@ -525,8 +525,8 @@ def test_the_same_period_for_another_subject_type_is_paid_for_separately(
 def test_a_synchronisation_window_is_asked_about_every_time(
     reader: PeriodMetadataReader, session: CountingSession
 ) -> None:
-    reader.read(session=session, period=SYNCHRONISATION, direction=InvoiceDirection.BUYER)
-    reader.read(session=session, period=SYNCHRONISATION, direction=InvoiceDirection.BUYER)
+    reader.read(session=session, period=SYNCHRONISATION, subject_role=SubjectRole.BUYER)
+    reader.read(session=session, period=SYNCHRONISATION, subject_role=SubjectRole.BUYER)
 
     assert len(session.asked) == 2
 
@@ -546,13 +546,13 @@ def test_a_spent_allowance_refuses_the_first_question(
     starved = PeriodMetadataReader(cache=cache, budget=spent)
 
     with pytest.raises(KsefRequestRejected):
-        starved.read(session=session, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+        starved.read(session=session, period=SEPTEMBER, subject_role=SubjectRole.BUYER)
 
 
 def test_a_spent_allowance_still_answers_a_period_already_on_disk(
     cache: PeriodCache, session: CountingSession, page: MetadataPage
 ) -> None:
-    cache.remember(period=SEPTEMBER, direction=InvoiceDirection.BUYER, page=page)
+    cache.remember(period=SEPTEMBER, subject_role=SubjectRole.BUYER, page=page)
     spent = QueryBudget(
         limits=RateLimits(
             metadata_queries=OperationLimit(per_second=None, per_minute=None, per_hour=0),
@@ -565,8 +565,7 @@ def test_a_spent_allowance_still_answers_a_period_already_on_disk(
     starved = PeriodMetadataReader(cache=cache, budget=spent)
 
     assert (
-        starved.read(session=session, period=SEPTEMBER, direction=InvoiceDirection.BUYER).page
-        == page
+        starved.read(session=session, period=SEPTEMBER, subject_role=SubjectRole.BUYER).page == page
     )
 
 
@@ -585,18 +584,18 @@ def test_deleting_the_cache_root_costs_one_query_and_no_continuation_point(
     store = SyncStore(nip=NIP, environment=KsefEnvironment.TEST, root=data_directory)
     store.save(
         SyncState(
-            directions={
-                InvoiceDirection.BUYER: DirectionState(reached=ASKED_AT - timedelta(days=1))
+            subject_roles={
+                SubjectRole.BUYER: SubjectRoleState(reached=ASKED_AT - timedelta(days=1))
             }
         )
     )
     PeriodMetadataReader(cache=cached, budget=budget).read(
-        session=session, period=SEPTEMBER, direction=InvoiceDirection.BUYER
+        session=session, period=SEPTEMBER, subject_role=SubjectRole.BUYER
     )
 
     _erase(cache_directory)
 
-    assert store.load().directions[InvoiceDirection.BUYER].reached == ASKED_AT - timedelta(days=1)
+    assert store.load().subject_roles[SubjectRole.BUYER].reached == ASKED_AT - timedelta(days=1)
 
 
 def test_deleting_the_cache_root_makes_the_period_cost_one_query_again(
@@ -610,10 +609,10 @@ def test_deleting_the_cache_root_makes_the_period_cost_one_query_again(
         clock=lambda: ASKED_AT,
     )
     reader = PeriodMetadataReader(cache=cached, budget=budget)
-    reader.read(session=session, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+    reader.read(session=session, period=SEPTEMBER, subject_role=SubjectRole.BUYER)
 
     _erase(cache_directory)
-    reader.read(session=session, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+    reader.read(session=session, period=SEPTEMBER, subject_role=SubjectRole.BUYER)
 
     assert len(session.asked) == 2
 
@@ -673,7 +672,7 @@ def uncounted(cache: PeriodCache) -> PeriodMetadataReader:
 def test_a_window_too_big_for_one_page_comes_back_whole(
     reader: PeriodMetadataReader, paging: CountingSession
 ) -> None:
-    answer = reader.read(session=paging, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+    answer = reader.read(session=paging, period=SEPTEMBER, subject_role=SubjectRole.BUYER)
 
     assert len(answer.page.invoices) == 2
 
@@ -681,7 +680,7 @@ def test_a_window_too_big_for_one_page_comes_back_whole(
 def test_the_page_behind_the_first_is_asked_for_by_its_number(
     reader: PeriodMetadataReader, paging: CountingSession
 ) -> None:
-    reader.read(session=paging, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+    reader.read(session=paging, period=SEPTEMBER, subject_role=SubjectRole.BUYER)
 
     assert paging.offsets == [0, 1]
 
@@ -689,7 +688,7 @@ def test_the_page_behind_the_first_is_asked_for_by_its_number(
 def test_a_window_fetched_to_the_end_stops_saying_there_is_more(
     reader: PeriodMetadataReader, paging: CountingSession
 ) -> None:
-    answer = reader.read(session=paging, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+    answer = reader.read(session=paging, period=SEPTEMBER, subject_role=SubjectRole.BUYER)
 
     assert answer.page.has_more is False
 
@@ -697,7 +696,7 @@ def test_a_window_fetched_to_the_end_stops_saying_there_is_more(
 def test_every_further_page_is_paid_for_from_the_hourly_allowance(
     reader: PeriodMetadataReader, paging: CountingSession, budget: QueryBudget
 ) -> None:
-    reader.read(session=paging, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+    reader.read(session=paging, period=SEPTEMBER, subject_role=SubjectRole.BUYER)
 
     assert budget.remaining(Operation.METADATA_QUERY) == 18
 
@@ -705,7 +704,7 @@ def test_every_further_page_is_paid_for_from_the_hourly_allowance(
 def test_a_whole_window_carries_the_number_of_the_last_page_it_holds(
     reader: PeriodMetadataReader, paging: CountingSession
 ) -> None:
-    answer = reader.read(session=paging, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+    answer = reader.read(session=paging, period=SEPTEMBER, subject_role=SubjectRole.BUYER)
 
     assert answer.page.page_offset == 1
 
@@ -713,15 +712,15 @@ def test_a_whole_window_carries_the_number_of_the_last_page_it_holds(
 def test_a_whole_window_is_not_blamed_on_the_allowance(
     reader: PeriodMetadataReader, paging: CountingSession
 ) -> None:
-    answer = reader.read(session=paging, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+    answer = reader.read(session=paging, period=SEPTEMBER, subject_role=SubjectRole.BUYER)
 
     assert answer.page.budget_bound is False
 
 
-def test_the_loop_stops_before_it_drinks_the_other_subject_types_share(
+def test_the_loop_stops_before_it_drinks_the_other_subject_roles_share(
     scarce: PeriodMetadataReader, paging: CountingSession
 ) -> None:
-    scarce.read(session=paging, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+    scarce.read(session=paging, period=SEPTEMBER, subject_role=SubjectRole.BUYER)
 
     assert paging.offsets == [0]
 
@@ -729,7 +728,7 @@ def test_the_loop_stops_before_it_drinks_the_other_subject_types_share(
 def test_a_window_the_allowance_cut_short_says_that_is_what_happened(
     scarce: PeriodMetadataReader, paging: CountingSession
 ) -> None:
-    answer = scarce.read(session=paging, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+    answer = scarce.read(session=paging, period=SEPTEMBER, subject_role=SubjectRole.BUYER)
 
     assert answer.page.budget_bound is True
 
@@ -737,7 +736,7 @@ def test_a_window_the_allowance_cut_short_says_that_is_what_happened(
 def test_a_window_the_allowance_cut_short_still_says_there_is_more(
     scarce: PeriodMetadataReader, paging: CountingSession
 ) -> None:
-    answer = scarce.read(session=paging, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+    answer = scarce.read(session=paging, period=SEPTEMBER, subject_role=SubjectRole.BUYER)
 
     assert answer.page.has_more is True
 
@@ -745,7 +744,7 @@ def test_a_window_the_allowance_cut_short_still_says_there_is_more(
 def test_a_window_the_allowance_cut_short_keeps_the_page_that_did_arrive(
     scarce: PeriodMetadataReader, paging: CountingSession
 ) -> None:
-    answer = scarce.read(session=paging, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+    answer = scarce.read(session=paging, period=SEPTEMBER, subject_role=SubjectRole.BUYER)
 
     assert len(answer.page.invoices) == 1
 
@@ -753,7 +752,7 @@ def test_a_window_the_allowance_cut_short_keeps_the_page_that_did_arrive(
 def test_a_counter_that_can_refuse_nothing_does_not_get_to_page_forever(
     uncounted: PeriodMetadataReader, paging: CountingSession
 ) -> None:
-    uncounted.read(session=paging, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+    uncounted.read(session=paging, period=SEPTEMBER, subject_role=SubjectRole.BUYER)
 
     assert paging.offsets == [0]
 
@@ -761,9 +760,9 @@ def test_a_counter_that_can_refuse_nothing_does_not_get_to_page_forever(
 def test_a_window_the_allowance_cut_short_is_not_written_to_disk(
     scarce: PeriodMetadataReader, paging: CountingSession, cache: PeriodCache
 ) -> None:
-    scarce.read(session=paging, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+    scarce.read(session=paging, period=SEPTEMBER, subject_role=SubjectRole.BUYER)
 
-    assert cache.remembered(period=SEPTEMBER, direction=InvoiceDirection.BUYER) is None
+    assert cache.remembered(period=SEPTEMBER, subject_role=SubjectRole.BUYER) is None
 
 
 def test_the_call_after_a_cut_window_finishes_it_instead_of_serving_the_stump(
@@ -771,8 +770,8 @@ def test_the_call_after_a_cut_window_finishes_it_instead_of_serving_the_stump(
     reader: PeriodMetadataReader,
     paging: CountingSession,
 ) -> None:
-    scarce.read(session=paging, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
-    answer = reader.read(session=paging, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+    scarce.read(session=paging, period=SEPTEMBER, subject_role=SubjectRole.BUYER)
+    answer = reader.read(session=paging, period=SEPTEMBER, subject_role=SubjectRole.BUYER)
 
     assert len(answer.page.invoices) == 2
 
@@ -789,16 +788,16 @@ def test_a_window_ksef_itself_cut_short_is_not_written_to_disk(
         )
     )
 
-    reader.read(session=stopped, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+    reader.read(session=stopped, period=SEPTEMBER, subject_role=SubjectRole.BUYER)
 
-    assert cache.remembered(period=SEPTEMBER, direction=InvoiceDirection.BUYER) is None
+    assert cache.remembered(period=SEPTEMBER, subject_role=SubjectRole.BUYER) is None
 
 
 def test_a_remembered_window_carries_the_page_number_it_reached(
     reader: PeriodMetadataReader, paging: CountingSession, cache: PeriodCache
 ) -> None:
-    reader.read(session=paging, period=SEPTEMBER, direction=InvoiceDirection.BUYER)
-    kept = cache.remembered(period=SEPTEMBER, direction=InvoiceDirection.BUYER)
+    reader.read(session=paging, period=SEPTEMBER, subject_role=SubjectRole.BUYER)
+    kept = cache.remembered(period=SEPTEMBER, subject_role=SubjectRole.BUYER)
     assert kept is not None
 
     assert kept.page.page_offset == 1

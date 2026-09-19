@@ -25,7 +25,6 @@ from ksef_mcp.allowance import Allowance
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port import (
     DateType,
-    InvoiceDirection,
     KsefAuthenticationFailed,
     KsefLimits,
     KsefRateLimited,
@@ -35,6 +34,7 @@ from ksef_mcp.ksef_port import (
     Period,
     RateLimits,
     SessionCeilings,
+    SubjectRole,
 )
 from ksef_mcp.listing import (
     LISTING_THRESHOLD,
@@ -101,12 +101,12 @@ class RecordingSession:
 
     page: MetadataPage
     allowance: OperationLimit = GENEROUS
-    asked: list[InvoiceDirection] = field(default_factory=list)
+    asked: list[SubjectRole] = field(default_factory=list)
     offsets: list[int] = field(default_factory=list)
     # What KSeF itself answers for a given subject type. Keyed, because the
     # whole question of GH-95 is what happens to the types asked *before* the
     # one that is refused.
-    refusals: dict[InvoiceDirection, Exception] = field(default_factory=dict)
+    refusals: dict[SubjectRole, Exception] = field(default_factory=dict)
 
     def read_limits(self) -> KsefLimits:
         return limits(self.allowance)
@@ -115,12 +115,12 @@ class RecordingSession:
         self,
         *,
         period: Period,
-        direction: InvoiceDirection,
+        subject_role: SubjectRole,
         page_offset: int = 0,
     ) -> MetadataPage:
-        self.asked.append(direction)
+        self.asked.append(subject_role)
         self.offsets.append(page_offset)
-        refusal = self.refusals.get(direction)
+        refusal = self.refusals.get(subject_role)
         if refusal is not None:
             raise refusal
         return self.page
@@ -143,7 +143,7 @@ def question() -> Question:
     return Question(
         nip=NIP,
         environment=KsefEnvironment.TEST,
-        direction=InvoiceDirection.BUYER,
+        subject_role=SubjectRole.BUYER,
         period=SEPTEMBER,
     )
 
@@ -309,7 +309,7 @@ def test_a_restated_question_names_both_ends() -> None:
     asked = Question(
         nip=NIP,
         environment=KsefEnvironment.TEST,
-        direction=InvoiceDirection.SELLER,
+        subject_role=SubjectRole.SELLER,
         period=Period(
             date_from=datetime(2026, 9, 1, tzinfo=UTC),
             date_to=datetime(2026, 9, 14, tzinfo=UTC),
@@ -351,16 +351,16 @@ def test_the_answer_never_carries_an_invoice_body(question: Question) -> None:
     assert "<Faktura" not in listed.message
 
 
-def test_the_listing_covers_every_subject_type(lister: InvoiceLister) -> None:
+def test_the_listing_covers_every_subject_role(lister: InvoiceLister) -> None:
     # Ta sama pętla co synchronizacja: firma bywa sprzedawcą na jednej fakturze
     # i nabywcą na następnej (D-031 §5).
     listed = lister.run(nip=NIP, token=CREDENTIAL)
 
-    assert [one.question.direction for one in listed.directions] == [
-        InvoiceDirection.SELLER,
-        InvoiceDirection.BUYER,
-        InvoiceDirection.THIRD_SUBJECT,
-        InvoiceDirection.AUTHORIZED_SUBJECT,
+    assert [one.question.subject_role for one in listed.subject_roles] == [
+        SubjectRole.SELLER,
+        SubjectRole.BUYER,
+        SubjectRole.THIRD_SUBJECT,
+        SubjectRole.AUTHORIZED_SUBJECT,
     ]
 
 
@@ -376,7 +376,7 @@ def test_the_listing_states_the_window_it_asked_about(lister: InvoiceLister) -> 
     assert lister.run(nip=NIP, token=CREDENTIAL).period == listing_period(moment=ASKED_AT)
 
 
-def test_the_first_pass_pays_one_query_per_subject_type(
+def test_the_first_pass_pays_one_query_per_subject_role(
     lister: InvoiceLister, session: RecordingSession
 ) -> None:
     lister.run(nip=NIP, token=CREDENTIAL)
@@ -396,7 +396,7 @@ def test_asking_again_within_the_hour_costs_nothing(
 def test_the_second_answer_says_it_came_from_disk(lister: InvoiceLister) -> None:
     lister.run(nip=NIP, token=CREDENTIAL)
 
-    assert [one.from_cache for one in lister.run(nip=NIP, token=CREDENTIAL).directions] == [
+    assert [one.from_cache for one in lister.run(nip=NIP, token=CREDENTIAL).subject_roles] == [
         True,
         True,
         True,
@@ -404,7 +404,7 @@ def test_the_second_answer_says_it_came_from_disk(lister: InvoiceLister) -> None
     ]
 
 
-def test_a_spent_allowance_does_not_take_the_other_subject_types_down(
+def test_a_spent_allowance_does_not_take_the_other_subject_roles_down(
     cache: PeriodCache,
     protection: Allowance,
 ) -> None:
@@ -415,7 +415,7 @@ def test_a_spent_allowance_does_not_take_the_other_subject_types_down(
         clock=lambda: ASKED_AT,
     )
 
-    assert [one.outcome for one in lister.run(nip=NIP, token=CREDENTIAL).directions] == [
+    assert [one.outcome for one in lister.run(nip=NIP, token=CREDENTIAL).subject_roles] == [
         ListingOutcome.BUDGET_SPENT
     ] * 4
 
@@ -431,7 +431,7 @@ def test_a_spent_allowance_explains_itself_and_repeats_the_question(
         clock=lambda: ASKED_AT,
     )
 
-    assert "NIP 1234567890" in lister.run(nip=NIP, token=CREDENTIAL).directions[0].message
+    assert "NIP 1234567890" in lister.run(nip=NIP, token=CREDENTIAL).subject_roles[0].message
 
 
 def test_a_spent_allowance_reports_no_moment_of_asking(
@@ -445,7 +445,7 @@ def test_a_spent_allowance_reports_no_moment_of_asking(
         clock=lambda: ASKED_AT,
     )
 
-    assert lister.run(nip=NIP, token=CREDENTIAL).directions[0].queried_at is None
+    assert lister.run(nip=NIP, token=CREDENTIAL).subject_roles[0].queried_at is None
 
 
 def a_lister_meeting(
@@ -459,7 +459,7 @@ def a_lister_meeting(
         port=RecordingPort(
             session_object=RecordingSession(
                 page=page_of(2),
-                refusals={InvoiceDirection.BUYER: refusal},
+                refusals={SubjectRole.BUYER: refusal},
             )
         ),
         cache=cache,
@@ -468,7 +468,7 @@ def a_lister_meeting(
     )
 
 
-def test_a_rate_limit_on_one_subject_type_keeps_the_answers_already_paid_for(
+def test_a_rate_limit_on_one_subject_role_keeps_the_answers_already_paid_for(
     cache: PeriodCache,
     protection: Allowance,
 ) -> None:
@@ -482,7 +482,7 @@ def test_a_rate_limit_on_one_subject_type_keeps_the_answers_already_paid_for(
         protection=protection,
     )
 
-    assert [one.outcome for one in lister.run(nip=NIP, token=CREDENTIAL).directions] == [
+    assert [one.outcome for one in lister.run(nip=NIP, token=CREDENTIAL).subject_roles] == [
         ListingOutcome.LISTED,
         ListingOutcome.BUDGET_SPENT,
         ListingOutcome.LISTED,
@@ -502,7 +502,7 @@ def test_a_rate_limit_passes_on_the_wait_ksef_itself_asked_for(
         protection=protection,
     )
 
-    assert "odczekanie 90 s" in lister.run(nip=NIP, token=CREDENTIAL).directions[1].message
+    assert "odczekanie 90 s" in lister.run(nip=NIP, token=CREDENTIAL).subject_roles[1].message
 
 
 def test_a_rate_limit_without_a_wait_promises_nothing_about_waiting(
@@ -515,7 +515,7 @@ def test_a_rate_limit_without_a_wait_promises_nothing_about_waiting(
         protection=protection,
     )
 
-    assert "odczekanie" not in lister.run(nip=NIP, token=CREDENTIAL).directions[1].message
+    assert "odczekanie" not in lister.run(nip=NIP, token=CREDENTIAL).subject_roles[1].message
 
 
 @pytest.mark.parametrize(

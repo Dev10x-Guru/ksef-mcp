@@ -65,8 +65,19 @@ class DateType(StrEnum):
     PERMANENT_STORAGE = "permanent_storage"
 
 
-class InvoiceDirection(StrEnum):
-    """Who the querying subject is on the invoice — required by the API."""
+class SubjectRole(StrEnum):
+    """Who the querying subject is on the invoice — required by the API.
+
+    One concept, one name. It used to answer to four — `InvoiceDirection`,
+    `direction`, `subject_role`, `subject_type` — two of them in a single line
+    of the server. "Direction" was the worst of them: it promises two values
+    while the set has four, and `AUTHORIZED_SUBJECT` is not a direction of
+    anything. The glossary calls it the subject's role, so the code does too.
+
+    The wire still speaks `Subject1..SubjectAuthorized` and the record on disk
+    still spells the key `direction`; both are other people's vocabularies,
+    translated at the boundary rather than adopted (D-017).
+    """
 
     SELLER = "seller"
     BUYER = "buyer"
@@ -77,11 +88,11 @@ class InvoiceDirection(StrEnum):
 # The translation table D-017 asks for, written out rather than inferred. The
 # SDK speaks roles, the wire speaks Subject*, and the two vocabularies drifting
 # apart is exactly the kind of change this port exists to absorb.
-WIRE_SUBJECT_TYPES: Final[dict[InvoiceDirection, str]] = {
-    InvoiceDirection.SELLER: "Subject1",
-    InvoiceDirection.BUYER: "Subject2",
-    InvoiceDirection.THIRD_SUBJECT: "Subject3",
-    InvoiceDirection.AUTHORIZED_SUBJECT: "SubjectAuthorized",
+WIRE_SUBJECT_TYPES: Final[dict[SubjectRole, str]] = {
+    SubjectRole.SELLER: "Subject1",
+    SubjectRole.BUYER: "Subject2",
+    SubjectRole.THIRD_SUBJECT: "Subject3",
+    SubjectRole.AUTHORIZED_SUBJECT: "SubjectAuthorized",
 }
 
 
@@ -177,7 +188,7 @@ class Period:
 class ContinuationPoint:
     """Where the next window for one subject type starts. Losing it costs a resync."""
 
-    direction: InvoiceDirection
+    subject_role: SubjectRole
     reached: datetime
 
     def advanced_to(self, *, marker: datetime) -> Self:
@@ -188,7 +199,7 @@ class ContinuationPoint:
         as well put the D-031 §4 table in two places, and the caller then had to
         pass both timestamps with fallbacks — one of which could never fire.
         """
-        return type(self)(direction=self.direction, reached=marker)
+        return type(self)(subject_role=self.subject_role, reached=marker)
 
 
 @dataclass(frozen=True)

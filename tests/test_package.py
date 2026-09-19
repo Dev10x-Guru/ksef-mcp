@@ -31,12 +31,12 @@ from ksef_mcp.ksef_port import (
     ExportHandle,
     ExportPart,
     ExportState,
-    InvoiceDirection,
     KsefLimits,
     KsefNumber,
     KsefUnreachable,
     MetadataPage,
     Period,
+    SubjectRole,
 )
 from ksef_mcp.package import (
     AES_BLOCK_BITS,
@@ -125,12 +125,12 @@ class ScriptedSession:
         self,
         *,
         period: Period,
-        direction: InvoiceDirection,
+        subject_role: SubjectRole,
         page_offset: int = 0,
     ) -> MetadataPage:
         raise AssertionError("Odczyt paczki nie odpytuje metadanych.")
 
-    def start_export(self, *, period: Period, direction: InvoiceDirection) -> ExportHandle:
+    def start_export(self, *, period: Period, subject_role: SubjectRole) -> ExportHandle:
         raise AssertionError("Odczyt paczki nie zamawia eksportu.")
 
     def check_export(self, *, handle: ExportHandle) -> object:
@@ -183,7 +183,7 @@ def store(tmp_path: Path) -> SyncStore:
 def a_pending(*, parts: tuple[ExportPart, ...]) -> PendingExport:
     return PendingExport(
         reference="EXP-1",
-        direction=InvoiceDirection.BUYER,
+        subject_role=SubjectRole.BUYER,
         started_at=STARTED,
         encryption=ExportEncryption(key=KEY, initialisation_vector=IV),
         state=ExportState.READY,
@@ -386,7 +386,7 @@ def test_a_key_that_does_not_belong_to_the_package_is_refused(
     )
     wrong = PendingExport(
         reference="EXP-1",
-        direction=InvoiceDirection.BUYER,
+        subject_role=SubjectRole.BUYER,
         started_at=STARTED,
         encryption=ExportEncryption(key=b"x" * 32, initialisation_vector=IV),
         state=ExportState.READY,
@@ -424,7 +424,7 @@ def test_an_export_whose_key_is_already_gone_cannot_be_collected(
 ) -> None:
     spent = PendingExport(
         reference="EXP-1",
-        direction=InvoiceDirection.BUYER,
+        subject_role=SubjectRole.BUYER,
         started_at=STARTED,
         encryption=None,
         state=ExportState.FAILED,
@@ -440,7 +440,7 @@ def test_nothing_is_downloaded_for_an_export_whose_key_is_gone(
 ) -> None:
     spent = PendingExport(
         reference="EXP-1",
-        direction=InvoiceDirection.BUYER,
+        subject_role=SubjectRole.BUYER,
         started_at=STARTED,
         encryption=None,
         state=ExportState.FAILED,
@@ -506,7 +506,7 @@ def test_a_failed_part_download_leaves_the_export_queued(
     session.failure = KsefUnreachable("Storage nie odpowiada.")
     refusal(retriever, export=ready, archivist=Archivist())
 
-    assert recorded.load().pending_for(InvoiceDirection.BUYER) == ready
+    assert recorded.load().pending_for(SubjectRole.BUYER) == ready
 
 
 def test_an_archivist_that_fails_keeps_the_key_and_the_record(
@@ -514,7 +514,7 @@ def test_an_archivist_that_fails_keeps_the_key_and_the_record(
 ) -> None:
     refusal(retriever, export=ready, archivist=Archivist(failure=OSError("Dysk pełny.")))
 
-    assert recorded.load().pending_for(InvoiceDirection.BUYER) == ready
+    assert recorded.load().pending_for(SubjectRole.BUYER) == ready
 
 
 def test_the_archivist_failure_reaches_the_caller_unchanged(

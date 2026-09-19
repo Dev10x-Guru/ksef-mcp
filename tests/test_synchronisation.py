@@ -29,7 +29,6 @@ from ksef_mcp.ksef_port import (
     ExportPart,
     ExportState,
     ExportStatus,
-    InvoiceDirection,
     KsefAuthenticationFailed,
     KsefLimits,
     KsefNumber,
@@ -42,19 +41,20 @@ from ksef_mcp.ksef_port import (
     Period,
     RateLimits,
     SessionCeilings,
+    SubjectRole,
 )
 from ksef_mcp.ksef_port.types import MAX_QUERY_WINDOW
 from ksef_mcp.sync_store import (
     MINIMUM_INTERVAL,
     ContinuationPointMissing,
-    DirectionState,
     PendingExport,
+    SubjectRoleState,
     SyncState,
     SyncStore,
 )
 from ksef_mcp.synchronisation import (
     INITIAL_LOOKBACK,
-    DirectionReport,
+    SubjectRoleReport,
     SynchronisationReport,
     Synchroniser,
     SyncOutcome,
@@ -195,8 +195,8 @@ class ScriptedSession:
     # What ordering an export runs into, keyed by subject type. A pass touches
     # four of them in sequence, so "the third one blew up" is the only way to
     # ask what the first two left on disk.
-    start_failures: dict[InvoiceDirection, Exception] = field(default_factory=dict)
-    started: list[tuple[InvoiceDirection, Period]] = field(default_factory=list)
+    start_failures: dict[SubjectRole, Exception] = field(default_factory=dict)
+    started: list[tuple[SubjectRole, Period]] = field(default_factory=list)
     polled: list[str] = field(default_factory=list)
     fetched: list[str] = field(default_factory=list)
 
@@ -207,16 +207,16 @@ class ScriptedSession:
         self,
         *,
         period: Period,
-        direction: InvoiceDirection,
+        subject_role: SubjectRole,
         page_offset: int = 0,
     ) -> MetadataPage:
         raise AssertionError("Synchronizacja nie odpytuje metadanych — idzie przez eksport.")
 
-    def start_export(self, *, period: Period, direction: InvoiceDirection) -> ExportHandle:
-        refusal = self.start_failures.get(direction)
+    def start_export(self, *, period: Period, subject_role: SubjectRole) -> ExportHandle:
+        refusal = self.start_failures.get(subject_role)
         if refusal is not None:
             raise refusal
-        self.started.append((direction, period))
+        self.started.append((subject_role, period))
         return ExportHandle(
             reference=f"EXP-{len(self.started)}",
             encryption=ExportEncryption(key=KEY, initialisation_vector=IV),
@@ -324,16 +324,16 @@ def after_a_failed_download(store: SyncStore, naps: list[float]) -> Synchronisat
     return a_synchroniser(session=session, store=store, naps=naps).run(nip=NIP, token=TOKEN)
 
 
-def outcome(report: SynchronisationReport, direction: InvoiceDirection) -> SyncOutcome:
-    return next(one.outcome for one in report.directions if one.direction == direction)
+def outcome(report: SynchronisationReport, subject_role: SubjectRole) -> SyncOutcome:
+    return next(one.outcome for one in report.subject_roles if one.subject_role == subject_role)
 
 
-def reported(report: SynchronisationReport, direction: InvoiceDirection) -> DirectionReport:
-    return next(one for one in report.directions if one.direction == direction)
+def reported(report: SynchronisationReport, subject_role: SubjectRole) -> SubjectRoleReport:
+    return next(one for one in report.subject_roles if one.subject_role == subject_role)
 
 
-def test_every_subject_type_is_reported(first_pass: SynchronisationReport) -> None:
-    assert [str(one.direction) for one in first_pass.directions] == [
+def test_every_subject_role_is_reported(first_pass: SynchronisationReport) -> None:
+    assert [str(one.subject_role) for one in first_pass.subject_roles] == [
         "seller",
         "buyer",
         "third_subject",
@@ -341,12 +341,12 @@ def test_every_subject_type_is_reported(first_pass: SynchronisationReport) -> No
     ]
 
 
-def test_the_frequent_subject_types_are_archived_at_noon(
+def test_the_frequent_subject_roles_are_archived_at_noon(
     first_pass: SynchronisationReport,
 ) -> None:
     assert (
-        outcome(first_pass, InvoiceDirection.SELLER),
-        outcome(first_pass, InvoiceDirection.BUYER),
+        outcome(first_pass, SubjectRole.SELLER),
+        outcome(first_pass, SubjectRole.BUYER),
     ) == (SyncOutcome.ARCHIVED, SyncOutcome.ARCHIVED)
 
 
@@ -381,24 +381,24 @@ def test_the_index_lives_beside_the_invoices_rather_than_inside_them(
 def test_the_report_names_the_directory_the_invoices_landed_in(
     first_pass: SynchronisationReport, archive: InvoiceArchive
 ) -> None:
-    assert reported(first_pass, InvoiceDirection.SELLER).archive_directory == str(
+    assert reported(first_pass, SubjectRole.SELLER).archive_directory == str(
         archive.invoice_directory
     )
 
 
 def test_the_report_names_the_numbers_it_archived(first_pass: SynchronisationReport) -> None:
-    assert reported(first_pass, InvoiceDirection.SELLER).archived == (
+    assert reported(first_pass, SubjectRole.SELLER).archived == (
         str(synthetic_number(1)),
         str(synthetic_number(2)),
     )
 
 
-def test_the_second_subject_type_recognises_invoices_the_first_already_stored(
+def test_the_second_subject_role_recognises_invoices_the_first_already_stored(
     first_pass: SynchronisationReport,
 ) -> None:
     # The same invoice reaches a company as seller and as buyer; deduplication
     # by KSeF number is what stops it being written twice (D-005).
-    assert reported(first_pass, InvoiceDirection.BUYER).already_held == (
+    assert reported(first_pass, SubjectRole.BUYER).already_held == (
         str(synthetic_number(1)),
         str(synthetic_number(2)),
     )
@@ -414,7 +414,7 @@ def test_a_second_call_on_the_same_window_writes_nothing_new(
         session=session, store=store, naps=naps, moment=NOON + MINIMUM_INTERVAL
     ).run(nip=NIP, token=TOKEN)
 
-    assert reported(later, InvoiceDirection.SELLER).archived == ()
+    assert reported(later, SubjectRole.SELLER).archived == ()
 
 
 def test_a_second_call_reports_the_numbers_as_already_held(
@@ -427,7 +427,7 @@ def test_a_second_call_reports_the_numbers_as_already_held(
         session=session, store=store, naps=naps, moment=NOON + MINIMUM_INTERVAL
     ).run(nip=NIP, token=TOKEN)
 
-    assert reported(later, InvoiceDirection.SELLER).already_held == (
+    assert reported(later, SubjectRole.SELLER).already_held == (
         str(synthetic_number(1)),
         str(synthetic_number(2)),
     )
@@ -436,29 +436,29 @@ def test_a_second_call_reports_the_numbers_as_already_held(
 def test_the_invoice_body_never_reaches_the_report(first_pass: SynchronisationReport) -> None:
     # FA(2)/FA(3) XML carries the counterparty's personal data, so the pass
     # answers with paths and numbers and nothing else (D-011).
-    assert "Faktura" not in "".join(one.detail for one in first_pass.directions)
+    assert "Faktura" not in "".join(one.detail for one in first_pass.subject_roles)
 
 
 @pytest.mark.parametrize(
-    "direction",
-    [InvoiceDirection.THIRD_SUBJECT, InvoiceDirection.AUTHORIZED_SUBJECT],
+    "subject_role",
+    [SubjectRole.THIRD_SUBJECT, SubjectRole.AUTHORIZED_SUBJECT],
 )
-def test_the_rare_subject_types_wait_for_the_night_window(
-    first_pass: SynchronisationReport, direction: InvoiceDirection
+def test_the_rare_subject_roles_wait_for_the_night_window(
+    first_pass: SynchronisationReport, subject_role: SubjectRole
 ) -> None:
     # Keeping them off the daytime rotation is what leaves the frequent two
     # their share of twenty exports an hour (D-031 §5).
-    assert outcome(first_pass, direction) is SyncOutcome.NOT_DUE
+    assert outcome(first_pass, subject_role) is SyncOutcome.NOT_DUE
 
 
-def test_the_rare_subject_types_are_exported_in_the_night_window(
+def test_the_rare_subject_roles_are_exported_in_the_night_window(
     session: ScriptedSession, store: SyncStore, naps: list[float]
 ) -> None:
     report = a_synchroniser(session=session, store=store, naps=naps, moment=MIDNIGHT).run(
         nip=NIP, token=TOKEN
     )
 
-    assert outcome(report, InvoiceDirection.THIRD_SUBJECT) is SyncOutcome.ARCHIVED
+    assert outcome(report, SubjectRole.THIRD_SUBJECT) is SyncOutcome.ARCHIVED
 
 
 def test_a_burst_of_exports_is_refused_by_the_per_second_ceiling_ksef_stated(
@@ -473,7 +473,7 @@ def test_a_burst_of_exports_is_refused_by_the_per_second_ceiling_ksef_stated(
         nip=NIP, token=TOKEN
     )
 
-    assert [one.outcome for one in report.directions].count(SyncOutcome.BUDGET_SPENT) == 2
+    assert [one.outcome for one in report.subject_roles].count(SyncOutcome.BUDGET_SPENT) == 2
 
 
 def test_a_pass_records_what_it_spent_where_the_next_process_will_find_it(
@@ -525,15 +525,15 @@ def test_a_first_run_starts_one_lookback_back(
 def test_a_completed_package_moves_the_point_to_the_high_water_mark(
     first_pass: SynchronisationReport,
 ) -> None:
-    assert reported(first_pass, InvoiceDirection.BUYER).reached == HWM
+    assert reported(first_pass, SubjectRole.BUYER).reached == HWM
 
 
 def test_a_completed_package_reports_what_it_carries(
     first_pass: SynchronisationReport,
 ) -> None:
     assert (
-        reported(first_pass, InvoiceDirection.BUYER).invoice_count,
-        reported(first_pass, InvoiceDirection.BUYER).part_count,
+        reported(first_pass, SubjectRole.BUYER).invoice_count,
+        reported(first_pass, SubjectRole.BUYER).part_count,
     ) == (7, 1)
 
 
@@ -579,7 +579,7 @@ def test_a_pass_after_the_interval_asks_again(
         session=session, store=store, naps=naps, moment=NOON + MINIMUM_INTERVAL
     ).run(nip=NIP, token=TOKEN)
 
-    assert outcome(later, InvoiceDirection.BUYER) is SyncOutcome.ARCHIVED
+    assert outcome(later, SubjectRole.BUYER) is SyncOutcome.ARCHIVED
 
 
 def test_the_next_window_starts_where_the_last_one_reached(
@@ -603,7 +603,7 @@ def test_a_truncated_package_continues_from_the_last_invoice_it_carried(
 
     report = a_synchroniser(session=session, store=store, naps=naps).run(nip=NIP, token=TOKEN)
 
-    assert reported(report, InvoiceDirection.BUYER).reached == LAST_SEEN
+    assert reported(report, SubjectRole.BUYER).reached == LAST_SEEN
 
 
 def test_a_package_still_being_built_is_left_for_the_next_pass(
@@ -613,7 +613,7 @@ def test_a_package_still_being_built_is_left_for_the_next_pass(
 
     report = a_synchroniser(session=session, store=store, naps=naps).run(nip=NIP, token=TOKEN)
 
-    assert outcome(report, InvoiceDirection.BUYER) is SyncOutcome.STILL_RUNNING
+    assert outcome(report, SubjectRole.BUYER) is SyncOutcome.STILL_RUNNING
 
 
 def test_a_package_still_being_built_keeps_its_key_on_disk(
@@ -653,18 +653,18 @@ def test_a_package_that_finishes_while_polling_is_completed(
 
     report = a_synchroniser(session=session, store=store, naps=naps).run(nip=NIP, token=TOKEN)
 
-    assert outcome(report, InvoiceDirection.SELLER) is SyncOutcome.ARCHIVED
+    assert outcome(report, SubjectRole.SELLER) is SyncOutcome.ARCHIVED
 
 
 def left_on_disk(store: SyncStore, *, state: ExportState) -> None:
     """Put a package from an earlier pass in the record, the way a crash would."""
     store.save(
         SyncState(
-            directions={InvoiceDirection.BUYER: DirectionState(reached=LAST_SEEN)},
+            subject_roles={SubjectRole.BUYER: SubjectRoleState(reached=LAST_SEEN)},
             pending=(
                 PendingExport(
                     reference="EXP-OLD",
-                    direction=InvoiceDirection.BUYER,
+                    subject_role=SubjectRole.BUYER,
                     started_at=NOON - timedelta(hours=2),
                     encryption=ExportEncryption(key=KEY, initialisation_vector=IV),
                     state=state,
@@ -685,7 +685,7 @@ def test_a_queued_export_without_a_continuation_point_is_refused_by_name(
             pending=(
                 PendingExport(
                     reference="EXP-ORPHAN",
-                    direction=InvoiceDirection.SELLER,
+                    subject_role=SubjectRole.SELLER,
                     started_at=NOON - timedelta(hours=2),
                     encryption=ExportEncryption(key=KEY, initialisation_vector=IV),
                     state=ExportState.RUNNING,
@@ -714,13 +714,13 @@ def a_dead_package(store: SyncStore, *, covering_from: datetime | None = STUCK_S
     """
     store.save(
         SyncState(
-            directions={
-                InvoiceDirection.BUYER: DirectionState(reached=HWM, attempted_at=STARTED_AT)
+            subject_roles={
+                SubjectRole.BUYER: SubjectRoleState(reached=HWM, attempted_at=STARTED_AT)
             },
             pending=(
                 PendingExport(
                     reference="EXP-DEAD",
-                    direction=InvoiceDirection.BUYER,
+                    subject_role=SubjectRole.BUYER,
                     started_at=STARTED_AT,
                     encryption=ExportEncryption(key=KEY, initialisation_vector=IV),
                     state=ExportState.READY,
@@ -755,7 +755,7 @@ def a_pass_over_a_dead_package(
 
 
 def buyer_windows(session: ScriptedSession) -> list[Period]:
-    return [period for direction, period in session.started if direction is InvoiceDirection.BUYER]
+    return [period for subject_role, period in session.started if subject_role is SubjectRole.BUYER]
 
 
 def test_a_queued_package_is_resumed_instead_of_being_asked_for_again(
@@ -766,7 +766,7 @@ def test_a_queued_package_is_resumed_instead_of_being_asked_for_again(
 
     report = a_synchroniser(session=session, store=store, naps=naps).run(nip=NIP, token=TOKEN)
 
-    assert (outcome(report, InvoiceDirection.BUYER), "EXP-OLD" in session.polled) == (
+    assert (outcome(report, SubjectRole.BUYER), "EXP-OLD" in session.polled) == (
         SyncOutcome.ARCHIVED,
         True,
     )
@@ -778,7 +778,7 @@ def test_a_queued_package_costs_no_second_export(store: SyncStore, naps: list[fl
 
     a_synchroniser(session=session, store=store, naps=naps).run(nip=NIP, token=TOKEN)
 
-    assert [direction for direction, _ in session.started] == [InvoiceDirection.SELLER]
+    assert [subject_role for subject_role, _ in session.started] == [SubjectRole.SELLER]
 
 
 def test_a_package_fetched_but_never_stored_is_archived_on_the_next_pass(
@@ -789,7 +789,7 @@ def test_a_package_fetched_but_never_stored_is_archived_on_the_next_pass(
 
     report = a_synchroniser(session=session, store=store, naps=naps).run(nip=NIP, token=TOKEN)
 
-    assert outcome(report, InvoiceDirection.BUYER) is SyncOutcome.ARCHIVED
+    assert outcome(report, SubjectRole.BUYER) is SyncOutcome.ARCHIVED
 
 
 def test_a_package_fetched_but_never_stored_puts_its_invoices_on_disk(
@@ -814,9 +814,9 @@ def test_a_package_fetched_but_never_stored_costs_neither_export_nor_status_quer
     a_synchroniser(session=session, store=store, naps=naps).run(nip=NIP, token=TOKEN)
 
     assert (
-        [direction for direction, _ in session.started],
+        [subject_role for subject_role, _ in session.started],
         "EXP-OLD" in session.polled,
-    ) == ([InvoiceDirection.SELLER], False)
+    ) == ([SubjectRole.SELLER], False)
 
 
 def test_a_refused_export_is_recorded_as_the_failure_it_was(
@@ -826,7 +826,7 @@ def test_a_refused_export_is_recorded_as_the_failure_it_was(
 
     report = a_synchroniser(session=session, store=store, naps=naps).run(nip=NIP, token=TOKEN)
 
-    assert outcome(report, InvoiceDirection.BUYER) is SyncOutcome.FAILED
+    assert outcome(report, SubjectRole.BUYER) is SyncOutcome.FAILED
 
 
 def test_a_refused_export_leaves_the_point_where_it_was(
@@ -838,7 +838,7 @@ def test_a_refused_export_leaves_the_point_where_it_was(
 
     a_synchroniser(session=session, store=store, naps=naps).run(nip=NIP, token=TOKEN)
 
-    assert store.load().directions[InvoiceDirection.BUYER].reached == NOON - INITIAL_LOOKBACK
+    assert store.load().subject_roles[SubjectRole.BUYER].reached == NOON - INITIAL_LOOKBACK
 
 
 def test_a_refused_export_is_kept_under_its_reference(store: SyncStore, naps: list[float]) -> None:
@@ -891,7 +891,7 @@ def test_a_refused_export_does_not_keep_its_key(store: SyncStore, naps: list[flo
 
 
 @pytest.fixture
-def after_a_later_subject_type_blew_up(store: SyncStore, naps: list[float]) -> ScriptedSession:
+def after_a_later_subject_role_blew_up(store: SyncStore, naps: list[float]) -> ScriptedSession:
     """The seller's package is queued and still building; the buyer's ask explodes.
 
     The explosion is deliberately something no `except` in the pass names, so it
@@ -900,7 +900,7 @@ def after_a_later_subject_type_blew_up(store: SyncStore, naps: list[float]) -> S
     session = ScriptedSession(
         statuses=[still_running()],
         limits=allowances(),
-        start_failures={InvoiceDirection.BUYER: MemoryError("Zabrakło pamięci.")},
+        start_failures={SubjectRole.BUYER: MemoryError("Zabrakło pamięci.")},
     )
     with pytest.raises(MemoryError):
         a_synchroniser(session=session, store=store, naps=naps).run(nip=NIP, token=TOKEN)
@@ -908,7 +908,7 @@ def after_a_later_subject_type_blew_up(store: SyncStore, naps: list[float]) -> S
 
 
 def test_a_package_ksef_accepted_keeps_its_key_when_a_later_type_blows_up(
-    store: SyncStore, after_a_later_subject_type_blew_up: ScriptedSession
+    store: SyncStore, after_a_later_subject_role_blew_up: ScriptedSession
 ) -> None:
     # The whole of GH-96. The state used to be written once, after the loop, so
     # an exception in any subject type took the AES key of every package the
@@ -920,18 +920,18 @@ def test_a_package_ksef_accepted_keeps_its_key_when_a_later_type_blows_up(
 
 
 def test_a_package_ksef_accepted_keeps_its_reference_when_a_later_type_blows_up(
-    store: SyncStore, after_a_later_subject_type_blew_up: ScriptedSession
+    store: SyncStore, after_a_later_subject_role_blew_up: ScriptedSession
 ) -> None:
     assert [export.reference for export in store.load().pending] == ["EXP-1"]
 
 
 def test_an_attempt_already_made_is_held_when_a_later_type_blows_up(
-    store: SyncStore, after_a_later_subject_type_blew_up: ScriptedSession
+    store: SyncStore, after_a_later_subject_role_blew_up: ScriptedSession
 ) -> None:
     # `attempted_at` is what holds the fifteen-minute floor open across a
     # restart. Losing it means the next pass asks again immediately, building
     # the retry pattern the Ministry records (D-031 §5).
-    assert store.load().directions[InvoiceDirection.SELLER].attempted_at == NOON
+    assert store.load().subject_roles[SubjectRole.SELLER].attempted_at == NOON
 
 
 def test_a_ready_package_without_a_continuation_marker_does_not_move_the_point(
@@ -941,7 +941,7 @@ def test_a_ready_package_without_a_continuation_marker_does_not_move_the_point(
 
     report = a_synchroniser(session=session, store=store, naps=naps).run(nip=NIP, token=TOKEN)
 
-    assert outcome(report, InvoiceDirection.BUYER) is SyncOutcome.INCONCLUSIVE
+    assert outcome(report, SubjectRole.BUYER) is SyncOutcome.INCONCLUSIVE
 
 
 def test_a_package_without_a_marker_is_archived_all_the_same(
@@ -973,7 +973,7 @@ def test_a_failed_download_keeps_the_parts_to_retry_with(
 def test_a_failed_download_is_reported_as_the_gap_it_leaves(
     after_a_failed_download: SynchronisationReport,
 ) -> None:
-    assert outcome(after_a_failed_download, InvoiceDirection.BUYER) is SyncOutcome.NOT_ARCHIVED
+    assert outcome(after_a_failed_download, SubjectRole.BUYER) is SyncOutcome.NOT_ARCHIVED
 
 
 def test_a_failed_download_does_not_roll_the_continuation_point_back(
@@ -982,7 +982,7 @@ def test_a_failed_download_does_not_roll_the_continuation_point_back(
     # The point moves on what KSeF confirmed, never on whether this run managed
     # to write the files (ADR-103 §3) — the record left on disk is what says the
     # window is still owed.
-    assert store.load().directions[InvoiceDirection.BUYER].reached == HWM
+    assert store.load().subject_roles[SubjectRole.BUYER].reached == HWM
 
 
 def test_a_failed_download_writes_no_invoice_at_all(
@@ -997,7 +997,7 @@ def test_a_failed_download_leaves_the_window_to_the_next_pass(
     assert after_a_failed_download.pending_exports == ("EXP-1", "EXP-2")
 
 
-def test_a_dead_package_stops_blocking_its_subject_type(
+def test_a_dead_package_stops_blocking_its_subject_role(
     store: SyncStore, naps: list[float]
 ) -> None:
     # GH-93: a package whose presigned links expired used to hold its subject
@@ -1005,7 +1005,7 @@ def test_a_dead_package_stops_blocking_its_subject_type(
     # moved past the window it covered, so no later pass asked for it again.
     _, report = a_pass_over_a_dead_package(store, naps, statuses=[ready(), failed(), ready()])
 
-    assert outcome(report, InvoiceDirection.BUYER) is SyncOutcome.ARCHIVED
+    assert outcome(report, SubjectRole.BUYER) is SyncOutcome.ARCHIVED
 
 
 def test_an_expired_link_asks_ksef_about_the_export_before_giving_up_on_it(
@@ -1033,7 +1033,7 @@ def test_renewed_links_cost_a_status_query_and_not_an_export(
     # status is one of two hundred. Asking the cheap question first is the point.
     session, _ = a_pass_over_a_dead_package(store, naps, statuses=[ready(), ready()])
 
-    assert [direction for direction, _ in session.started] == [InvoiceDirection.SELLER]
+    assert [subject_role for subject_role, _ in session.started] == [SubjectRole.SELLER]
 
 
 def test_links_that_stay_dead_after_renewal_leave_the_record_where_it_was(
@@ -1043,7 +1043,7 @@ def test_links_that_stay_dead_after_renewal_leave_the_record_where_it_was(
     # lost keeps its key and its parts for the next pass (ADR-104 §2).
     _, report = a_pass_over_a_dead_package(store, naps, statuses=[ready(), ready()], expiries=2)
 
-    assert outcome(report, InvoiceDirection.BUYER) is SyncOutcome.NOT_ARCHIVED
+    assert outcome(report, SubjectRole.BUYER) is SyncOutcome.NOT_ARCHIVED
 
 
 def test_links_that_stay_dead_after_renewal_keep_the_export_queued(
@@ -1102,7 +1102,7 @@ def test_a_status_query_that_never_reached_ksef_leaves_the_point_alone(
 ) -> None:
     a_pass_over_a_dead_package(store, naps, statuses=[ready(), ready()], status_failure=failure)
 
-    assert store.load().directions[InvoiceDirection.BUYER].reached == HWM
+    assert store.load().subject_roles[SubjectRole.BUYER].reached == HWM
 
 
 def test_a_rate_limited_renewal_spends_no_export_on_a_retry(
@@ -1118,14 +1118,14 @@ def test_a_rate_limited_renewal_spends_no_export_on_a_retry(
         status_failure=KsefRateLimited("Przekroczony limit zapytań.", retry_after=60),
     )
 
-    assert [direction for direction, _ in session.started] == [InvoiceDirection.SELLER]
+    assert [subject_role for subject_role, _ in session.started] == [SubjectRole.SELLER]
 
 
 def test_an_export_answered_as_no_longer_ready_is_taken_off_the_record(
     store: SyncStore, naps: list[float]
 ) -> None:
     # KSeF answers, and the answer is that there is nothing to fetch. Same
-    # conclusion as silence, reached from the other direction.
+    # conclusion as silence, reached from the other subject_role.
     _, report = a_pass_over_a_dead_package(store, naps, statuses=[ready(), failed(), ready()])
 
     assert "EXP-DEAD" not in report.pending_exports
@@ -1146,7 +1146,7 @@ def test_a_lost_export_is_reported_as_what_was_undone_and_what_followed(
 ) -> None:
     _, report = a_pass_over_a_dead_package(store, naps, statuses=[ready(), failed(), ready()])
 
-    assert "EXP-DEAD" in reported(report, InvoiceDirection.BUYER).detail
+    assert "EXP-DEAD" in reported(report, SubjectRole.BUYER).detail
 
 
 def test_a_lost_export_is_reported_alongside_what_replaced_it(
@@ -1154,7 +1154,7 @@ def test_a_lost_export_is_reported_alongside_what_replaced_it(
 ) -> None:
     _, report = a_pass_over_a_dead_package(store, naps, statuses=[ready(), failed(), ready()])
 
-    assert "archiwum" in reported(report, InvoiceDirection.BUYER).detail
+    assert "archiwum" in reported(report, SubjectRole.BUYER).detail
 
 
 def test_a_record_from_before_the_window_start_was_kept_reaches_a_whole_window_back(
@@ -1182,7 +1182,7 @@ def test_a_renewal_with_no_status_allowance_left_keeps_the_package_and_its_key(
         limits=allowances(statuses_per_hour=1),
     )
 
-    assert outcome(report, InvoiceDirection.BUYER) is SyncOutcome.NOT_ARCHIVED
+    assert outcome(report, SubjectRole.BUYER) is SyncOutcome.NOT_ARCHIVED
 
 
 def test_a_renewal_with_no_status_allowance_left_keeps_the_export_queued(
@@ -1203,7 +1203,7 @@ def test_a_rollback_stands_on_the_export_alone_when_no_point_was_recorded(
 ) -> None:
     export = PendingExport(
         reference="EXP-DEAD",
-        direction=InvoiceDirection.BUYER,
+        subject_role=SubjectRole.BUYER,
         started_at=STARTED_AT,
         encryption=ExportEncryption(key=KEY, initialisation_vector=IV),
         state=ExportState.READY,
@@ -1222,13 +1222,13 @@ def test_a_rollback_never_moves_a_point_that_stands_further_back_forward(
     dormant = STARTED_AT - MAX_QUERY_WINDOW - timedelta(days=200)
     export = PendingExport(
         reference="EXP-DEAD",
-        direction=InvoiceDirection.BUYER,
+        subject_role=SubjectRole.BUYER,
         started_at=STARTED_AT,
         encryption=ExportEncryption(key=KEY, initialisation_vector=IV),
         state=ExportState.READY,
     )
 
-    assert rolled_back_to(export, stored=DirectionState(reached=dormant)) == dormant
+    assert rolled_back_to(export, stored=SubjectRoleState(reached=dormant)) == dormant
 
 
 def test_an_exhausted_export_allowance_stops_the_pass_rather_than_the_server(
@@ -1239,8 +1239,8 @@ def test_an_exhausted_export_allowance_stops_the_pass_rather_than_the_server(
     report = a_synchroniser(session=session, store=store, naps=naps).run(nip=NIP, token=TOKEN)
 
     assert (
-        outcome(report, InvoiceDirection.SELLER),
-        outcome(report, InvoiceDirection.BUYER),
+        outcome(report, SubjectRole.SELLER),
+        outcome(report, SubjectRole.BUYER),
     ) == (SyncOutcome.ARCHIVED, SyncOutcome.BUDGET_SPENT)
 
 
@@ -1261,7 +1261,7 @@ def test_an_exhausted_status_allowance_leaves_the_package_recorded(
 
     report = a_synchroniser(session=session, store=store, naps=naps).run(nip=NIP, token=TOKEN)
 
-    assert outcome(report, InvoiceDirection.SELLER) is SyncOutcome.BUDGET_SPENT
+    assert outcome(report, SubjectRole.SELLER) is SyncOutcome.BUDGET_SPENT
 
 
 def test_an_exhausted_status_allowance_still_keeps_the_key(
@@ -1282,7 +1282,7 @@ def test_an_allowance_kseF_does_not_report_is_not_invented(
 
     report = a_synchroniser(session=session, store=store, naps=naps).run(nip=NIP, token=TOKEN)
 
-    assert outcome(report, InvoiceDirection.BUYER) is SyncOutcome.ARCHIVED
+    assert outcome(report, SubjectRole.BUYER) is SyncOutcome.ARCHIVED
 
 
 def test_downloading_the_parts_spends_no_hourly_allowance(
@@ -1296,17 +1296,17 @@ def test_downloading_the_parts_spends_no_hourly_allowance(
 
     report = a_synchroniser(session=session, store=store, naps=naps).run(nip=NIP, token=TOKEN)
 
-    assert outcome(report, InvoiceDirection.SELLER) is SyncOutcome.ARCHIVED
+    assert outcome(report, SubjectRole.SELLER) is SyncOutcome.ARCHIVED
 
 
 def test_a_truncated_package_without_its_marker_advances_nowhere() -> None:
-    point = ContinuationPoint(direction=InvoiceDirection.BUYER, reached=LAST_SEEN)
+    point = ContinuationPoint(subject_role=SubjectRole.BUYER, reached=LAST_SEEN)
 
     assert advance(point, status=ready(truncated=True, last_permanent_storage_date=None)) is None
 
 
 def test_a_truncated_package_ignores_a_missing_high_water_mark() -> None:
-    point = ContinuationPoint(direction=InvoiceDirection.BUYER, reached=LAST_SEEN)
+    point = ContinuationPoint(subject_role=SubjectRole.BUYER, reached=LAST_SEEN)
 
     moved = advance(point, status=ready(truncated=True, hwm_date=None))
 
@@ -1314,7 +1314,7 @@ def test_a_truncated_package_ignores_a_missing_high_water_mark() -> None:
 
 
 def test_a_complete_package_ignores_a_missing_last_invoice_timestamp() -> None:
-    point = ContinuationPoint(direction=InvoiceDirection.BUYER, reached=LAST_SEEN)
+    point = ContinuationPoint(subject_role=SubjectRole.BUYER, reached=LAST_SEEN)
 
     moved = advance(point, status=ready(last_permanent_storage_date=None))
 
