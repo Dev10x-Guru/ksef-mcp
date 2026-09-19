@@ -9,7 +9,7 @@ from platformdirs import user_data_path
 
 from ksef_mcp.errors import KsefMcpError
 from ksef_mcp.metadata import SERVER_NAME
-from ksef_mcp.storage import require_schema, written_atomically
+from ksef_mcp.storage import json_written_atomically, require_schema
 
 CONFIGURATION_FILE: Final[str] = "configuration.json"
 
@@ -134,9 +134,9 @@ def save_configuration(
         "keyring_backend": configuration.keyring_backend,
         "invoice_directory": str(configuration.invoice_directory),
     }
-    return written_atomically(
+    return json_written_atomically(
         resolved,
-        content=(json.dumps(document, indent=2, ensure_ascii=False) + "\n").encode("utf-8"),
+        document=document,
         file_mode=CONFIGURATION_FILE_MODE,
     )
 

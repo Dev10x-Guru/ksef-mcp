@@ -46,7 +46,12 @@ from ksef_mcp.ksef_port.errors import InvalidKsefIdentifier
 from ksef_mcp.ksef_port.types import KsefNumber
 from ksef_mcp.package import ExportPackage
 from ksef_mcp.paths import SubjectScope
-from ksef_mcp.storage import exclusive_write, require_schema, written_atomically
+from ksef_mcp.storage import (
+    exclusive_write,
+    json_written_atomically,
+    require_schema,
+    written_atomically,
+)
 
 INVOICE_DIRECTORY: Final[str] = "invoices"
 
@@ -501,9 +506,9 @@ class InvoiceArchive:
 
     def _save_index(self, index: DeduplicationIndex) -> None:
         document = _encode_index(index, nip=self.nip, environment=self.environment)
-        written_atomically(
+        json_written_atomically(
             self.index_path,
-            content=(json.dumps(document, indent=2, ensure_ascii=False) + "\n").encode("utf-8"),
+            document=document,
             file_mode=ARCHIVE_FILE_MODE,
         )
 

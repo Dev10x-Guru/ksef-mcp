@@ -37,7 +37,7 @@ from ksef_mcp.ksef_port.types import (
     SessionCeilings,
 )
 from ksef_mcp.paths import SubjectScope
-from ksef_mcp.storage import written_atomically
+from ksef_mcp.storage import json_written_atomically
 
 LEDGER_FILE: Final[str] = "budget.json"
 
@@ -81,9 +81,9 @@ def _write_document(*, path: Path, document: dict[str, object]) -> None:
     # half-written counter read back as a miss would hand out an allowance that
     # has already been spent. The staging name is unique per writer and the
     # directory entry is persisted after the swap (ADR-107 §3, §4).
-    written_atomically(
+    json_written_atomically(
         path,
-        content=(json.dumps(document, indent=2, ensure_ascii=False) + "\n").encode("utf-8"),
+        document=document,
         file_mode=FILE_MODE,
     )
 

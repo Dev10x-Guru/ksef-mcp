@@ -74,7 +74,7 @@ from ksef_mcp.listing import (
 )
 from ksef_mcp.paths import SubjectScope
 from ksef_mcp.period_cache import PeriodCache, PeriodMetadataReader
-from ksef_mcp.storage import exclusive_write, require_schema, written_atomically
+from ksef_mcp.storage import exclusive_write, json_written_atomically, require_schema
 from ksef_mcp.synchronisation import SYNCHRONISED_SUBJECT_ROLES
 
 REVIEW_FILE: Final[str] = "review.json"
@@ -244,9 +244,9 @@ class ReviewStore:
             # temp → rename (D-006). A half-written ledger read back as empty
             # would replay every invoice ever reviewed, and the interrupted
             # write would have destroyed the good one to do it.
-            return written_atomically(
+            return json_written_atomically(
                 self.path,
-                content=(json.dumps(document, indent=2, ensure_ascii=False) + "\n").encode("utf-8"),
+                document=document,
                 file_mode=REVIEW_FILE_MODE,
             )
 
