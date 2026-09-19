@@ -65,6 +65,14 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+# Kontrola zwendorowanego artefaktu żyje obok tego skryptu, bo wywołują ją też
+# hook pre-commit i zadanie CI; wstawiamy bin/ jawnie, żeby import nie zależał
+# od katalogu roboczego wywołania — tak samo jak w `check-adr-drift.py`.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from vendor_bundle import BundleRefused
+from vendor_bundle import verify as verify_vendor_bundle
+
 BUMP_KINDS: dict[str, str] = {
     "fixes": "patch",
     "features": "minor",
@@ -305,6 +313,21 @@ def require_synced_with_remote(project: Project) -> None:
             "Wydanie z rozjazdu opublikowałoby kod, którego nie ma na zdalnym "
             "repozytorium."
         )
+
+
+def require_intact_vendor_bundle(project: Project) -> None:
+    """Nie wydawaj generatora Ministerstwa, który nie zgadza się z własną notą.
+
+    Kontrola biegnie także w CI i w hooku pre-commit, więc tutaj jest
+    ostatnim, nie jedynym sitem — ale jedynym, za którym stoi krok
+    nieodwracalny. Obcięty bundel opublikowany na PyPI zostaje na PyPI:
+    numeru nie da się użyć ponownie, a paczka renderuje PDF-y do pierwszej
+    faktury, na której zabraknie wyciętego kawałka generatora (#108).
+    """
+    try:
+        verify_vendor_bundle(root=project.root)
+    except BundleRefused as refusal:
+        raise ReleaseRefused(str(refusal)) from refusal
 
 
 def published_versions(name: str) -> set[str]:
@@ -587,6 +610,7 @@ def release(*, root: Path, kind: str, dry_run: bool) -> str:
     require_clean_tree(project)
     require_release_branch(project)
     require_synced_with_remote(project)
+    require_intact_vendor_bundle(project)
     # Before deciding anything, settle a reopening that never landed. Doing it
     # here rather than inside `resolve_plan` keeps that function reading the
     # tree as it finds it, and means the plan below is computed from a version

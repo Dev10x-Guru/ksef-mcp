@@ -10,6 +10,7 @@ podmieniane, a `git` uruchamiany na repozytorium zakładanym w `tmp_path`.
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import subprocess
 import sys
@@ -56,8 +57,39 @@ CHANGELOG = """\
 """
 
 
+BUNDLE = b"// zastepczy generator, nie artefakt Ministerstwa\n"
+
+VENDOR_NOTE = """\
+# Nota licencyjna — artefakt obcy
+
+| | |
+|---|---|
+| Rozmiar | {byte_count} bajtów |
+| SHA-256 | `{digest}` |
+"""
+
+
 def git(root: Path, *arguments: str) -> None:
     subprocess.run(["git", *arguments], cwd=root, check=True, capture_output=True)
+
+
+def lay_down_vendor_bundle(root: Path) -> None:
+    """Zastępczy bundel wraz z notą, która go opisuje.
+
+    Wydanie sprawdza teraz, czy zwendorowany generator zgadza się z notą
+    (#108), więc drzewo bez obu plików nie przeszłoby pierwszej bramki i
+    każdy test tutaj wywracałby się na kontroli, o którą nie pyta.
+    """
+    vendor = root / "src" / "ksef_mcp" / "vendor"
+    vendor.mkdir(parents=True)
+    (vendor / "ksef-fe-invoice-converter.1.1.39.js").write_bytes(BUNDLE)
+    (vendor / "LICENCJA-MF.md").write_text(
+        VENDOR_NOTE.format(
+            byte_count=len(BUNDLE),
+            digest=hashlib.sha256(BUNDLE).hexdigest(),
+        ),
+        encoding="utf-8",
+    )
 
 
 @pytest.fixture
@@ -65,6 +97,7 @@ def repository(tmp_path: Path) -> Path:
     (tmp_path / "pyproject.toml").write_text(PYPROJECT, encoding="utf-8")
     (tmp_path / "uv.lock").write_text(LOCKFILE, encoding="utf-8")
     (tmp_path / "CHANGELOG.md").write_text(CHANGELOG, encoding="utf-8")
+    lay_down_vendor_bundle(tmp_path)
     git(tmp_path, "init", "-b", "main")
     git(tmp_path, "config", "user.email", "test@example.com")
     git(tmp_path, "config", "user.name", "Test")
@@ -133,6 +166,21 @@ def test_a_dirty_tree_stops_the_release(
 
     with pytest.raises(release.ReleaseRefused, match="czyste"):
         release.release(root=repository, kind="fixes", dry_run=True)
+
+
+def test_a_truncated_vendor_bundle_stops_the_release(
+    reopened: Path,
+    unpublished: None,
+    offline: None,
+) -> None:
+    # Przerwany transfer z portalu MF jest zdarzeniem zaobserwowanym, nie
+    # hipotezą, a opublikowanej paczki nie da się wycofać (#108).
+    bundle = reopened / "src" / "ksef_mcp" / "vendor" / "ksef-fe-invoice-converter.1.1.39.js"
+    bundle.write_bytes(BUNDLE[:10])
+    git(reopened, "commit", "-am", "obcina bundel")
+
+    with pytest.raises(release.ReleaseRefused, match="zapowiada"):
+        release.release(root=reopened, kind="fixes", dry_run=True)
 
 
 def test_releasing_off_main_stops_the_release(
