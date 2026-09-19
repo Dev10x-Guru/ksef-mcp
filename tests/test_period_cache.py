@@ -17,6 +17,7 @@ import pytest
 from platformdirs import user_cache_path
 
 from ksef_mcp import paths
+from ksef_mcp import period_cache as period_cache_module
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port import (
     DateType,
@@ -28,7 +29,7 @@ from ksef_mcp.ksef_port import (
     RateLimits,
 )
 from ksef_mcp.ksef_port.budget import Operation
-from ksef_mcp.ksef_port.errors import KsefRequestRejected
+from ksef_mcp.ksef_port.errors import KsefRequestRejected, KsefUnreachable
 from ksef_mcp.metadata import SERVER_NAME
 from ksef_mcp.period_cache import (
     SCHEMA_VERSION,
@@ -428,6 +429,28 @@ def test_an_entry_naming_something_that_is_not_a_ksef_number_is_a_miss(
     _corrupt(entry_path, document)
 
     assert cache.remembered(period=SEPTEMBER, direction=InvoiceDirection.BUYER) is None
+
+
+def test_an_unreachable_registry_is_not_dressed_up_as_a_cache_miss(
+    cache: PeriodCache,
+    page: MetadataPage,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """GH-170: the catch named `KsefPortError`, whose reach was wider than the intent.
+
+    A damaged entry is a miss on purpose — this root is rebuildable. An outage
+    or a refused login is not damage, and answering "not in the cache" hides the
+    one failure the reader has to be told about.
+    """
+    cache.remember(period=SEPTEMBER, direction=InvoiceDirection.BUYER, page=page)
+
+    def unreachable(*arguments: object, **keywords: object) -> None:
+        raise KsefUnreachable("KSeF nie odpowiada.")
+
+    monkeypatch.setattr(period_cache_module, "_decode", unreachable)
+
+    with pytest.raises(KsefUnreachable):
+        cache.remembered(period=SEPTEMBER, direction=InvoiceDirection.BUYER)
 
 
 def test_the_first_question_about_a_period_reaches_ksef(

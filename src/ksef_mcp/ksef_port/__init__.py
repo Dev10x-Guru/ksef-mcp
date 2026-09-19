@@ -6,6 +6,8 @@ from ksef_mcp.ksef_port.connection import (
     check_connection,
 )
 from ksef_mcp.ksef_port.errors import (
+    InvalidKsefIdentifier,
+    InvalidPeriod,
     KsefAuthenticationFailed,
     KsefPortError,
     KsefRateLimited,
@@ -49,6 +51,8 @@ __all__ = [
     "ExportState",
     "ExportStatus",
     "GuardedSession",
+    "InvalidKsefIdentifier",
+    "InvalidPeriod",
     "InvoiceDirection",
     "InvoiceMetadata",
     "KsefAuthenticationFailed",

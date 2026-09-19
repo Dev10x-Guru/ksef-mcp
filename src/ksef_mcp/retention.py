@@ -45,7 +45,7 @@ from typing import Final
 from ksef_mcp.archive import INVOICE_SUFFIX, InvoiceArchive
 from ksef_mcp.audit import XML_FORMAT, AuditEntry, Authorisation, Disclosure
 from ksef_mcp.errors import KsefMcpInputRejected
-from ksef_mcp.ksef_port.errors import KsefRequestRejected
+from ksef_mcp.ksef_port.errors import InvalidKsefIdentifier
 from ksef_mcp.ksef_port.types import KsefNumber
 
 PURGE_OPERATION: Final[str] = "purge_archive"
@@ -162,7 +162,7 @@ def purge_entry(
 def _number_of(path: Path) -> KsefNumber | None:
     try:
         return KsefNumber(path.stem)
-    except KsefRequestRejected:
+    except InvalidKsefIdentifier:
         return None
 
 
