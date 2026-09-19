@@ -26,6 +26,7 @@ from ksef_mcp.ksef_port import (
 )
 from ksef_mcp.storage import WriteExclusivityUnavailable
 from ksef_mcp.sync_store import (
+    MINIMUM_INTERVAL,
     SCHEMA_VERSION,
     SETTLED_JOURNAL_LIMIT,
     DirectionState,
@@ -34,11 +35,16 @@ from ksef_mcp.sync_store import (
     SyncState,
     SyncStateUnreadable,
     SyncStore,
+    in_night_window,
 )
 
 NIP = "1234567890"
 
 REACHED = datetime(2026, 9, 10, tzinfo=UTC)
+
+NOON = datetime(2026, 9, 12, 12, 0, tzinfo=UTC)
+
+MIDNIGHT = datetime(2026, 9, 12, 2, 0, tzinfo=UTC)
 
 STARTED = datetime(2026, 9, 11, 8, 30, tzinfo=UTC)
 
@@ -446,3 +452,45 @@ def test_the_record_a_refused_writer_never_wrote_stays_as_the_holder_left_it(
             in_another_thread(lambda: store.save(SyncState()))
 
     assert store.load().pending == populated.pending
+
+
+@pytest.mark.parametrize(
+    ("hour", "expected"),
+    [(0, True), (3, True), (5, True), (6, False), (12, False), (23, False)],
+)
+def test_the_night_window_is_measured_in_utc(hour: int, expected: bool) -> None:
+    assert in_night_window(datetime(2026, 9, 12, hour, tzinfo=UTC)) is expected
+
+
+def test_a_subject_type_recorded_without_an_attempt_is_due() -> None:
+    state = DirectionState(reached=REACHED)
+
+    assert state.is_due(direction=InvoiceDirection.BUYER, moment=NOON) is True
+
+
+@pytest.mark.parametrize(
+    ("elapsed", "expected"),
+    [(timedelta(minutes=14), False), (MINIMUM_INTERVAL, True), (timedelta(hours=1), True)],
+)
+def test_the_state_holds_the_interval_floor_open(elapsed: timedelta, expected: bool) -> None:
+    state = DirectionState(reached=REACHED, attempted_at=NOON - elapsed)
+
+    assert state.is_due(direction=InvoiceDirection.BUYER, moment=NOON) is expected
+
+
+@pytest.mark.parametrize(
+    ("elapsed", "expected"),
+    [(timedelta(hours=23), False), (timedelta(days=1), True)],
+)
+def test_the_state_lets_a_rare_subject_type_through_once_a_day(
+    elapsed: timedelta, expected: bool
+) -> None:
+    state = DirectionState(reached=REACHED, attempted_at=MIDNIGHT - elapsed)
+
+    assert state.is_due(direction=InvoiceDirection.THIRD_SUBJECT, moment=MIDNIGHT) is expected
+
+
+def test_a_rare_subject_type_waits_for_the_night_window_even_when_never_attempted() -> None:
+    state = DirectionState(reached=REACHED)
+
+    assert state.is_due(direction=InvoiceDirection.THIRD_SUBJECT, moment=NOON) is False

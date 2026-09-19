@@ -44,17 +44,20 @@ from ksef_mcp.ksef_port import (
     SessionCeilings,
 )
 from ksef_mcp.ksef_port.types import MAX_QUERY_WINDOW
-from ksef_mcp.sync_store import DirectionState, PendingExport, SyncState, SyncStore
+from ksef_mcp.sync_store import (
+    MINIMUM_INTERVAL,
+    DirectionState,
+    PendingExport,
+    SyncState,
+    SyncStore,
+)
 from ksef_mcp.synchronisation import (
     INITIAL_LOOKBACK,
-    MINIMUM_INTERVAL,
     DirectionReport,
     SynchronisationReport,
     Synchroniser,
     SyncOutcome,
     advance,
-    in_night_window,
-    is_due,
     now_utc,
     rolled_back_to,
 )
@@ -1270,59 +1273,6 @@ def test_downloading_the_parts_spends_no_hourly_allowance(
     report = a_synchroniser(session=session, store=store, naps=naps).run(nip=NIP, token=TOKEN)
 
     assert outcome(report, InvoiceDirection.SELLER) is SyncOutcome.ARCHIVED
-
-
-@pytest.mark.parametrize(
-    ("hour", "expected"),
-    [(0, True), (3, True), (5, True), (6, False), (12, False), (23, False)],
-)
-def test_the_night_window_is_measured_in_utc(hour: int, expected: bool) -> None:
-    assert in_night_window(datetime(2026, 9, 12, hour, tzinfo=UTC)) is expected
-
-
-def test_a_subject_type_never_attempted_is_due() -> None:
-    assert is_due(direction=InvoiceDirection.BUYER, stored=None, moment=NOON) is True
-
-
-def test_a_subject_type_recorded_without_an_attempt_is_due() -> None:
-    assert (
-        is_due(
-            direction=InvoiceDirection.BUYER,
-            stored=DirectionState(reached=HWM),
-            moment=NOON,
-        )
-        is True
-    )
-
-
-@pytest.mark.parametrize(
-    ("elapsed", "expected"),
-    [(timedelta(minutes=14), False), (MINIMUM_INTERVAL, True), (timedelta(hours=1), True)],
-)
-def test_the_interval_floor_holds_per_subject_type(elapsed: timedelta, expected: bool) -> None:
-    assert (
-        is_due(
-            direction=InvoiceDirection.BUYER,
-            stored=DirectionState(reached=HWM, attempted_at=NOON - elapsed),
-            moment=NOON,
-        )
-        is expected
-    )
-
-
-@pytest.mark.parametrize(
-    ("elapsed", "expected"),
-    [(timedelta(hours=23), False), (timedelta(days=1), True)],
-)
-def test_the_rare_subject_types_are_asked_once_a_day(elapsed: timedelta, expected: bool) -> None:
-    assert (
-        is_due(
-            direction=InvoiceDirection.THIRD_SUBJECT,
-            stored=DirectionState(reached=HWM, attempted_at=MIDNIGHT - elapsed),
-            moment=MIDNIGHT,
-        )
-        is expected
-    )
 
 
 def test_a_truncated_package_without_its_marker_advances_nowhere() -> None:
