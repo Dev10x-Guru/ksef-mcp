@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from ksef_mcp import pdf
+from ksef_mcp import pdf, storage
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.preflight import NodeReport
 from synthetic import BUYER_NAME, SELLER_NIP, synthetic_fa3_invoice
@@ -271,7 +271,7 @@ def test_the_rendered_file_is_readable_only_by_its_owner(rendered: pdf.RenderedI
 
 
 def test_the_render_leaves_no_staging_file_behind(rendered: pdf.RenderedInvoice) -> None:
-    assert not rendered.path.with_suffix(pdf.STAGING_SUFFIX).exists()
+    assert list(rendered.path.parent.glob(f"*{storage.STAGING_SUFFIX}")) == []
 
 
 def test_the_result_names_the_generator_version(rendered: pdf.RenderedInvoice) -> None:

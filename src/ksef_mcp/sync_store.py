@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import base64
 import json
-import os
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
@@ -28,6 +29,7 @@ from ksef_mcp.ksef_port.types import (
     InvoiceDirection,
 )
 from ksef_mcp.metadata import SERVER_NAME
+from ksef_mcp.storage import exclusive_write, written_atomically
 
 STATE_FILE: Final[str] = "synchronisation.json"
 
@@ -345,18 +347,34 @@ class SyncStore:
             return SyncState()
         return _decode(json.loads(self.path.read_text(encoding="utf-8")))
 
+    @contextmanager
+    def exclusively(self) -> Iterator[None]:
+        """Hold this subject's directory for a whole read-change-write (ADR-107)."""
+        with exclusive_write(self.directory, directory_mode=STATE_DIRECTORY_MODE):
+            yield
+
+    def updating(self, change: Callable[[SyncState], SyncState]) -> SyncState:
+        """Read, change and write the record without another writer stepping in.
+
+        The lock spans the cycle rather than the write, because the update a
+        second writer loses is the one it read before that writer had finished
+        (ADR-107 §2).
+        """
+        with self.exclusively():
+            updated = change(self.load())
+            self.save(updated)
+            return updated
+
     def save(self, state: SyncState) -> Path:
-        self.directory.mkdir(mode=STATE_DIRECTORY_MODE, parents=True, exist_ok=True)
-        document = _encode(state, nip=self.nip, environment=self.environment)
-        # temp → rename inside one directory (D-006): a crash mid-write leaves
-        # the previous record intact, and a truncated continuation point would
-        # cost the full resynchronisation this file exists to prevent.
-        staging = self.path.with_suffix(".tmp")
-        descriptor = os.open(staging, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, STATE_FILE_MODE)
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            handle.write(json.dumps(document, indent=2, ensure_ascii=False) + "\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-        staging.chmod(STATE_FILE_MODE)
-        os.replace(staging, self.path)
-        return self.path
+        with self.exclusively():
+            document = _encode(state, nip=self.nip, environment=self.environment)
+            # temp → rename inside one directory (D-006): a crash mid-write
+            # leaves the previous record intact, and a truncated continuation
+            # point would cost the full resynchronisation this file exists to
+            # prevent. The staging name is unique and the directory entry is
+            # persisted after the swap (ADR-107 §3, §4).
+            return written_atomically(
+                self.path,
+                content=(json.dumps(document, indent=2, ensure_ascii=False) + "\n").encode("utf-8"),
+                file_mode=STATE_FILE_MODE,
+            )

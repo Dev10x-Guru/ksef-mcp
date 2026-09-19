@@ -1,3 +1,4 @@
+import threading
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -17,6 +18,31 @@ def raiser(error: Exception) -> Callable[..., object]:
         raise error
 
     return raise_it
+
+
+def in_another_thread(work: Callable[[], object], *, timeout: float = 5.0) -> object:
+    """Run `work` on a thread of its own, and re-raise here whatever it hit.
+
+    A write lock is held per thread as much as per process, so a test about a
+    second writer has to involve a genuinely second thread. Anything the thread
+    raises is re-raised on this side, where `pytest.raises` can see it.
+    """
+    done: list[object] = []
+    failures: list[BaseException] = []
+
+    def run() -> None:
+        try:
+            done.append(work())
+        except BaseException as failure:
+            failures.append(failure)
+
+    thread = threading.Thread(target=run)
+    thread.start()
+    thread.join(timeout=timeout)
+    assert not thread.is_alive()
+    if failures:
+        raise failures[0]
+    return done[0]
 
 
 def an_allowance(

@@ -14,6 +14,8 @@ from pathlib import Path
 
 import pytest
 
+from conftest import in_another_thread
+from ksef_mcp import storage
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port import (
     ContinuationPoint,
@@ -22,6 +24,7 @@ from ksef_mcp.ksef_port import (
     ExportState,
     InvoiceDirection,
 )
+from ksef_mcp.storage import WriteExclusivityUnavailable
 from ksef_mcp.sync_store import (
     SCHEMA_VERSION,
     SETTLED_JOURNAL_LIMIT,
@@ -196,7 +199,10 @@ def test_the_subject_directory_is_readable_only_by_its_owner(
 def test_no_staging_file_outlives_the_write(store: SyncStore, populated: SyncState) -> None:
     store.save(populated)
 
-    assert sorted(path.name for path in store.directory.iterdir()) == ["synchronisation.json"]
+    assert sorted(path.name for path in store.directory.iterdir()) == [
+        storage.LOCK_FILE,
+        "synchronisation.json",
+    ]
 
 
 def test_a_second_write_replaces_the_first(store: SyncStore, populated: SyncState) -> None:
@@ -399,3 +405,44 @@ def test_an_attempt_is_recorded_with_its_timestamp() -> None:
     stored = DirectionState(reached=REACHED, attempted_at=REACHED + timedelta(minutes=15))
 
     assert stored.attempted_at == datetime(2026, 9, 10, 0, 15, tzinfo=UTC)
+
+
+def test_an_update_reads_the_record_it_is_about_to_change(
+    store: SyncStore, populated: SyncState
+) -> None:
+    store.save(populated)
+
+    updated = store.updating(lambda state: state.without_export(reference="EXP-1"))
+
+    assert updated.pending == ()
+
+
+def test_an_update_is_on_disk_by_the_time_it_is_returned(
+    store: SyncStore, populated: SyncState
+) -> None:
+    store.save(populated)
+
+    store.updating(lambda state: state.without_export(reference="EXP-1"))
+
+    assert store.load().pending == ()
+
+
+def test_a_second_writer_is_refused_rather_than_left_to_lose_its_changes(
+    store: SyncStore, populated: SyncState
+) -> None:
+    """GH-101: two clients on one subject is an ordinary setup, not an exotic one."""
+    with store.exclusively():
+        with pytest.raises(WriteExclusivityUnavailable):
+            in_another_thread(lambda: store.save(populated))
+
+
+def test_the_record_a_refused_writer_never_wrote_stays_as_the_holder_left_it(
+    store: SyncStore, populated: SyncState
+) -> None:
+    store.save(populated)
+
+    with store.exclusively():
+        with pytest.raises(WriteExclusivityUnavailable):
+            in_another_thread(lambda: store.save(SyncState()))
+
+    assert store.load().pending == populated.pending

@@ -258,6 +258,19 @@ class Synchroniser:
         )
 
     def run(self, *, nip: str, token: str) -> SynchronisationReport:
+        """Advance every subject type, as the only writer this subject has.
+
+        The hold spans the whole pass, not each write. A pass reads the record
+        once and writes it four times, and a second pass starting from the same
+        snapshot would overwrite the first one's continuation points and queued
+        keys with a document that never knew about them (GH-101). Two passes for
+        one subject also spend one allowance twice over, so the second one
+        refusing outright is the better outcome on both counts (ADR-107 §2).
+        """
+        with self.store.exclusively():
+            return self._advance_all(nip=nip, token=token)
+
+    def _advance_all(self, *, nip: str, token: str) -> SynchronisationReport:
         state = self.store.load()
         reports: list[DirectionReport] = []
         with self.port.session(nip=nip, token=token) as opened:
