@@ -371,7 +371,7 @@ def run_verify(console: Console, *, configuration_file: Path | None) -> int:
         checked = ksef_port.check_connection(
             port=port,
             nip=configuration.nip,
-            token=stored.value,
+            token=stored,
             readers=metered_periods(configuration),
         )
     except ksef_port.KsefRateLimited as refusal:

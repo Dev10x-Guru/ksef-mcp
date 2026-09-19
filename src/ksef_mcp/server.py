@@ -353,7 +353,7 @@ def synchronise() -> SynchronisationResult:
         store=subject.sync_store,
         allowance=subject.allowance,
     )
-    report = synchroniser.run(nip=subject.nip, token=stored.value)
+    report = synchroniser.run(nip=subject.nip, token=stored)
     trail = subject.trail
     trail.record(
         synchronisation_entries(
@@ -509,7 +509,7 @@ def list_invoices() -> InvoiceListingResult:
         cache=subject.cache,
         allowance=subject.allowance,
     )
-    listing = lister.run(nip=subject.nip, token=stored.value)
+    listing = lister.run(nip=subject.nip, token=stored)
     trail = subject.trail
     trail.record(
         listing_entries(
@@ -626,7 +626,7 @@ def export_statement(*, period: str, working_directory: str | None) -> Statement
     )
     statement = composer.run(
         nip=subject.nip,
-        token=stored.value,
+        token=stored,
         period=AccountingPeriod.parsed(period),
         directory=directory,
     )
@@ -798,7 +798,7 @@ def review_invoices() -> InvoiceReviewResult:
         store=subject.review_store,
         allowance=subject.allowance,
     )
-    review = reviewer.run(nip=subject.nip, token=stored.value)
+    review = reviewer.run(nip=subject.nip, token=stored)
     trail = subject.trail
     trail.record(
         review_entries(

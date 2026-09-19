@@ -58,7 +58,13 @@ from ksef_mcp.config import (
     prepare_invoice_directory,
 )
 from ksef_mcp.ksef_port.protocol import KsefPort
-from ksef_mcp.ksef_port.types import DateType, InvoiceDirection, InvoiceMetadata, Period
+from ksef_mcp.ksef_port.types import (
+    Credential,
+    DateType,
+    InvoiceDirection,
+    InvoiceMetadata,
+    Period,
+)
 from ksef_mcp.listing import CurrencyTotal, gross_totals, invoices_phrase
 from ksef_mcp.metadata import SERVER_NAME
 from ksef_mcp.period_cache import PeriodCache, PeriodMetadataReader, cache_root
@@ -426,7 +432,7 @@ class StatementComposer:
         self,
         *,
         nip: str,
-        token: str,
+        token: Credential,
         period: AccountingPeriod,
         directory: Path,
     ) -> Statement:

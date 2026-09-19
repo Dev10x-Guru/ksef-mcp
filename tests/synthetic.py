@@ -20,6 +20,7 @@ from ksef2.services.builders.fa3.root import StandardInvoiceBuilder
 
 from ksef_mcp.ksef_port import InvoiceMetadata, KsefNumber
 from ksef_mcp.package import AES_BLOCK_BITS, METADATA_ENTRY
+from ksef_mcp.token_store import StoredToken, TokenSource
 
 SELLER_NIP = "9876543210"
 
@@ -66,6 +67,16 @@ def synthetic_fa3_invoice() -> bytes:
     rows.done()
     body.done()
     return builder.to_xml().encode("utf-8")
+
+
+def synthetic_credential(value: str = "tajny-token") -> StoredToken:
+    """Token, który nie należy do nikogo, w opakowaniu, jakiego żąda port.
+
+    Goły napis już nie przejdzie i o to chodzi (GH-115): sygnatura `Credential`
+    jest tym, co utrzymuje ochronę przed `repr` aż do granicy, więc test
+    podający napis omijałby dokładnie ten niezmiennik, który ma sprawdzać.
+    """
+    return StoredToken(value=value, source=TokenSource.KEYRING)
 
 
 def synthetic_number(ordinal: int = 1) -> KsefNumber:

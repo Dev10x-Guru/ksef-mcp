@@ -74,10 +74,13 @@ from ksef_mcp.ksef_port.adapter import (
     Ksef2Port,
 )
 from ksef_mcp.ksef_port.types import PAGE_SIZE
+from synthetic import synthetic_credential
 
 NIP = "1234567890"
 
-TOKEN = "aaaabbbbccccdddd"
+TOKEN_VALUE = "aaaabbbbccccdddd"
+
+TOKEN = synthetic_credential(TOKEN_VALUE)
 
 WINDOW = Period(
     date_from=datetime(2026, 8, 1, tzinfo=UTC),
@@ -208,7 +211,9 @@ def test_the_client_is_closed_when_the_session_ends(plan: Plan, port: Ksef2Port)
 
 
 def test_the_token_reaches_authentication(session: KsefSession, plan: Plan) -> None:
-    assert plan.built[0].authentication.credentials == [(NIP, TOKEN)]
+    # The SDK is handed the bare string, and only here: the value is unwrapped
+    # one line before it is spent, never earlier (GH-115).
+    assert plan.built[0].authentication.credentials == [(NIP, TOKEN_VALUE)]
 
 
 def test_metadata_is_requested_newest_first(session: KsefSession, plan: Plan) -> None:

@@ -3,6 +3,7 @@ from typing import Protocol, runtime_checkable
 
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port.types import (
+    Credential,
     ExportHandle,
     ExportPart,
     ExportStatus,
@@ -66,5 +67,5 @@ class KsefPort(Protocol):
     def environment(self) -> KsefEnvironment:
         """TEST, DEMO or PRODUCTION. Stamped on every answer a tool gives back."""
 
-    def session(self, *, nip: str, token: str) -> AbstractContextManager[KsefSession]:
+    def session(self, *, nip: str, token: Credential) -> AbstractContextManager[KsefSession]:
         """Authenticate and hand out a session, closed when the block ends."""

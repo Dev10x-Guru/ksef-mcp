@@ -37,11 +37,11 @@ from ksef_mcp.ksef_port import (
 )
 from ksef_mcp.ksef_port.connection import DEFAULT_LIMIT, check_period
 from ksef_mcp.period_cache import MeteredPeriods, PeriodCache
-from synthetic import BUYER_NAME, synthetic_metadata
+from synthetic import BUYER_NAME, synthetic_credential, synthetic_metadata
 
 NIP = "1234567890"
 
-TOKEN = "aaaabbbbccccdddd"
+TOKEN = synthetic_credential("aaaabbbbccccdddd")
 
 ASKED_AT = datetime(2026, 9, 14, 7, 41, 17, tzinfo=UTC)
 

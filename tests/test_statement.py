@@ -61,9 +61,17 @@ from ksef_mcp.statement import (
     verification_code,
     write_statement,
 )
-from synthetic import SELLER_NIP, synthetic_body, synthetic_metadata, synthetic_number
+from synthetic import (
+    SELLER_NIP,
+    synthetic_body,
+    synthetic_credential,
+    synthetic_metadata,
+    synthetic_number,
+)
 
 NIP = "1234567890"
+
+CREDENTIAL = synthetic_credential()
 
 ASKED_AT = datetime(2026, 9, 14, 7, 41, 17, tzinfo=UTC)
 
@@ -187,7 +195,7 @@ def composer(
 
 @pytest.fixture
 def statement(composer: StatementComposer, working: Path) -> Statement:
-    return composer.run(nip=NIP, token="tajny-token", period=SEPTEMBER, directory=working)
+    return composer.run(nip=NIP, token=CREDENTIAL, period=SEPTEMBER, directory=working)
 
 
 @pytest.fixture
@@ -432,7 +440,7 @@ def test_kilka_walut_ostrzega_o_kolumnie_brutto(composer: StatementComposer, wor
         hwm_date=None,
     )
 
-    result = composer.run(nip=NIP, token="t", period=SEPTEMBER, directory=working)
+    result = composer.run(nip=NIP, token=CREDENTIAL, period=SEPTEMBER, directory=working)
 
     assert any("kilku walutach" in one for one in result.warnings)
 
@@ -477,8 +485,8 @@ def test_zestawienie_pyta_ksef_tylko_o_role_nabywcy(
 def test_drugie_zlozenie_tego_samego_miesiaca_nie_kosztuje_zapytania(
     composer: StatementComposer, working: Path, session: RecordingSession
 ) -> None:
-    composer.run(nip=NIP, token="t", period=SEPTEMBER, directory=working)
-    composer.run(nip=NIP, token="t", period=SEPTEMBER, directory=working)
+    composer.run(nip=NIP, token=CREDENTIAL, period=SEPTEMBER, directory=working)
+    composer.run(nip=NIP, token=CREDENTIAL, period=SEPTEMBER, directory=working)
 
     assert len(session.asked) == 1
 
@@ -486,9 +494,11 @@ def test_drugie_zlozenie_tego_samego_miesiaca_nie_kosztuje_zapytania(
 def test_zestawienie_z_dysku_mowi_ze_jest_z_dysku(
     composer: StatementComposer, working: Path
 ) -> None:
-    composer.run(nip=NIP, token="t", period=SEPTEMBER, directory=working)
+    composer.run(nip=NIP, token=CREDENTIAL, period=SEPTEMBER, directory=working)
 
-    assert composer.run(nip=NIP, token="t", period=SEPTEMBER, directory=working).from_cache is True
+    repeated = composer.run(nip=NIP, token=CREDENTIAL, period=SEPTEMBER, directory=working)
+
+    assert repeated.from_cache is True
 
 
 def test_pierwsze_zlozenie_nie_jest_z_dysku(statement: Statement) -> None:
@@ -522,7 +532,7 @@ def test_pusty_miesiac_ma_komunikat_bez_sumy(
 
     result = composer.run(
         nip=NIP,
-        token="t",
+        token=CREDENTIAL,
         period=SEPTEMBER,
         directory=archived.root.parent / "puste",
     )
@@ -541,7 +551,7 @@ def test_uciety_okres_wraca_z_ostrzezeniem(
         clock=lambda: ASKED_AT,
     )
 
-    result = composer.run(nip=NIP, token="t", period=SEPTEMBER, directory=working)
+    result = composer.run(nip=NIP, token=CREDENTIAL, period=SEPTEMBER, directory=working)
 
     assert (result.complete, "nie jest kompletem" in result.warnings[0]) == (False, True)
 

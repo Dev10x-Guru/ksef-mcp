@@ -53,7 +53,13 @@ from typing import Final
 from ksef_mcp.allowance import Allowance
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port.protocol import KsefPort
-from ksef_mcp.ksef_port.types import MAX_QUERY_WINDOW, DateType, InvoiceMetadata, Period
+from ksef_mcp.ksef_port.types import (
+    MAX_QUERY_WINDOW,
+    Credential,
+    DateType,
+    InvoiceMetadata,
+    Period,
+)
 from ksef_mcp.listing import (
     ALLOWANCE_REFUSALS,
     LISTING_THRESHOLD,
@@ -428,7 +434,7 @@ class InvoiceReviewer:
     allowance: Allowance
     clock: Callable[[], datetime] = now_utc
 
-    def run(self, *, nip: str, token: str) -> InvoiceReview:
+    def run(self, *, nip: str, token: Credential) -> InvoiceReview:
         moment = self.clock()
         period = review_period(moment=moment)
         ledger = self.store.load()

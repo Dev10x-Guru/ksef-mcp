@@ -5,6 +5,7 @@ from typing import Final, Protocol
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port.protocol import KsefPort, KsefSession
 from ksef_mcp.ksef_port.types import (
+    Credential,
     DateType,
     InvoiceDirection,
     InvoiceMetadata,
@@ -82,7 +83,7 @@ def check_connection(
     *,
     port: KsefPort,
     nip: str,
-    token: str,
+    token: Credential,
     readers: PeriodReaders,
     window: timedelta = DEFAULT_WINDOW,
     limit: int = DEFAULT_LIMIT,

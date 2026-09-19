@@ -19,6 +19,7 @@ from ksef_mcp.ksef_port.protocol import KsefPort, KsefSession
 from ksef_mcp.ksef_port.retry import NO_AUTOMATIC_RETRY, RetryPolicy
 from ksef_mcp.ksef_port.types import (
     ContinuationPoint,
+    Credential,
     DateType,
     ExportEncryption,
     ExportHandle,
@@ -40,6 +41,7 @@ __all__ = [
     "NO_AUTOMATIC_RETRY",
     "ConnectionCheck",
     "ContinuationPoint",
+    "Credential",
     "DateType",
     "ExportEncryption",
     "ExportHandle",

@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from enum import StrEnum
-from typing import Final, Self
+from typing import Final, Protocol, Self, runtime_checkable
 
 from ksef_mcp.ksef_port.errors import KsefRequestRejected
 
@@ -34,6 +34,29 @@ MAX_QUERY_WINDOW: Final[timedelta] = timedelta(days=89)
 # the SDK's default of 10 spends the hourly budget on 200 invoices (D-010).
 # This is an invariant of the port, never a tuning knob reachable from a tool.
 PAGE_SIZE: Final[int] = 250
+
+
+@runtime_checkable
+class Credential(Protocol):
+    """A KSeF token that has not been unwrapped yet.
+
+    Declared as a protocol rather than imported from `token_store`, so the port
+    keeps its independence from the keyring — that separation is what ADR-102
+    protects, and importing the store to name its type would undo it while
+    changing nothing visible.
+
+    A plain `str` does not satisfy it, and that is the point. The token used to
+    be unwrapped at the server boundary and travel as a bare string through
+    seven frames, so every network exception between here and there built a
+    traceback with the secret in its locals (GH-115). `StoredToken` keeps its
+    value out of `repr`; this is what lets that protection survive the journey.
+    Unwrap it in the adapter, one line before handing it to the SDK, and nowhere
+    earlier.
+    """
+
+    @property
+    def value(self) -> str:
+        """The secret itself. Read this only at the edge that spends it."""
 
 
 class DateType(StrEnum):
