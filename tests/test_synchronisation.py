@@ -28,8 +28,10 @@ from ksef_mcp.ksef_port import (
     ExportState,
     ExportStatus,
     InvoiceDirection,
+    KsefAuthenticationFailed,
     KsefLimits,
     KsefNumber,
+    KsefRateLimited,
     KsefRefused,
     KsefUnreachable,
     MetadataPage,
@@ -166,9 +168,11 @@ class ScriptedSession:
     # How many times each export's links refuse before they work, so a test can
     # say "dead once, then renewed" and "dead however often it is asked".
     expiries: dict[str, int] = field(default_factory=dict)
-    # Exports KSeF no longer answers for at all — the shape that tells a dead
-    # package apart from a dead link.
-    forgotten: frozenset[str] = frozenset()
+    # What each export's status query runs into, keyed by reference. Keyed
+    # rather than global because one pass asks about several exports, and
+    # "KSeF says it does not know this one" must not be spelled the same way
+    # as "KSeF could not be reached at all".
+    status_failures: dict[str, Exception] = field(default_factory=dict)
     started: list[tuple[InvoiceDirection, Period]] = field(default_factory=list)
     polled: list[str] = field(default_factory=list)
     fetched: list[str] = field(default_factory=list)
@@ -188,8 +192,9 @@ class ScriptedSession:
 
     def check_export(self, *, handle: ExportHandle) -> ExportStatus:
         self.polled.append(handle.reference)
-        if handle.reference in self.forgotten:
-            raise KsefRefused(f"KSeF nie zna eksportu {handle.reference}.")
+        refusal = self.status_failures.get(handle.reference)
+        if refusal is not None:
+            raise refusal
         return self.statuses[min(len(self.polled), len(self.statuses)) - 1]
 
     def fetch_part(self, *, handle: ExportHandle, part: ExportPart) -> bytes:
@@ -643,7 +648,7 @@ def a_pass_over_a_dead_package(
     statuses: list[ExportStatus],
     covering_from: datetime | None = STUCK_SINCE,
     expiries: int = 1,
-    forgotten: frozenset[str] = frozenset(),
+    status_failure: Exception | None = None,
     limits: KsefLimits | None = None,
 ) -> tuple[ScriptedSession, SynchronisationReport]:
     a_dead_package(store, covering_from=covering_from)
@@ -651,7 +656,7 @@ def a_pass_over_a_dead_package(
         statuses=statuses,
         limits=allowances() if limits is None else limits,
         expiries={"EXP-DEAD": expiries},
-        forgotten=forgotten,
+        status_failures={} if status_failure is None else {"EXP-DEAD": status_failure},
     )
     report = a_synchroniser(session=session, store=store, naps=naps).run(nip=NIP, token=TOKEN)
     return session, report
@@ -889,10 +894,66 @@ def test_an_export_ksef_has_forgotten_is_taken_off_the_record(
     store: SyncStore, naps: list[float]
 ) -> None:
     _, report = a_pass_over_a_dead_package(
-        store, naps, statuses=[ready(), ready()], forgotten=frozenset({"EXP-DEAD"})
+        store,
+        naps,
+        statuses=[ready(), ready()],
+        status_failure=KsefRefused("KSeF nie zna eksportu EXP-DEAD."),
     )
 
     assert "EXP-DEAD" not in report.pending_exports
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        KsefUnreachable("Brak odpowiedzi od KSeF."),
+        KsefRateLimited("Przekroczony limit zapytań.", retry_after=60),
+        KsefAuthenticationFailed("Sesja wygasła."),
+    ],
+)
+def test_a_status_query_that_never_reached_ksef_keeps_the_export_on_the_record(
+    store: SyncStore, naps: list[float], failure: Exception
+) -> None:
+    # Cofnięcie punktu należy się wyłącznie eksportowi, którego KSeF sam już
+    # nie podaje. Brak odpowiedzi, limit zapytań i wygasła sesja nie mówią nic
+    # o istnieniu eksportu — potraktowanie ich jak potwierdzenia utraty
+    # kasowałoby żywą paczkę wraz z kluczem.
+    _, report = a_pass_over_a_dead_package(
+        store, naps, statuses=[ready(), ready()], status_failure=failure
+    )
+
+    assert "EXP-DEAD" in report.pending_exports
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        KsefUnreachable("Brak odpowiedzi od KSeF."),
+        KsefRateLimited("Przekroczony limit zapytań.", retry_after=60),
+    ],
+)
+def test_a_status_query_that_never_reached_ksef_leaves_the_point_alone(
+    store: SyncStore, naps: list[float], failure: Exception
+) -> None:
+    a_pass_over_a_dead_package(store, naps, statuses=[ready(), ready()], status_failure=failure)
+
+    assert store.load().directions[InvoiceDirection.BUYER].reached == HWM
+
+
+def test_a_rate_limited_renewal_spends_no_export_on_a_retry(
+    store: SyncStore, naps: list[float]
+) -> None:
+    # Po odpowiedzi „zwolnij" nowe żądanie eksportu w tym samym przebiegu jest
+    # dokładnie tym wzorcem, który Ministerstwo Finansów rejestruje jako próbę
+    # obchodzenia limitów — a czas blokady rośnie przy powtórzeniach.
+    session, _ = a_pass_over_a_dead_package(
+        store,
+        naps,
+        statuses=[ready(), ready()],
+        status_failure=KsefRateLimited("Przekroczony limit zapytań.", retry_after=60),
+    )
+
+    assert [direction for direction, _ in session.started] == [InvoiceDirection.SELLER]
 
 
 def test_an_export_answered_as_no_longer_ready_is_taken_off_the_record(
@@ -920,8 +981,15 @@ def test_a_lost_export_is_reported_as_what_was_undone_and_what_followed(
 ) -> None:
     _, report = a_pass_over_a_dead_package(store, naps, statuses=[ready(), failed(), ready()])
 
-    detail = reported(report, InvoiceDirection.BUYER).detail
-    assert ("EXP-DEAD" in detail, "archiwum" in detail) == (True, True)
+    assert "EXP-DEAD" in reported(report, InvoiceDirection.BUYER).detail
+
+
+def test_a_lost_export_is_reported_alongside_what_replaced_it(
+    store: SyncStore, naps: list[float]
+) -> None:
+    _, report = a_pass_over_a_dead_package(store, naps, statuses=[ready(), failed(), ready()])
+
+    assert "archiwum" in reported(report, InvoiceDirection.BUYER).detail
 
 
 def test_a_record_from_before_the_window_start_was_kept_reaches_a_whole_window_back(
@@ -949,10 +1017,20 @@ def test_a_renewal_with_no_status_allowance_left_keeps_the_package_and_its_key(
         limits=allowances(statuses_per_hour=1),
     )
 
-    assert (
-        outcome(report, InvoiceDirection.BUYER),
-        "EXP-DEAD" in report.pending_exports,
-    ) == (SyncOutcome.NOT_ARCHIVED, True)
+    assert outcome(report, InvoiceDirection.BUYER) is SyncOutcome.NOT_ARCHIVED
+
+
+def test_a_renewal_with_no_status_allowance_left_keeps_the_export_queued(
+    store: SyncStore, naps: list[float]
+) -> None:
+    _, report = a_pass_over_a_dead_package(
+        store,
+        naps,
+        statuses=[ready(), ready()],
+        limits=allowances(statuses_per_hour=1),
+    )
+
+    assert "EXP-DEAD" in report.pending_exports
 
 
 def test_a_rollback_stands_on_the_export_alone_when_no_point_was_recorded(
