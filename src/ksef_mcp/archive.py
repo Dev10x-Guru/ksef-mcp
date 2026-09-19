@@ -34,7 +34,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -160,21 +160,37 @@ class DeduplicationIndex:
         return frozenset(entry.ksef_number for entry in self.entries)
 
     def with_entry(self, entry: IndexEntry) -> DeduplicationIndex:
-        """Add a number the index does not hold, and refuse one it does.
+        """Add a number the index does not hold, and refuse one it does."""
+        return self.extended((entry,))
 
-        This is the structural half of the guarantee; `InvoiceArchive.store`
-        supplies the other by doing its whole read-change-write under the
-        subject's lock (ADR-107 §2). Neither alone is enough: the lock without
-        this refusal would still let a caller add a number twice, and this
-        refusal without the lock would still start from a stale snapshot.
+    def extended(self, entries: Iterable[IndexEntry]) -> DeduplicationIndex:
+        """Add a whole session's invoices at once, refusing any number twice over.
+
+        One copy of the entries for a session rather than one per invoice. The
+        tuple is rebuilt whole on every append, the index is never pruned by
+        retention on purpose, and the KSeF ceiling is ten thousand invoices in a
+        session — which made adding them one at a time quadratic in the size of
+        the entire archive's history (GH-147).
+
+        Shaped after `ReviewLedger.extended`, but not semantically: that one
+        skips a repeat, because a self-invoice genuinely reaches one subject
+        under two roles. Here a repeat is refused. This is the structural half of
+        the guarantee `InvoiceArchive.store` completes by holding the subject's
+        lock across its whole read-change-write (ADR-107 §2) — neither alone is
+        enough, and the refusal lives here so there is one of it.
         """
-        if entry.ksef_number in self.known:
-            raise IndexEntryAlreadyHeld(
-                f"The deduplication index already holds {entry.ksef_number}. A "
-                f"second entry for one KSeF number would make the index answer "
-                f"two different things about the same invoice."
-            )
-        return replace(self, entries=(*self.entries, entry))
+        held = set(self.known)
+        added: list[IndexEntry] = []
+        for entry in entries:
+            if entry.ksef_number in held:
+                raise IndexEntryAlreadyHeld(
+                    f"The deduplication index already holds {entry.ksef_number}. A "
+                    f"second entry for one KSeF number would make the index answer "
+                    f"two different things about the same invoice."
+                )
+            held.add(entry.ksef_number)
+            added.append(entry)
+        return replace(self, entries=(*self.entries, *added))
 
 
 @dataclass(frozen=True)
@@ -400,24 +416,24 @@ INDEX_DOCUMENT: Final = JsonDocumentStore(
 
 def _decode_index(document: dict[str, object]) -> DeduplicationIndex:
     entries: list[dict[str, object]] = document["entries"]  # type: ignore[assignment]
-    index = DeduplicationIndex()
-    for entry in entries:
-        # Built through `with_entry` rather than assembled in one go, so a file
-        # naming one invoice twice is refused where every other unreadable index
-        # is refused, instead of being carried forward as a working one.
-        try:
-            index = index.with_entry(
-                IndexEntry(
-                    ksef_number=str(entry["ksef_number"]),
-                    content_hash=str(entry["content_hash"]),
-                    archived_at=datetime.fromisoformat(str(entry["archived_at"])),
-                )
+    # Built through `extended` rather than assembled in one go, so a file naming
+    # one invoice twice is refused where every other unreadable index is refused,
+    # instead of being carried forward as a working one. In one call rather than
+    # one per entry, because reading an archive's whole history was paying the
+    # same quadratic cost that writing it did (GH-147).
+    try:
+        return DeduplicationIndex().extended(
+            IndexEntry(
+                ksef_number=str(entry["ksef_number"]),
+                content_hash=str(entry["content_hash"]),
+                archived_at=datetime.fromisoformat(str(entry["archived_at"])),
             )
-        except IndexEntryAlreadyHeld as repeated:
-            raise ArchiveIndexUnreadable(
-                f"The deduplication index names one invoice twice: {repeated}"
-            ) from repeated
-    return index
+            for entry in entries
+        )
+    except IndexEntryAlreadyHeld as repeated:
+        raise ArchiveIndexUnreadable(
+            f"The deduplication index names one invoice twice: {repeated}"
+        ) from repeated
 
 
 @dataclass(frozen=True)
@@ -468,6 +484,7 @@ class InvoiceArchive:
             index = self.load_index()
             archived: list[str] = []
             already_held: list[str] = []
+            recorded: list[IndexEntry] = []
             self.invoice_directory.mkdir(mode=ARCHIVE_DIRECTORY_MODE, parents=True, exist_ok=True)
             for identity in wanted:
                 number = str(identity.ksef_number)
@@ -477,14 +494,14 @@ class InvoiceArchive:
                 content = bodies[carrying[number]]
                 written = self._written(number=number, content=content)
                 (archived if written else already_held).append(number)
-                index = index.with_entry(
+                recorded.append(
                     IndexEntry(
                         ksef_number=number,
                         content_hash=digest_of(content),
                         archived_at=self.clock(),
                     )
                 )
-            self._save_index(index)
+            self._save_index(index.extended(recorded))
         return ArchiveReport(
             directory=str(self.invoice_directory),
             index_path=str(self.index_path),
