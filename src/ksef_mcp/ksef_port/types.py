@@ -324,6 +324,20 @@ class ExportStatus:
         return self.last_permanent_storage_date if self.truncated else self.hwm_date
 
 
+class Operation(StrEnum):
+    """The four operation families KSeF meters separately (D-031 §1).
+
+    Declared beside `RateLimits` rather than beside the counter that spends
+    against it, so the family and the allowance it maps to cannot be added in
+    one place and forgotten in the other.
+    """
+
+    METADATA_QUERY = "metadata_query"
+    EXPORT = "export"
+    EXPORT_STATUS = "export_status"
+    INVOICE_DOWNLOAD = "invoice_download"
+
+
 @dataclass(frozen=True)
 class OperationLimit:
     """What KSeF grants one operation family right now, not what we assumed."""
@@ -341,6 +355,27 @@ class RateLimits:
     exports: OperationLimit
     export_statuses: OperationLimit
     invoice_downloads: OperationLimit
+
+    @property
+    def by_operation(self) -> dict[Operation, OperationLimit]:
+        """Which allowance each operation family spends from.
+
+        The counter used to build this beside its own spending, so a fifth
+        family meant a correct change in two independent types — and missing
+        one raised `KeyError` in the middle of a synchronisation, which leaves
+        the operation in a state nobody can read off the record afterwards. A
+        test asserts this covers every member of `Operation`, so the omission
+        fails in the suite instead of in a pass.
+        """
+        return {
+            Operation.METADATA_QUERY: self.metadata_queries,
+            Operation.EXPORT: self.exports,
+            Operation.EXPORT_STATUS: self.export_statuses,
+            Operation.INVOICE_DOWNLOAD: self.invoice_downloads,
+        }
+
+    def allowance(self, operation: Operation) -> OperationLimit:
+        return self.by_operation[operation]
 
 
 @dataclass(frozen=True)

@@ -2,24 +2,16 @@ from collections import deque
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from enum import StrEnum
 from typing import Final, Protocol
 
 from ksef_mcp.ksef_port.errors import KsefRequestRejected
-from ksef_mcp.ksef_port.types import OperationLimit, RateLimits
+from ksef_mcp.ksef_port.types import Operation, OperationLimit, RateLimits
 
 HOUR: Final[timedelta] = timedelta(hours=1)
 
 MINUTE: Final[timedelta] = timedelta(minutes=1)
 
 SECOND: Final[timedelta] = timedelta(seconds=1)
-
-
-class Operation(StrEnum):
-    METADATA_QUERY = "metadata_query"
-    EXPORT = "export"
-    EXPORT_STATUS = "export_status"
-    INVOICE_DOWNLOAD = "invoice_download"
 
 
 def now_utc() -> datetime:
@@ -71,12 +63,7 @@ class QueryBudget:
         }
 
     def allowance(self, operation: Operation) -> OperationLimit:
-        return {
-            Operation.METADATA_QUERY: self.limits.metadata_queries,
-            Operation.EXPORT: self.limits.exports,
-            Operation.EXPORT_STATUS: self.limits.export_statuses,
-            Operation.INVOICE_DOWNLOAD: self.limits.invoice_downloads,
-        }[operation]
+        return self.limits.allowance(operation)
 
     def remaining(self, operation: Operation) -> int | None:
         """The tightest of the three windows, because KSeF enforces all three.

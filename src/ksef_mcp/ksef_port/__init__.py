@@ -1,4 +1,4 @@
-from ksef_mcp.ksef_port.budget import Operation, QueryBudget
+from ksef_mcp.ksef_port.budget import QueryBudget
 from ksef_mcp.ksef_port.connection import (
     ConnectionCheck,
     PeriodReader,
@@ -33,6 +33,7 @@ from ksef_mcp.ksef_port.types import (
     KsefLimits,
     KsefNumber,
     MetadataPage,
+    Operation,
     OperationLimit,
     Period,
     RateLimits,
