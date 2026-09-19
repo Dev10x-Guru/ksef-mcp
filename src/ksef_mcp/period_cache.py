@@ -39,7 +39,6 @@ from platformdirs import user_cache_path
 from ksef_mcp.allowance import Allowance
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port.budget import Operation, QueryBudget
-from ksef_mcp.ksef_port.errors import KsefPortError
 from ksef_mcp.ksef_port.protocol import KsefSession
 from ksef_mcp.ksef_port.types import (
     DateType,
@@ -288,13 +287,16 @@ class PeriodCache:
             if document["schema_version"] != SCHEMA_VERSION:
                 return None
             return _decode(document)
-        except (OSError, ValueError, KeyError, TypeError, KsefPortError):
+        except (OSError, ValueError, KeyError, TypeError):
             # A miss, never an error. This root is reconstructible by
             # construction, and refusing to answer because a cleaner truncated a
-            # file would turn a saving into an outage. `KsefPortError` belongs
-            # here too: a corrupted KSeF number or an impossible window is
-            # rejected on the way back in, and that is a damaged entry like any
-            # other.
+            # file would turn a saving into an outage. A corrupted KSeF number
+            # or an impossible window is a damaged entry like any other and
+            # arrives as a `ValueError`, which is the whole point of
+            # `KsefMcpInputRejected` keeping that side: the tuple used to name
+            # `KsefPortError` instead, and that root also covers
+            # `KsefUnreachable` and `KsefAuthenticationFailed`, so an outage or
+            # a refused login was answered as "not in the cache" (GH-170).
             return None
 
     def remember(

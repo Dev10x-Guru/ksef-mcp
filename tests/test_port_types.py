@@ -5,9 +5,11 @@ import pytest
 from ksef_mcp.ksef_port import (
     ContinuationPoint,
     DateType,
+    InvalidKsefIdentifier,
+    InvalidPeriod,
     InvoiceDirection,
     KsefNumber,
-    KsefRequestRejected,
+    KsefPortError,
     MetadataPage,
     Period,
 )
@@ -31,8 +33,21 @@ NOON = datetime(2026, 9, 1, 12, tzinfo=UTC)
     ],
 )
 def test_a_number_that_is_not_a_ksef_number_is_refused(rejected: str) -> None:
-    with pytest.raises(KsefRequestRejected):
+    with pytest.raises(InvalidKsefIdentifier):
         KsefNumber(rejected)
+
+
+def test_refusing_a_malformed_number_is_not_a_port_failure() -> None:
+    """GH-170: nothing was sent, so nothing about the port can have failed.
+
+    The distinction is not cosmetic. The period cache caught the port root to
+    mean "damaged entry", and that root also covers an unreachable KSeF and a
+    refused login — both of which were answered as a cache miss.
+    """
+    with pytest.raises(InvalidKsefIdentifier) as refusal:
+        KsefNumber("FV/2026/09/001")
+
+    assert not isinstance(refusal.value, KsefPortError)
 
 
 def test_a_ksef_number_reads_back_as_written() -> None:
@@ -50,17 +65,17 @@ def test_a_ksef_number_carries_the_day_it_was_assigned() -> None:
 
 
 def test_eight_digits_that_are_not_a_date_are_refused() -> None:
-    with pytest.raises(KsefRequestRejected, match="not a date"):
+    with pytest.raises(InvalidKsefIdentifier, match="not a date"):
         KsefNumber("1234567890-20260231-0100AB12CD34-56")
 
 
 def test_a_window_that_ends_before_it_starts_is_refused() -> None:
-    with pytest.raises(KsefRequestRejected):
+    with pytest.raises(InvalidPeriod):
         Period(date_from=NOON, date_to=NOON - timedelta(days=1), date_type=DateType.ISSUE)
 
 
 def test_a_window_wider_than_ksef_answers_is_refused_without_spending_a_call() -> None:
-    with pytest.raises(KsefRequestRejected):
+    with pytest.raises(InvalidPeriod):
         Period(
             date_from=NOON,
             date_to=NOON + MAX_QUERY_WINDOW + timedelta(days=1),

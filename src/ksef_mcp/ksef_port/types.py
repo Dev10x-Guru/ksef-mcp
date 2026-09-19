@@ -5,7 +5,7 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Final, Protocol, Self, runtime_checkable
 
-from ksef_mcp.ksef_port.errors import KsefRequestRejected
+from ksef_mcp.ksef_port.errors import InvalidKsefIdentifier, InvalidPeriod
 
 # A KSeF number is `<NIP>-<YYYYMMDD>-<12 chars>-<2 chars>`. Only the first two
 # groups are checked against their alphabet: the trailing groups are opaque to
@@ -91,7 +91,7 @@ class KsefNumber:
 
     def __post_init__(self) -> None:
         if KSEF_NUMBER_PATTERN.match(self.value) is None:
-            raise KsefRequestRejected(
+            raise InvalidKsefIdentifier(
                 f"Not a KSeF number: {self.value!r}. Expected "
                 f"<NIP>-<YYYYMMDD>-<identifier>-<checksum>; the seller's own "
                 f"invoice number is never a deduplication key."
@@ -103,7 +103,7 @@ class KsefNumber:
         try:
             datetime.strptime(self.value.split("-")[1], KSEF_NUMBER_DATE_FORMAT)
         except ValueError as impossible:
-            raise KsefRequestRejected(
+            raise InvalidKsefIdentifier(
                 f"KSeF number {self.value!r} states {self.value.split('-')[1]!r} "
                 f"as the day it was assigned, and that is not a date."
             ) from impossible
@@ -144,9 +144,9 @@ class Period:
 
     def __post_init__(self) -> None:
         if self.date_to < self.date_from:
-            raise KsefRequestRejected("The window ends before it starts.")
+            raise InvalidPeriod("The window ends before it starts.")
         if self.date_to - self.date_from > MAX_QUERY_WINDOW:
-            raise KsefRequestRejected(
+            raise InvalidPeriod(
                 f"The window spans {(self.date_to - self.date_from).days} days; "
                 f"KSeF answers windows up to {MAX_QUERY_WINDOW.days}. Split it."
             )

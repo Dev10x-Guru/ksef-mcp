@@ -42,7 +42,7 @@ from typing import Final
 
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.errors import KsefMcpError
-from ksef_mcp.ksef_port.errors import KsefRequestRejected
+from ksef_mcp.ksef_port.errors import InvalidKsefIdentifier
 from ksef_mcp.ksef_port.types import KsefNumber
 from ksef_mcp.package import ExportPackage
 from ksef_mcp.paths import SubjectScope
@@ -250,7 +250,7 @@ def _identity(entry: object) -> InvoiceIdentity:
             # package that is entirely correct.
             content_hash=None if content_hash is None else str(content_hash).strip(),
         )
-    except KsefRequestRejected as rejection:
+    except InvalidKsefIdentifier as rejection:
         raise ArchiveMetadataUnusable(
             f"_metadata.json offers {number!r} as a KSeF number: {rejection}"
         ) from rejection

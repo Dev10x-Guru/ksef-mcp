@@ -23,7 +23,7 @@ from typing import Final
 
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.errors import KsefMcpError
-from ksef_mcp.ksef_port.errors import KsefRequestRejected
+from ksef_mcp.ksef_port.errors import InvalidKsefIdentifier
 from ksef_mcp.ksef_port.types import KsefNumber
 from ksef_mcp.preflight import NodeReport, inspect_node
 from ksef_mcp.storage import replaced_durably, reserved_staging
@@ -158,7 +158,7 @@ def validated(ksef_number: str) -> KsefNumber:
     """
     try:
         return KsefNumber(ksef_number)
-    except KsefRequestRejected as rejected:
+    except InvalidKsefIdentifier as rejected:
         raise InvoiceNotArchived(
             f"{ksef_number!r} nie jest numerem KSeF. Oczekiwano kształtu "
             f"<NIP>-<RRRRMMDD>-<identyfikator>-<suma>."

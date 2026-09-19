@@ -22,6 +22,14 @@ udokumentowane.
 
 ### Poprawione
 
+- Niedostępny KSeF ani odmowa uwierzytelnienia nie zostaną już po cichu
+  zamienione na „nie ma tego w podręcznej pamięci". Pamięć okresów
+  celowo traktuje uszkodzony wpis jako chybienie, bo da się go odtworzyć
+  jednym zapytaniem — ale łapała przy tym korzeń obejmujący także brak
+  połączenia i odrzucone logowanie, więc awaria wyglądała jak zwykłe
+  chybienie i podatnik nie dowiadywał się o niej. Odrzucenie niepoprawnego
+  numeru faktury albo niemożliwego okna jest teraz osobnym rodzajem błędu
+  niż awaria połączenia (GH-170).
 - Przerwany zapis konfiguracji nie zablokuje już startu. Plik
   `configuration.json` powstawał dotąd przez nadpisanie samego siebie —
   jako jedyny z siedmiu zapisów w pakiecie — więc brak miejsca na dysku
