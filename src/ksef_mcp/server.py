@@ -14,15 +14,15 @@ from ksef_mcp import config, token_store
 from ksef_mcp.allowance import Allowance
 from ksef_mcp.archive import InvoiceArchive
 from ksef_mcp.audit import (
-    ARCHIVE_BASIS,
     CSV_FORMAT,
     PDF_FORMAT,
     XML_FORMAT,
+    AuditedOperation,
     AuditEntry,
     AuditTrail,
     Authorisation,
+    AuthorisationBasis,
     Disclosure,
-    token_basis,
 )
 from ksef_mcp.errors import KsefMcpError
 from ksef_mcp.ksef_port.errors import KsefPortError
@@ -47,18 +47,6 @@ if TYPE_CHECKING:
     from ksef_mcp.ksef_port.adapter import Ksef2Port
 
 server: MCPServer = MCPServer(name=SERVER_NAME, version=VERSION)
-
-# The audit trail names the operation by the tool the caller invoked, because
-# that is the name the person reconstructing an access has in front of them.
-SYNCHRONISATION_OPERATION: Final[str] = "synchronise_invoices"
-
-LISTING_OPERATION: Final[str] = "list_recent_invoices"
-
-STATEMENT_OPERATION: Final[str] = "export_period_statement"
-
-REVIEW_OPERATION: Final[str] = "review_new_invoices"
-
-RENDER_OPERATION: Final[str] = "render_invoice_pdf"
 
 
 class ServerInfo(BaseModel):
@@ -108,7 +96,7 @@ REFUSALS: Final[tuple[type[Exception], ...]] = (KsefPortError, KsefMcpError)
 
 
 @contextmanager
-def reported(operation: str) -> Iterator[None]:
+def reported(operation: AuditedOperation) -> Iterator[None]:
     """Name the failure to the caller instead of letting the SDK swallow it.
 
     An exception the SDK does not recognise as anticipated reaches the client as
@@ -262,12 +250,17 @@ class SubjectDependencies:
         return Authorisation(
             nip=self.nip,
             environment=self.environment,
-            basis=token_basis(stored.source),
+            basis=AuthorisationBasis.KSEF_TOKEN,
+            source=str(stored.source),
         )
 
     def archive_authorisation(self) -> Authorisation:
         """No token was read: the invoice was already on disk."""
-        return Authorisation(nip=self.nip, environment=self.environment, basis=ARCHIVE_BASIS)
+        return Authorisation(
+            nip=self.nip,
+            environment=self.environment,
+            basis=AuthorisationBasis.ARCHIVE,
+        )
 
 
 def authenticated_dependencies() -> tuple[SubjectDependencies, token_store.StoredToken]:
@@ -307,7 +300,7 @@ def _direction_entries(
     reached = "unknown" if direction.reached is None else direction.reached.isoformat()
     common = {
         "recorded_at": moment,
-        "operation": SYNCHRONISATION_OPERATION,
+        "operation": AuditedOperation.SYNCHRONISATION,
         "authorisation": authorisation,
         "subject_role": str(direction.direction),
         "criteria": f"export packages up to {reached}",
@@ -378,7 +371,7 @@ def synchronise_invoices() -> SynchronisationResult:
     returns invoice content: an FA(2)/FA(3) document holds a counterparty's
     personal data, and reading one means opening the file this tool names.
     """
-    with reported(SYNCHRONISATION_OPERATION):
+    with reported(AuditedOperation.SYNCHRONISATION):
         return synchronise()
 
 
@@ -483,7 +476,7 @@ def listing_entries(
     return tuple(
         AuditEntry(
             recorded_at=moment,
-            operation=LISTING_OPERATION,
+            operation=AuditedOperation.LISTING,
             authorisation=authorisation,
             disclosure=Disclosure.MODEL_CONTEXT,
             subject_role=str(direction.question.direction),
@@ -538,7 +531,7 @@ def list_recent_invoices() -> InvoiceListingResult:
     Metadata only. An FA(2)/FA(3) body holds a counterparty's personal data and
     is third-party input; it never enters this answer.
     """
-    with reported(LISTING_OPERATION):
+    with reported(AuditedOperation.LISTING):
         return list_invoices()
 
 
@@ -593,7 +586,7 @@ def statement_entries(
     return (
         AuditEntry(
             recorded_at=moment,
-            operation=STATEMENT_OPERATION,
+            operation=AuditedOperation.STATEMENT,
             authorisation=authorisation,
             disclosure=Disclosure.DISK,
             subject_role=str(STATEMENT_DIRECTION),
@@ -670,7 +663,7 @@ def export_period_statement(
     between fields, which is what a Polish spreadsheet expects. Sums are in this
     answer, per currency, and never one figure across several of them.
     """
-    with reported(STATEMENT_OPERATION):
+    with reported(AuditedOperation.STATEMENT):
         return export_statement(period=period, working_directory=working_directory)
 
 
@@ -771,7 +764,7 @@ def review_entries(
     return tuple(
         AuditEntry(
             recorded_at=moment,
-            operation=REVIEW_OPERATION,
+            operation=AuditedOperation.REVIEW,
             authorisation=authorisation,
             disclosure=Disclosure.MODEL_CONTEXT,
             subject_role=str(direction.question.direction),
@@ -836,7 +829,7 @@ def review_new_invoices() -> InvoiceReviewResult:
     the two happened. Metadata only: an FA(2)/FA(3) body holds a counterparty's
     personal data and never enters this answer.
     """
-    with reported(REVIEW_OPERATION):
+    with reported(AuditedOperation.REVIEW):
         return review_invoices()
 
 
@@ -889,7 +882,7 @@ def render_entries(
     return (
         AuditEntry(
             recorded_at=moment,
-            operation=RENDER_OPERATION,
+            operation=AuditedOperation.RENDER,
             authorisation=authorisation,
             disclosure=Disclosure.DISK,
             subject_role=None,
@@ -971,7 +964,7 @@ def render_invoice_pdf(
     been exercised end to end. Treat a refusal on an older schema as untested
     rather than impossible, and report it.
     """
-    with reported(RENDER_OPERATION):
+    with reported(AuditedOperation.RENDER):
         return render_invoice(ksef_number=ksef_number, working_directory=working_directory)
 
 

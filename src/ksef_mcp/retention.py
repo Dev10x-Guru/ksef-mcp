@@ -40,15 +40,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
-from typing import Final
 
 from ksef_mcp.archive import INVOICE_SUFFIX, InvoiceArchive
-from ksef_mcp.audit import XML_FORMAT, AuditEntry, Authorisation, Disclosure
+from ksef_mcp.audit import XML_FORMAT, AuditedOperation, AuditEntry, Authorisation, Disclosure
 from ksef_mcp.errors import KsefMcpInputRejected
 from ksef_mcp.ksef_port.errors import InvalidKsefIdentifier
 from ksef_mcp.ksef_port.types import KsefNumber
-
-PURGE_OPERATION: Final[str] = "purge_archive"
 
 
 class PurgeWindowInverted(KsefMcpInputRejected):
@@ -147,7 +144,7 @@ def purge_entry(
     """The deletion, written down. Which numbers ceased to exist, under whose hand."""
     return AuditEntry(
         recorded_at=moment,
-        operation=PURGE_OPERATION,
+        operation=AuditedOperation.PURGE,
         authorisation=authorisation,
         disclosure=Disclosure.REMOVAL,
         subject_role=None,

@@ -11,7 +11,7 @@ from mcp import Client
 from mcp.types import CallToolResult, ListToolsResult
 
 from ksef_mcp import config, token_store
-from ksef_mcp.audit import ARCHIVE_BASIS, PDF_FORMAT, AuditEntry, AuditTrail, Disclosure
+from ksef_mcp.audit import PDF_FORMAT, AuditEntry, AuditTrail, AuthorisationBasis, Disclosure
 from ksef_mcp.config import Configuration, KsefEnvironment
 from ksef_mcp.errors import KsefMcpError
 from ksef_mcp.ksef_port import (
@@ -981,7 +981,10 @@ def test_a_synchronisation_records_the_subject_and_the_footing(
 ) -> None:
     stored = recorded_reads(trail)[0]
 
-    assert (stored.authorisation.nip, stored.authorisation.basis) == (NIP, "ksef_token:keyring")
+    assert (stored.authorisation.nip, stored.authorisation.recorded) == (
+        NIP,
+        "ksef_token:keyring",
+    )
 
 
 def test_a_synchronisation_records_where_the_invoices_landed(
@@ -1243,7 +1246,7 @@ def test_a_render_records_the_format_it_produced(
 def test_a_render_records_that_no_token_was_needed(
     rendered: RenderedInvoiceResult, trail: AuditTrail
 ) -> None:
-    assert recorded_reads(trail)[0].authorisation.basis == ARCHIVE_BASIS
+    assert recorded_reads(trail)[0].authorisation.basis is AuthorisationBasis.ARCHIVE
 
 
 @pytest.mark.anyio
