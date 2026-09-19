@@ -32,6 +32,14 @@ udokumentowane.
   z tym repozytorium, tym przebiegiem i tym commitem. Zaufane wydawanie
   OIDC mówiło dotąd tylko, kto wgrał plik; teraz da się sprawdzić także,
   z czego on powstał (GH-110).
+- Obcięty generator Ministerstwa nie dojedzie już do podatnika. Portal MF
+  potrafi zerwać transfer w połowie, a niepełny plik wygląda jak pełny —
+  nota `LICENCJA-MF.md` zapisywała jego skrót i rozmiar, ale nikt tych
+  liczb nie przeliczał. Teraz przelicza je hook przed commitem i bramka
+  w skrypcie wydania: rozjazd zatrzymuje pracę u nas, zamiast wychodzić
+  u podatnika przy pierwszej próbie wydrukowania faktury. Nota zostaje
+  źródłem prawdy, zmieniło się tylko to, że ktoś ją wreszcie sprawdza
+  (GH-108).
 
 ### Poprawione
 
