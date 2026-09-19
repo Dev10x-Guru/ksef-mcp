@@ -196,6 +196,8 @@ def test_an_old_node_without_a_pin_is_told_to_upgrade() -> None:
 
 
 def test_the_generators_own_complaint_is_quoted() -> None:
+    # `document=""` throughout this group on purpose: nothing is a substring of
+    # the empty string, so redaction is off and these test the parsing alone.
     assert pdf.stated_failure('{"error": "zły schemat"}', document="") == "zły schemat"
 
 
@@ -294,6 +296,52 @@ def test_a_run_too_short_to_carry_meaning_is_kept() -> None:
     assert pdf.without_quotations("Data", document="<DataWytworzeniaFa>") == "Data"
 
 
+# The threshold decides every case, so it is pinned from both sides rather than
+# sampled: one character either way is the whole difference between a message
+# that reads and a message that leaks.
+@pytest.mark.parametrize(
+    ("run", "expected"),
+    [
+        ("abcde", "abcde"),
+        ("abcdef", pdf.REDACTED),
+        ("abcdefg", pdf.REDACTED),
+    ],
+    ids=["poniżej-progu", "na-progu", "powyżej-progu"],
+)
+def test_the_threshold_decides_at_exactly_its_own_length(run: str, expected: str) -> None:
+    assert pdf.without_quotations(run, document="abcdefg") == expected
+
+
+def test_a_complaint_that_is_the_whole_document_leaves_nothing_behind() -> None:
+    assert pdf.without_quotations(EXAMPLE_INVOICE, document=EXAMPLE_INVOICE) == pdf.REDACTED
+
+
+def test_an_identifier_the_message_spaced_out_is_still_caught() -> None:
+    # Two runs of five, each under the threshold and meaningless alone. The
+    # run comparison cannot see this; only the identifier's length can.
+    guarded = pdf.stated_failure(
+        json.dumps({"error": "Odrzucono NIP 98765 43210"}),
+        document=f"<NIP>{SELLER_NIP}</NIP>",
+    )
+    assert "98765 43210" not in guarded
+
+
+def test_a_date_the_message_spaced_out_is_left_alone() -> None:
+    # Eight digits, not ten: a date is not an identifier, and redacting it
+    # would cost the reader the one thing telling them which document failed.
+    kept = pdf.without_separated_identifiers("Zła data 2026-09-01", document="2026-09-01")
+    assert kept == "Zła data 2026-09-01"
+
+
+def test_a_value_the_document_spells_as_an_entity_is_still_recognised() -> None:
+    # A build reading the file into a DOM quotes `&`; the file says `&amp;`.
+    guarded = pdf.without_quotations(
+        "Nie rozpoznano: Kowalski & Wspólnicy",
+        document="<Nazwa>Kowalski &amp; Wspólnicy</Nazwa>",
+    )
+    assert "Kowalski" not in guarded
+
+
 def test_adjacent_quotations_collapse_into_one_marker() -> None:
     # Two runs, not one: the document holds both fields but never side by side,
     # so the greedy walk stops between them and would otherwise emit `[…][…]`.
@@ -328,6 +376,7 @@ def test_the_quotation_guard_runs_before_the_cap() -> None:
         ("Odrzucono pozycje: Olej napedowy 100.000 l", "Olej napedowy"),
         ("Zly numer faktury FV/2026/09/0001", "FV/2026/09/0001"),
     ],
+    ids=["nabywca", "nip-sprzedawcy", "pozycja", "numer-faktury"],
 )
 def test_a_generator_quoting_the_document_does_not_leak_it(
     archive: Path,
@@ -345,6 +394,31 @@ def test_a_generator_quoting_the_document_does_not_leak_it(
         render(KSEF_NUMBER)
 
     assert forbidden not in str(refused.value)
+
+
+@without_node
+def test_the_ministrys_generator_refusal_still_says_something(
+    refused_archive: Path,
+    working: Path,
+) -> None:
+    """The guard has to leave a reason behind, or it has only traded failures.
+
+    Redacting everything would pass the test above and tell the caller
+    nothing — the state GH-84 was filed about. Asserting the build's exact
+    wording would break on a swap it is entitled to make, so this asserts the
+    one thing that must hold either way: the answer is not the silence
+    `stated_failure` falls back to when it finds no complaint at all.
+    """
+    render = pdf.InvoiceRenderer(
+        environment=KsefEnvironment.PRODUCTION,
+        archive_directory=refused_archive,
+        working_directory=working,
+    )
+
+    with pytest.raises(pdf.GeneratorFailed) as refused:
+        render(KSEF_NUMBER)
+
+    assert "generator nie podał powodu" not in str(refused.value)
 
 
 @without_node
@@ -396,6 +470,7 @@ def refused_archive(tmp_path: Path) -> Path:
 @pytest.mark.parametrize(
     "forbidden",
     [SELLER_NIP, BUYER_NAME, "FV/2026/09/0001", "Olej napędowy", "Testowa"],
+    ids=["nip-sprzedawcy", "nabywca", "numer-faktury", "pozycja", "adres"],
 )
 def test_the_ministrys_generator_refusal_quotes_nothing_from_the_document(
     refused_archive: Path,

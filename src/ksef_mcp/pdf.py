@@ -13,9 +13,11 @@ import base64
 import hashlib
 import json
 import os
+import re
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
+from html import unescape
 from pathlib import Path
 from typing import Final
 
@@ -67,6 +69,22 @@ FAILURE_DETAIL_LIMIT: Final[int] = 200
 # and an invoice number all are. A single echoed character survives, and that
 # is the accepted residue: a leak has to carry meaning to be one.
 QUOTABLE_RUN_LIMIT: Final[int] = 6
+
+# What the run comparison above cannot see: an identifier the message re-spaced
+# on its way out. `98765 43210` is two runs of five, each under the limit and
+# each meaningless alone, and together it is somebody's NIP. Length is the only
+# shape a taxpayer identifier reliably has, so it is the only one worth naming;
+# a counterparty's name re-wrapped the same way is not recoverable by shape and
+# is the honest limit of this guard (GH-85).
+NIP_LENGTH: Final[int] = 10
+
+SEPARATED_DIGITS: Final[re.Pattern[str]] = re.compile(r"\d[\d\s.,\-]{6,}\d")
+
+# How much of somebody else's message is worth examining at all. The output cap
+# below cannot bound this work, because it applies after the guard has run —
+# and Node writes multi-line stack traces, so `stderr` is not small by nature.
+# Anything past this point would be cut from the answer regardless.
+QUOTED_INPUT_LIMIT: Final[int] = 2_000
 
 REDACTED: Final[str] = "[…]"
 
@@ -201,12 +219,23 @@ def without_quotations(stated: str, *, document: str) -> str:
     predict what the next build will say, and predicting wrongly either lets a
     quotation through or silences a real diagnosis; the document is the one
     thing we can compare against that we already hold.
+
+    Both the file's own text and its entity-decoded form are compared, because
+    a build that reads the document into a DOM before complaining would quote
+    `&` where the file says `&amp;` — and a comparison against the bytes alone
+    would call that a different string. Case is not folded: the file spells
+    `version="1.0"` in its declaration, so folding would redact `Version` out
+    of `Unknown XML Version`, which is the build's own sentence and the one
+    thing the caller needs.
     """
+    haystacks = (document, unescape(document))
     kept: list[str] = []
     index = 0
     while index < len(stated):
         run = 0
-        while index + run < len(stated) and stated[index : index + run + 1] in document:
+        while index + run < len(stated) and any(
+            stated[index : index + run + 1] in haystack for haystack in haystacks
+        ):
             run += 1
         if run < QUOTABLE_RUN_LIMIT:
             kept.append(stated[index])
@@ -218,12 +247,33 @@ def without_quotations(stated: str, *, document: str) -> str:
     return "".join(kept)
 
 
+def without_separated_identifiers(stated: str, *, document: str) -> str:
+    """Redact an identifier of the document that the message spaced out.
+
+    Runs of digits only, and only at NIP length: that is the one field whose
+    shape survives re-spacing well enough to be recognised without inventing
+    rules for everything else. A date or a quantity keeps its own digits and
+    its own meaning, so both stay.
+    """
+    carried = "".join(character for character in document if character.isdigit())
+
+    def redacted(found: re.Match[str]) -> str:
+        run = "".join(character for character in found.group() if character.isdigit())
+        if len(run) >= NIP_LENGTH and run in carried:
+            return REDACTED
+        return found.group()
+
+    return SEPARATED_DIGITS.sub(redacted, stated)
+
+
 def stated_failure(stderr: str, *, document: str) -> str:
     """The generator's own complaint, never the document it complained about.
 
     The complaint is somebody else's text on its way to the caller, so it is
-    stripped of the document first and capped second — capping first would cut
-    a quotation in half and leave the half that fits (GH-85).
+    bounded, then stripped of the document, and only then cut to the answer's
+    length. Cutting first would halve a quotation and forward the half that
+    fit; guarding an unbounded string would do the work on whatever Node chose
+    to write (GH-85).
     """
     for line in reversed(stderr.strip().splitlines()):
         try:
@@ -231,7 +281,11 @@ def stated_failure(stderr: str, *, document: str) -> str:
         except ValueError:
             continue
         if isinstance(stated, dict) and "error" in stated:
-            guarded = without_quotations(str(stated["error"]), document=document)
+            bounded = str(stated["error"])[:QUOTED_INPUT_LIMIT]
+            guarded = without_separated_identifiers(
+                without_quotations(bounded, document=document),
+                document=document,
+            )
             return guarded[:FAILURE_DETAIL_LIMIT]
     return "generator nie podał powodu"
 
@@ -294,9 +348,16 @@ class InvoiceRenderer:
             # verification link needs it, and a refusal has to be guarded on
             # every environment. This is the error path, so the second read
             # costs nothing anyone waits on.
+            #
+            # Decoded leniently, because this is the path a broken file takes.
+            # The bytes are wanted for one comparison and nothing else, so a
+            # `UnicodeDecodeError` here would trade a refusal that names its
+            # reason for one that names nothing — the failure this whole branch
+            # exists to prevent.
+            refused = source.read_bytes().decode("utf-8", errors="replace")
             raise GeneratorFailed(
                 f"Generator Ministerstwa odrzucił fakturę {ksef_number}: "
-                f"{stated_failure(completed.stderr, document=source.read_text(encoding='utf-8'))}"
+                f"{stated_failure(completed.stderr, document=refused)}"
             )
         staging.chmod(PDF_FILE_MODE)
         os.replace(staging, target)
