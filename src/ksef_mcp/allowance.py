@@ -17,7 +17,6 @@ Two roots, and the split is the load-bearing part (D-032):
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -37,7 +36,7 @@ from ksef_mcp.ksef_port.types import (
     SessionCeilings,
 )
 from ksef_mcp.paths import SubjectScope
-from ksef_mcp.storage import json_written_atomically
+from ksef_mcp.storage import JsonDocumentStore, SchemaMismatch
 
 LEDGER_FILE: Final[str] = "budget.json"
 
@@ -75,17 +74,26 @@ def now_utc() -> datetime:
     return datetime.now(tz=UTC)
 
 
+# All three documents here answer a mismatch the same way, so they share one
+# policy rather than three copies of it: the counters, the remembered limits and
+# the refusal fuse are all rebuilt from the next hour's traffic, and a server
+# that refused to start over a truncated counter would trade one hour of
+# undercounting for an outage lasting until somebody deleted the file by hand.
+ALLOWANCE_DOCUMENT: Final = JsonDocumentStore(
+    schema_version=SCHEMA_VERSION,
+    file_mode=FILE_MODE,
+    named="An allowance document",
+    on_mismatch=SchemaMismatch.MISS,
+)
+
+
 def _write_document(*, path: Path, document: dict[str, object]) -> None:
     path.parent.mkdir(mode=DIRECTORY_MODE, parents=True, exist_ok=True)
     # temp → rename (D-006), as everywhere else that state reaches disk: a
     # half-written counter read back as a miss would hand out an allowance that
     # has already been spent. The staging name is unique per writer and the
     # directory entry is persisted after the swap (ADR-107 §3, §4).
-    json_written_atomically(
-        path,
-        document=document,
-        file_mode=FILE_MODE,
-    )
+    ALLOWANCE_DOCUMENT.save(path, document=document)
 
 
 @dataclass(frozen=True)
@@ -116,13 +124,11 @@ class BudgetLedger:
         file, and the cost of the shrug is bounded: one hour of undercounting,
         against an outage that lasts until somebody deletes the file by hand.
         """
-        if not self.path.is_file():
-            return {}
         try:
-            document = json.loads(self.path.read_text(encoding="utf-8"))
-            if document["schema_version"] != SCHEMA_VERSION:
+            document = ALLOWANCE_DOCUMENT.load(self.path)
+            if document is None:
                 return {}
-            return self._decode(document["spent"])
+            return self._decode(document["spent"])  # type: ignore[arg-type]
         except (OSError, ValueError, KeyError, TypeError):
             return {}
 
@@ -197,15 +203,13 @@ class LimitsCache:
         return scope.cache_root(override=self.root) / LIMITS_FILE
 
     def remembered(self) -> KsefLimits | None:
-        if not self.path.is_file():
-            return None
         try:
-            document = json.loads(self.path.read_text(encoding="utf-8"))
-            if document["schema_version"] != SCHEMA_VERSION:
+            document = ALLOWANCE_DOCUMENT.load(self.path)
+            if document is None:
                 return None
-            if datetime.fromisoformat(document["read_at"]) <= self.clock() - self.freshness:
+            if datetime.fromisoformat(str(document["read_at"])) <= self.clock() - self.freshness:
                 return None
-            return self._decode(document["limits"])
+            return self._decode(document["limits"])  # type: ignore[arg-type]
         except (OSError, ValueError, KeyError, TypeError):
             return None
 
@@ -296,11 +300,9 @@ class RefusalLedger:
         return scope.data_root(override=self.root) / REFUSALS_FILE
 
     def load(self) -> RefusalRun:
-        if not self.path.is_file():
-            return RefusalRun()
         try:
-            document = json.loads(self.path.read_text(encoding="utf-8"))
-            if document["schema_version"] != SCHEMA_VERSION:
+            document = ALLOWANCE_DOCUMENT.load(self.path)
+            if document is None:
                 return RefusalRun()
             blocked = document["blocked_until"]
             return RefusalRun(

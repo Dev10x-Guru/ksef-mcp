@@ -26,7 +26,6 @@ query is exactly what its loss is supposed to cost.
 from __future__ import annotations
 
 import hashlib
-import json
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
@@ -51,7 +50,7 @@ from ksef_mcp.ksef_port.types import (
 )
 from ksef_mcp.metadata import SERVER_NAME
 from ksef_mcp.paths import SubjectScope
-from ksef_mcp.storage import exclusive_write, json_written_atomically
+from ksef_mcp.storage import JsonDocumentStore, SchemaMismatch, exclusive_write
 
 PERIOD_DIRECTORY: Final[str] = "periods"
 
@@ -230,6 +229,18 @@ def _encode(
     }
 
 
+CACHE_DOCUMENT: Final = JsonDocumentStore(
+    schema_version=SCHEMA_VERSION,
+    file_mode=CACHE_FILE_MODE,
+    named="A remembered period",
+    # A miss, never a refusal, and that is the one place this root differs from
+    # every store beside it. The cache is reconstructible by construction: an
+    # entry this build cannot read costs one metadata query out of twenty an
+    # hour, while refusing to start over it would cost the whole session.
+    on_mismatch=SchemaMismatch.MISS,
+)
+
+
 def _decode(document: dict[str, object]) -> CachedPeriod:
     period: dict[str, object] = document["period"]  # type: ignore[assignment]
     page: dict[str, object] = document["page"]  # type: ignore[assignment]
@@ -284,11 +295,9 @@ class PeriodCache:
         subject_role: SubjectRole,
     ) -> CachedPeriod | None:
         path = self.path_for(period=period, subject_role=subject_role)
-        if not path.is_file():
-            return None
         try:
-            document = json.loads(path.read_text(encoding="utf-8"))
-            if document["schema_version"] != SCHEMA_VERSION:
+            document = CACHE_DOCUMENT.load(path)
+            if document is None:
                 return None
             return _decode(document)
         except (OSError, ValueError, KeyError, TypeError):
@@ -335,11 +344,7 @@ class PeriodCache:
         # miss and cost the query this file exists to save, and the interrupted
         # write would have destroyed a good entry to do it.
         with exclusive_write(self.directory, directory_mode=CACHE_DIRECTORY_MODE):
-            json_written_atomically(
-                path,
-                document=document,
-                file_mode=CACHE_FILE_MODE,
-            )
+            CACHE_DOCUMENT.save(path, document=document)
         return entry
 
 

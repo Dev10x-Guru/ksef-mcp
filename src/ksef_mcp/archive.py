@@ -47,9 +47,9 @@ from ksef_mcp.ksef_port.types import KsefNumber
 from ksef_mcp.package import ExportPackage
 from ksef_mcp.paths import SubjectScope
 from ksef_mcp.storage import (
+    JsonDocumentStore,
+    SchemaMismatch,
     exclusive_write,
-    json_written_atomically,
-    require_schema,
     written_atomically,
 )
 
@@ -388,14 +388,17 @@ def _encode_index(
     }
 
 
+INDEX_DOCUMENT: Final = JsonDocumentStore(
+    schema_version=SCHEMA_VERSION,
+    file_mode=ARCHIVE_FILE_MODE,
+    named="The deduplication index",
+    on_mismatch=SchemaMismatch.REFUSE,
+    refused_as=ArchiveIndexUnreadable,
+    consequence="a misread index fetches invoices already held, or hides ones never fetched.",
+)
+
+
 def _decode_index(document: dict[str, object]) -> DeduplicationIndex:
-    require_schema(
-        document,
-        expected=SCHEMA_VERSION,
-        named="The deduplication index",
-        refused_as=ArchiveIndexUnreadable,
-        consequence=("a misread index fetches invoices already held, or hides ones never fetched."),
-    )
     entries: list[dict[str, object]] = document["entries"]  # type: ignore[assignment]
     index = DeduplicationIndex()
     for entry in entries:
@@ -443,9 +446,10 @@ class InvoiceArchive:
         return self.directory / INDEX_FILE
 
     def load_index(self) -> DeduplicationIndex:
-        if not self.index_path.is_file():
+        document = INDEX_DOCUMENT.load(self.index_path)
+        if document is None:
             return DeduplicationIndex()
-        return _decode_index(json.loads(self.index_path.read_text(encoding="utf-8")))
+        return _decode_index(document)
 
     def store(self, *, package: ExportPackage) -> ArchiveReport:
         """Write every invoice the manifest names, once, and record that it was held.
@@ -506,11 +510,7 @@ class InvoiceArchive:
 
     def _save_index(self, index: DeduplicationIndex) -> None:
         document = _encode_index(index, nip=self.nip, environment=self.environment)
-        json_written_atomically(
-            self.index_path,
-            document=document,
-            file_mode=ARCHIVE_FILE_MODE,
-        )
+        INDEX_DOCUMENT.save(self.index_path, document=document)
 
 
 @dataclass

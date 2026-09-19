@@ -16,9 +16,12 @@ from pathlib import Path
 
 import pytest
 
+from ksef_mcp.errors import KsefMcpError
 from ksef_mcp.storage import (
     LOCK_FILE,
     STAGING_SUFFIX,
+    JsonDocumentStore,
+    SchemaMismatch,
     WriteExclusivityUnavailable,
     exclusive_write,
     json_written_atomically,
@@ -253,3 +256,75 @@ def test_a_failed_document_write_leaves_the_previous_document_intact(
 
     assert '"round": 1' in target.read_text(encoding="utf-8")
     assert list(target.parent.glob(f"*{STAGING_SUFFIX}")) == []
+
+
+class DocumentRefused(KsefMcpError):
+    """Stands in for a store's own refusal, so the policy is tested and no store is."""
+
+
+REFUSING = JsonDocumentStore(
+    schema_version=2,
+    file_mode=FILE_MODE,
+    named="The test document",
+    on_mismatch=SchemaMismatch.REFUSE,
+    refused_as=DocumentRefused,
+    consequence="a misread document would be acted on as if it were understood.",
+)
+
+SHRUGGING = JsonDocumentStore(
+    schema_version=2,
+    file_mode=FILE_MODE,
+    named="The test document",
+    on_mismatch=SchemaMismatch.MISS,
+)
+
+
+@pytest.mark.parametrize("store", [REFUSING, SHRUGGING])
+def test_a_store_reads_back_the_document_it_wrote(store: JsonDocumentStore, target: Path) -> None:
+    store.save(target, document={"schema_version": 2, "kept": "yes"})
+
+    assert store.load(target) == {"schema_version": 2, "kept": "yes"}
+
+
+@pytest.mark.parametrize("store", [REFUSING, SHRUGGING])
+def test_a_store_answers_an_absent_file_with_nothing(
+    store: JsonDocumentStore,
+    target: Path,
+) -> None:
+    assert store.load(target) is None
+
+
+def test_a_refusing_store_says_which_document_it_will_not_guess_at(target: Path) -> None:
+    REFUSING.save(target, document={"schema_version": 1})
+
+    with pytest.raises(DocumentRefused, match="The test document is schema 1"):
+        REFUSING.load(target)
+
+
+def test_a_refusing_store_names_what_the_guess_would_cost(target: Path) -> None:
+    """The refusal is only convincing when it says what it is protecting."""
+    REFUSING.save(target, document={"schema_version": 1})
+
+    with pytest.raises(DocumentRefused, match="acted on as if it were understood"):
+        REFUSING.load(target)
+
+
+def test_a_refusing_store_will_not_guess_at_a_document_that_names_no_schema(
+    target: Path,
+) -> None:
+    """A file truncated before its version key is refused by name, not by KeyError."""
+    REFUSING.save(target, document={"kept": "yes"})
+
+    with pytest.raises(DocumentRefused, match="is schema None"):
+        REFUSING.load(target)
+
+
+@pytest.mark.parametrize("document", [{"schema_version": 1}, {"kept": "yes"}])
+def test_a_shrugging_store_reads_a_version_it_does_not_know_as_a_miss(
+    document: dict[str, object],
+    target: Path,
+) -> None:
+    """The deliberate difference: a reconstructible root never refuses to start."""
+    SHRUGGING.save(target, document=document)
+
+    assert SHRUGGING.load(target) is None

@@ -18,6 +18,14 @@ udokumentowane.
   się to, że jutrzejsza poprawka trwałości zapisu trafi do wszystkich
   plików, jakie narzędzie prowadzi, a nie do sześciu z siedmiu (GH-145).
 
+- To, jak narzędzie zachowuje się wobec pliku zapisanego przez starszą
+  wersję, jest odtąd wyborem nazwanym przy każdym magazynie, a nie
+  skutkiem tego, który fragment kodu skopiowano. Bez zmiany zachowania:
+  zapisy, od których zależy rozliczenie podatnika — punkty kontynuacji,
+  rejestr przeglądu, indeks archiwum — nadal odmawiają zgadywania, a
+  podręczna pamięć okresów i liczniki limitów nadal traktują taki plik
+  jak jego brak, bo odbudowują się same (GH-146).
+
 - Odpowiedzi narzędzi `synchronise_invoices`, `list_recent_invoices`
   i `review_new_invoices` nazywają rolę podmiotu jednym słowem: pola
   `subject_types` i `subject_type` nazywają się teraz `subject_roles`
