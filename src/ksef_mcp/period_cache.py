@@ -50,8 +50,8 @@ from ksef_mcp.ksef_port.types import (
     Period,
 )
 from ksef_mcp.metadata import SERVER_NAME
+from ksef_mcp.paths import SubjectScope
 from ksef_mcp.storage import exclusive_write, written_atomically
-from ksef_mcp.sync_store import SUBJECT_DIRECTORY
 
 PERIOD_DIRECTORY: Final[str] = "periods"
 
@@ -256,8 +256,8 @@ class PeriodCache:
 
     @property
     def directory(self) -> Path:
-        base = cache_root() if self.root is None else self.root
-        return base / SUBJECT_DIRECTORY / self.nip / str(self.environment) / PERIOD_DIRECTORY
+        scope = SubjectScope.parsed(nip=self.nip, environment=self.environment)
+        return scope.cache_root(override=self.root) / PERIOD_DIRECTORY
 
     def path_for(self, *, period: Period, direction: InvoiceDirection) -> Path:
         key = cache_key(period=period, direction=direction)

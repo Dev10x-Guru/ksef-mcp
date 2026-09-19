@@ -17,8 +17,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Final
 
-from platformdirs import user_data_path
-
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port.types import (
     ContinuationPoint,
@@ -28,12 +26,10 @@ from ksef_mcp.ksef_port.types import (
     ExportState,
     InvoiceDirection,
 )
-from ksef_mcp.metadata import SERVER_NAME
+from ksef_mcp.paths import SubjectScope
 from ksef_mcp.storage import exclusive_write, written_atomically
 
 STATE_FILE: Final[str] = "synchronisation.json"
-
-SUBJECT_DIRECTORY: Final[str] = "subjects"
 
 # Bumped whenever the document below stops being readable by the previous
 # reader. A record written by a newer version is refused rather than guessed
@@ -335,8 +331,8 @@ class SyncStore:
         # the main vector for mixing an accounting office's clients (D-034), and
         # a test continuation point reused against production would declare a
         # period complete that was never fetched.
-        base = user_data_path(appname=SERVER_NAME) if self.root is None else self.root
-        return base / SUBJECT_DIRECTORY / self.nip / str(self.environment)
+        scope = SubjectScope.parsed(nip=self.nip, environment=self.environment)
+        return scope.data_root(override=self.root)
 
     @property
     def path(self) -> Path:

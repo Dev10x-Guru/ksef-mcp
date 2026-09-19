@@ -50,8 +50,6 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Final
 
-from platformdirs import user_data_path
-
 from ksef_mcp.allowance import Allowance
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port.protocol import KsefPort
@@ -67,10 +65,9 @@ from ksef_mcp.listing import (
     gross_totals,
     invoices_phrase,
 )
-from ksef_mcp.metadata import SERVER_NAME
+from ksef_mcp.paths import SubjectScope
 from ksef_mcp.period_cache import PeriodCache, PeriodMetadataReader
 from ksef_mcp.storage import exclusive_write, written_atomically
-from ksef_mcp.sync_store import SUBJECT_DIRECTORY
 from ksef_mcp.synchronisation import SYNCHRONISED_DIRECTIONS
 
 REVIEW_FILE: Final[str] = "review.json"
@@ -201,8 +198,8 @@ class ReviewStore:
         # mixing vector D-034 names, and a ledger shared across environments
         # would report a production invoice as already reviewed because a test
         # run happened to show it.
-        base = user_data_path(appname=SERVER_NAME) if self.root is None else self.root
-        return base / SUBJECT_DIRECTORY / self.nip / str(self.environment)
+        scope = SubjectScope.parsed(nip=self.nip, environment=self.environment)
+        return scope.data_root(override=self.root)
 
     @property
     def path(self) -> Path:

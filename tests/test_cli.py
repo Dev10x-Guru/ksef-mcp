@@ -8,7 +8,6 @@ import pytest
 
 from conftest import raiser
 from ksef_mcp import (
-    archive,
     cli,
     client,
     config,
@@ -1229,12 +1228,12 @@ def test_skill_install_keeps_local_edits_when_not_confirmed(
 
 
 @pytest.fixture
-def archive_root(monkeypatch: pytest.MonkeyPatch, audit_root: Path) -> Path:
-    # The same root the autouse `audit_root` fixture gives the trail, so the
-    # purge writes its entry beside the archive it emptied rather than into the
-    # data directory of whoever runs the suite.
-    monkeypatch.setattr(archive, "user_data_path", lambda *, appname: audit_root)
-    return audit_root
+def archive_root(subject_data_root: Path) -> Path:
+    # One root for the trail and the archive both, so the purge writes its entry
+    # beside the archive it emptied rather than into the data directory of
+    # whoever runs the suite. The autouse fixture already substitutes it in
+    # `paths`, which is the single place every store reads the layout from.
+    return subject_data_root
 
 
 @pytest.fixture

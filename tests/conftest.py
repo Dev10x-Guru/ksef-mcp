@@ -5,8 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from ksef_mcp import allowance as allowance_module
-from ksef_mcp import audit, preflight
+from ksef_mcp import paths, preflight
 from ksef_mcp.allowance import Allowance, now_utc
 from ksef_mcp.config import KsefEnvironment
 
@@ -73,22 +72,20 @@ def anyio_backend() -> str:
 
 
 @pytest.fixture(autouse=True)
-def audit_root(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
-    # Every read tool now appends to the trail, so without this the suite would
-    # write an audit file into the data directory of whoever ran it — and a
-    # trail holding synthetic accesses is worse than no trail at all.
-    root = tmp_path / "dane"
-    monkeypatch.setattr(audit, "user_data_path", lambda *, appname: root)
-    return root
+def subject_data_root(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    """Both platform roots under the test's own directory, substituted in one place.
 
-
-@pytest.fixture(autouse=True)
-def allowance_roots(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    # Same reason as the audit trail above, and a sharper one: a spent counter
-    # left in the runner's data directory would refuse that person's real calls
-    # for an hour, against an allowance the suite never touched.
-    monkeypatch.setattr(allowance_module, "user_data_path", lambda *, appname: tmp_path / "dane")
-    monkeypatch.setattr(allowance_module, "user_cache_path", lambda *, appname: tmp_path / "cache")
+    Every store reads its layout from `paths` now, so one pair of substitutions
+    covers the audit trail, the spent counter and each store at once. It used to
+    take a separate substitution per module, which meant a store added later
+    silently wrote into the data directory of whoever ran the suite — a trail
+    holding synthetic accesses, or a spent counter refusing that person's real
+    calls for an hour against an allowance the suite never touched.
+    """
+    data = tmp_path / "dane"
+    monkeypatch.setattr(paths, "user_data_path", lambda *, appname: data)
+    monkeypatch.setattr(paths, "user_cache_path", lambda *, appname: tmp_path / "cache")
+    return data
 
 
 @pytest.fixture(autouse=True)

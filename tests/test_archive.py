@@ -18,9 +18,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from platformdirs import user_data_path
 
 from conftest import in_another_thread
+from ksef_mcp import paths
 from ksef_mcp.archive import (
     ArchiveIndexUnreadable,
     ArchiveMetadataUnusable,
@@ -332,9 +332,13 @@ def test_the_demonstration_environment_archives_apart_from_the_test_one(
 
 
 def test_the_archive_lives_in_the_data_directory_not_the_cache_one() -> None:
+    # Both roots are read through `paths`, so the distinction D-032 rests on is
+    # asserted against the same accessors production uses. That the accessors
+    # are the platformdirs ones is pinned once, in `test_paths.py`.
     placed = InvoiceArchive(nip=NIP, environment=KsefEnvironment.TEST)
 
-    assert placed.directory.is_relative_to(user_data_path(appname=SERVER_NAME))
+    assert placed.directory.is_relative_to(paths.user_data_path(appname=SERVER_NAME))
+    assert not placed.directory.is_relative_to(paths.user_cache_path(appname=SERVER_NAME))
 
 
 def test_the_default_clock_stamps_a_moment_with_a_timezone(tmp_path: Path) -> None:

@@ -20,9 +20,9 @@ from pathlib import Path
 from typing import Final
 
 import pytest
-from platformdirs import user_data_path
 
 from conftest import an_allowance
+from ksef_mcp import paths
 from ksef_mcp.allowance import Allowance
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port import (
@@ -269,7 +269,8 @@ def test_the_ledger_sits_beside_the_deduplication_index_not_inside_it(
 def test_without_a_root_the_ledger_follows_the_platform_data_directory() -> None:
     store = ReviewStore(nip=NIP, environment=KsefEnvironment.TEST)
 
-    assert store.directory == user_data_path(appname=SERVER_NAME) / "subjects" / NIP / "test"
+    expected = paths.user_data_path(appname=SERVER_NAME) / "subjects" / NIP / "test"
+    assert store.directory == expected
 
 
 def test_the_ledger_file_is_private_to_its_owner(store: ReviewStore) -> None:

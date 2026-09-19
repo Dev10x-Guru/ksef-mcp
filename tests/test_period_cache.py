@@ -14,8 +14,9 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
-from platformdirs import user_cache_path, user_data_path
+from platformdirs import user_cache_path
 
+from ksef_mcp import paths
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port import (
     DateType,
@@ -302,7 +303,7 @@ def test_the_module_clock_reads_utc() -> None:
 def test_the_cache_lives_in_the_cache_root() -> None:
     placed = PeriodCache(nip=NIP, environment=KsefEnvironment.TEST)
 
-    assert placed.directory.is_relative_to(cache_root())
+    assert placed.directory.is_relative_to(paths.user_cache_path(appname=SERVER_NAME))
 
 
 def test_the_cache_root_is_the_platformdirs_one_for_this_server() -> None:
@@ -312,7 +313,7 @@ def test_the_cache_root_is_the_platformdirs_one_for_this_server() -> None:
 def test_the_cache_root_is_not_the_data_root() -> None:
     placed = PeriodCache(nip=NIP, environment=KsefEnvironment.TEST)
 
-    assert not placed.directory.is_relative_to(user_data_path(appname=SERVER_NAME))
+    assert not placed.directory.is_relative_to(paths.user_data_path(appname=SERVER_NAME))
 
 
 def test_the_entry_is_readable_only_by_its_owner(

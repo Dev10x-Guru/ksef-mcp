@@ -40,15 +40,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final
 
-from platformdirs import user_data_path
-
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port.errors import KsefRequestRejected
 from ksef_mcp.ksef_port.types import KsefNumber
-from ksef_mcp.metadata import SERVER_NAME
 from ksef_mcp.package import ExportPackage
+from ksef_mcp.paths import SubjectScope
 from ksef_mcp.storage import exclusive_write, written_atomically
-from ksef_mcp.sync_store import SUBJECT_DIRECTORY
 
 INVOICE_DIRECTORY: Final[str] = "invoices"
 
@@ -428,8 +425,8 @@ class InvoiceArchive:
         # The data directory, never the cache one: a disk cleaner honouring the
         # cache convention would delete the archive the Ministry expects local
         # business operations to run against (D-030, D-032).
-        base = user_data_path(appname=SERVER_NAME) if self.root is None else self.root
-        return base / SUBJECT_DIRECTORY / self.nip / str(self.environment)
+        scope = SubjectScope.parsed(nip=self.nip, environment=self.environment)
+        return scope.data_root(override=self.root)
 
     @property
     def invoice_directory(self) -> Path:
