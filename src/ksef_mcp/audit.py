@@ -59,6 +59,7 @@ from pathlib import Path
 from typing import Final
 
 from ksef_mcp.config import KsefEnvironment
+from ksef_mcp.errors import KsefMcpError
 from ksef_mcp.paths import SubjectScope
 from ksef_mcp.storage import exclusive_write
 
@@ -92,7 +93,7 @@ PDF_FORMAT: Final[str] = "pdf"
 ARCHIVE_BASIS: Final[str] = "archiwum_lokalne"
 
 
-class AuditTrailUnreadable(RuntimeError):
+class AuditTrailUnreadable(KsefMcpError):
     """A line of the trail was written by a build this one does not understand.
 
     Refused rather than guessed at. A trail read through the wrong schema either

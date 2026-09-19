@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Final
 
 from ksef_mcp.config import KsefEnvironment
+from ksef_mcp.errors import KsefMcpError
 from ksef_mcp.ksef_port.errors import KsefRequestRejected
 from ksef_mcp.ksef_port.types import KsefNumber
 from ksef_mcp.preflight import NodeReport, inspect_node
@@ -90,11 +91,11 @@ QUOTED_INPUT_LIMIT: Final[int] = 2_000
 REDACTED: Final[str] = "[…]"
 
 
-class InvoiceNotArchived(RuntimeError):
+class InvoiceNotArchived(KsefMcpError):
     """The invoice was asked for by number and is not on disk under that name."""
 
 
-class NodeUnavailable(RuntimeError):
+class NodeUnavailable(KsefMcpError):
     """Node is missing or too old — a degradation, never a failure of the server.
 
     Raised so the calling tool can say which capability is gone and which
@@ -102,7 +103,7 @@ class NodeUnavailable(RuntimeError):
     """
 
 
-class GeneratorFailed(RuntimeError):
+class GeneratorFailed(KsefMcpError):
     """The generator ran and refused the document."""
 
 

@@ -52,6 +52,7 @@ from typing import Final
 
 from ksef_mcp.allowance import Allowance
 from ksef_mcp.config import KsefEnvironment
+from ksef_mcp.errors import KsefMcpError
 from ksef_mcp.ksef_port.protocol import KsefPort
 from ksef_mcp.ksef_port.types import (
     MAX_QUERY_WINDOW,
@@ -105,7 +106,7 @@ REVIEW_WINDOW: Final[timedelta] = min(timedelta(days=90), MAX_QUERY_WINDOW)
 REVIEW_DATE_TYPE: Final[DateType] = DateType.INVOICING
 
 
-class ReviewLedgerUnreadable(RuntimeError):
+class ReviewLedgerUnreadable(KsefMcpError):
     """The record of what a person has seen was written by an unknown build.
 
     Refused rather than guessed at, the way `SyncStore` refuses a continuation

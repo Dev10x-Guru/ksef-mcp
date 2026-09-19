@@ -57,6 +57,7 @@ from ksef_mcp.config import (
     cloud_sync_marker,
     prepare_invoice_directory,
 )
+from ksef_mcp.errors import KsefMcpError, KsefMcpInputRejected
 from ksef_mcp.ksef_port.protocol import KsefPort
 from ksef_mcp.ksef_port.types import (
     Credential,
@@ -124,11 +125,11 @@ NO_ARCHIVED_BODY: Final[str] = "brak pliku w archiwum"
 MONTH_PATTERN: Final[re.Pattern[str]] = re.compile(r"^(\d{4})-(0[1-9]|1[0-2])$")
 
 
-class UnreadablePeriod(ValueError):
+class UnreadablePeriod(KsefMcpInputRejected):
     """The period is not a month this tool can turn into a date window."""
 
 
-class WorkingDirectoryRefused(RuntimeError):
+class WorkingDirectoryRefused(KsefMcpError):
     """The declared working directory is internal storage, not a product directory."""
 
 

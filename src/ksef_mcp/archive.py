@@ -41,6 +41,7 @@ from pathlib import Path
 from typing import Final
 
 from ksef_mcp.config import KsefEnvironment
+from ksef_mcp.errors import KsefMcpError
 from ksef_mcp.ksef_port.errors import KsefRequestRejected
 from ksef_mcp.ksef_port.types import KsefNumber
 from ksef_mcp.package import ExportPackage
@@ -87,7 +88,7 @@ INVOICE_HASH_KEYS: Final[tuple[str, ...]] = ("invoiceHash", "invoice_hash", "skr
 FILE_NAME_KEYS: Final[tuple[str, ...]] = ("fileName", "file_name", "nazwaPliku")
 
 
-class ArchiveMetadataUnusable(RuntimeError):
+class ArchiveMetadataUnusable(KsefMcpError):
     """`_metadata.json` does not say which invoice is which.
 
     Raised before a single file is written, so the pending export keeps its key
@@ -97,15 +98,15 @@ class ArchiveMetadataUnusable(RuntimeError):
     """
 
 
-class ArchiveIndexUnreadable(RuntimeError):
+class ArchiveIndexUnreadable(KsefMcpError):
     """The deduplication index was written by something this build cannot read."""
 
 
-class ArchiveNotPerformed(RuntimeError):
+class ArchiveNotPerformed(KsefMcpError):
     """Asked what an archivist stored before it stored anything."""
 
 
-class IndexEntryAlreadyHeld(RuntimeError):
+class IndexEntryAlreadyHeld(KsefMcpError):
     """A KSeF number was offered to the index twice.
 
     The invoice file has always refused its own duplicate structurally — the

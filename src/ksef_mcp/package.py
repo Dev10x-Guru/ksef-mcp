@@ -28,6 +28,7 @@ from typing import Final
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.padding import PKCS7
 
+from ksef_mcp.errors import KsefMcpError
 from ksef_mcp.ksef_port.protocol import KsefSession
 from ksef_mcp.ksef_port.types import ExportEncryption, ExportHandle, ExportPart
 from ksef_mcp.sync_store import PendingExport, SyncStore
@@ -39,7 +40,7 @@ METADATA_ENTRY: Final[str] = "_metadata.json"
 AES_BLOCK_BITS: Final[int] = 128
 
 
-class PackageUnreadable(RuntimeError):
+class PackageUnreadable(KsefMcpError):
     """The bytes that arrived are not the package KSeF described.
 
     Raised before anything is archived, so the pending record keeps its key and

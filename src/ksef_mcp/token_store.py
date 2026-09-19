@@ -7,6 +7,7 @@ import keyring
 from keyring.errors import KeyringError, PasswordDeleteError
 
 from ksef_mcp import preflight
+from ksef_mcp.errors import KsefMcpError
 from ksef_mcp.metadata import SERVER_NAME
 
 SUFFIX_LENGTH: Final[int] = 4
@@ -28,7 +29,7 @@ LOCKED_MESSAGE: Final[str] = (
 )
 
 
-class TokenStoreUnavailable(RuntimeError):
+class TokenStoreUnavailable(KsefMcpError):
     pass
 
 
@@ -44,7 +45,7 @@ def refuse_a_locked_collection() -> None:
         raise TokenStoreLocked(LOCKED_MESSAGE)
 
 
-class TokenVerificationFailed(RuntimeError):
+class TokenVerificationFailed(KsefMcpError):
     pass
 
 

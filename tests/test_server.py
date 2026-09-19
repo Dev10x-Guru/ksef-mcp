@@ -13,10 +13,12 @@ from mcp.types import CallToolResult, ListToolsResult
 from ksef_mcp import config, token_store
 from ksef_mcp.audit import ARCHIVE_BASIS, PDF_FORMAT, AuditEntry, AuditTrail, Disclosure
 from ksef_mcp.config import Configuration, KsefEnvironment
+from ksef_mcp.errors import KsefMcpError
 from ksef_mcp.ksef_port import (
     DateType,
     InvoiceDirection,
     KsefNumber,
+    KsefPortError,
     KsefRefused,
     MetadataPage,
     Period,
@@ -284,6 +286,44 @@ async def test_a_render_refusal_travels_with_its_reason(
     answered = await failing_call("render_invoice_pdf", {"ksef_number": RENDER_NUMBER})
 
     assert expected in str(answered.content)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("tool", "entry_point", "arguments"),
+    [
+        ("synchronise_invoices", "synchronise", {}),
+        ("list_recent_invoices", "list_invoices", {}),
+        ("export_period_statement", "export_statement", {"period": "2026-08"}),
+        ("review_new_invoices", "review_invoices", {}),
+    ],
+)
+async def test_a_keyring_asleep_with_the_laptop_says_so_from_every_tool(
+    monkeypatch: pytest.MonkeyPatch,
+    tool: str,
+    entry_point: str,
+    arguments: dict[str, str],
+) -> None:
+    """GH-167: four of five tools read a token, and none reached this sentence.
+
+    A keyring collection locks itself when the machine suspends, so this is the
+    daily working cycle rather than an edge case. The explaining message was
+    already written and the CLI already showed it; the server threw it away.
+    """
+
+    def locked(**arguments: object) -> None:
+        raise token_store.TokenStoreLocked(token_store.LOCKED_MESSAGE)
+
+    monkeypatch.setattr(server_module, entry_point, locked)
+
+    answered = await failing_call(tool, arguments)
+
+    assert "Unlock the collection" in str(answered.content)
+
+
+def test_every_refusal_of_this_application_shares_one_root() -> None:
+    # The tuple used to be a list of names, and the list went stale (GH-167).
+    assert server_module.REFUSALS == (KsefPortError, KsefMcpError)
 
 
 @pytest.mark.anyio

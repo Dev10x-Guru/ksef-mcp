@@ -22,6 +22,15 @@ udokumentowane.
 
 ### Poprawione
 
+- Po uśpieniu laptopa narzędzia MCP mówią, że kolekcja keyringu jest
+  zamknięta i jak ją otworzyć, zamiast odpowiadać „Error executing tool".
+  Kolekcja zamyka się sama, gdy maszyna zasypia, a token czytają cztery
+  z pięciu narzędzi — zdanie z instrukcją wyjścia było napisane od dawna
+  i pokazywał je wyłącznie wiersz poleceń. Serwer wymieniał odmowy
+  z nazwiska w jednym miejscu i wyliczenie się zestarzało; teraz wszystkie
+  wyjątki tej aplikacji mają wspólny korzeń, więc odmowa napisana dla
+  człowieka dociera do niego bez dopisywania jej do żadnej listy
+  (GH-167).
 - Faktura, która nie zmieściła się w odpowiedzi KSeF, nie zniknie już na
   zawsze z przeglądu. Przegląd pyta o okno dziewięćdziesięciu dni, a KSeF
   oddaje naraz najwyżej dwieście pięćdziesiąt pozycji. Rejestr zapisywał
