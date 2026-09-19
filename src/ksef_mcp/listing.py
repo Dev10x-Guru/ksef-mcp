@@ -33,6 +33,7 @@ from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port.errors import KsefPortError, KsefRateLimited, KsefRequestRejected
 from ksef_mcp.ksef_port.protocol import KsefPort
 from ksef_mcp.ksef_port.types import (
+    Credential,
     DateType,
     InvoiceDirection,
     InvoiceMetadata,
@@ -312,7 +313,7 @@ class InvoiceLister:
     allowance: Allowance
     clock: Callable[[], datetime] = now_utc
 
-    def run(self, *, nip: str, token: str) -> InvoiceListing:
+    def run(self, *, nip: str, token: Credential) -> InvoiceListing:
         period = listing_period(moment=self.clock())
         listings: list[DirectionListing] = []
         with self.port.session(nip=nip, token=token) as opened:

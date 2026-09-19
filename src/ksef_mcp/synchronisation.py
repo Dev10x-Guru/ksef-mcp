@@ -41,6 +41,7 @@ from ksef_mcp.ksef_port.protocol import KsefPort, KsefSession
 from ksef_mcp.ksef_port.types import (
     MAX_QUERY_WINDOW,
     ContinuationPoint,
+    Credential,
     ExportState,
     ExportStatus,
     InvoiceDirection,
@@ -257,7 +258,7 @@ class Synchroniser:
             clock=self.clock,
         )
 
-    def run(self, *, nip: str, token: str) -> SynchronisationReport:
+    def run(self, *, nip: str, token: Credential) -> SynchronisationReport:
         """Advance every subject type, as the only writer this subject has.
 
         The hold spans the whole pass, not each write. A pass reads the record
@@ -270,7 +271,7 @@ class Synchroniser:
         with self.store.exclusively():
             return self._advance_all(nip=nip, token=token)
 
-    def _advance_all(self, *, nip: str, token: str) -> SynchronisationReport:
+    def _advance_all(self, *, nip: str, token: Credential) -> SynchronisationReport:
         state = self.store.load()
         reports: list[DirectionReport] = []
         with self.port.session(nip=nip, token=token) as opened:

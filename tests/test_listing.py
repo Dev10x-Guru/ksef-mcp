@@ -49,9 +49,11 @@ from ksef_mcp.listing import (
     summarise,
 )
 from ksef_mcp.period_cache import PeriodCache
-from synthetic import synthetic_metadata
+from synthetic import synthetic_credential, synthetic_metadata
 
 NIP = "1234567890"
+
+CREDENTIAL = synthetic_credential()
 
 ASKED_AT = datetime(2026, 9, 14, 7, 41, 17, tzinfo=UTC)
 
@@ -344,7 +346,7 @@ def test_the_answer_never_carries_an_invoice_body(question: Question) -> None:
 def test_the_listing_covers_every_subject_type(lister: InvoiceLister) -> None:
     # Ta sama pętla co synchronizacja: firma bywa sprzedawcą na jednej fakturze
     # i nabywcą na następnej (D-031 §5).
-    listed = lister.run(nip=NIP, token="tajny-token")
+    listed = lister.run(nip=NIP, token=CREDENTIAL)
 
     assert [one.question.direction for one in listed.directions] == [
         InvoiceDirection.SELLER,
@@ -355,21 +357,21 @@ def test_the_listing_covers_every_subject_type(lister: InvoiceLister) -> None:
 
 
 def test_the_listing_names_the_environment_it_spoke_to(lister: InvoiceLister) -> None:
-    assert lister.run(nip=NIP, token="tajny-token").environment is KsefEnvironment.TEST
+    assert lister.run(nip=NIP, token=CREDENTIAL).environment is KsefEnvironment.TEST
 
 
 def test_the_listing_names_the_threshold_it_applied(lister: InvoiceLister) -> None:
-    assert lister.run(nip=NIP, token="tajny-token").threshold == LISTING_THRESHOLD
+    assert lister.run(nip=NIP, token=CREDENTIAL).threshold == LISTING_THRESHOLD
 
 
 def test_the_listing_states_the_window_it_asked_about(lister: InvoiceLister) -> None:
-    assert lister.run(nip=NIP, token="tajny-token").period == listing_period(moment=ASKED_AT)
+    assert lister.run(nip=NIP, token=CREDENTIAL).period == listing_period(moment=ASKED_AT)
 
 
 def test_the_first_pass_pays_one_query_per_subject_type(
     lister: InvoiceLister, session: RecordingSession
 ) -> None:
-    lister.run(nip=NIP, token="tajny-token")
+    lister.run(nip=NIP, token=CREDENTIAL)
 
     assert len(session.asked) == 4
 
@@ -377,16 +379,16 @@ def test_the_first_pass_pays_one_query_per_subject_type(
 def test_asking_again_within_the_hour_costs_nothing(
     lister: InvoiceLister, session: RecordingSession
 ) -> None:
-    lister.run(nip=NIP, token="tajny-token")
-    lister.run(nip=NIP, token="tajny-token")
+    lister.run(nip=NIP, token=CREDENTIAL)
+    lister.run(nip=NIP, token=CREDENTIAL)
 
     assert len(session.asked) == 4
 
 
 def test_the_second_answer_says_it_came_from_disk(lister: InvoiceLister) -> None:
-    lister.run(nip=NIP, token="tajny-token")
+    lister.run(nip=NIP, token=CREDENTIAL)
 
-    assert [one.from_cache for one in lister.run(nip=NIP, token="tajny-token").directions] == [
+    assert [one.from_cache for one in lister.run(nip=NIP, token=CREDENTIAL).directions] == [
         True,
         True,
         True,
@@ -405,7 +407,7 @@ def test_a_spent_allowance_does_not_take_the_other_subject_types_down(
         clock=lambda: ASKED_AT,
     )
 
-    assert [one.outcome for one in lister.run(nip=NIP, token="tajny-token").directions] == [
+    assert [one.outcome for one in lister.run(nip=NIP, token=CREDENTIAL).directions] == [
         ListingOutcome.BUDGET_SPENT
     ] * 4
 
@@ -421,7 +423,7 @@ def test_a_spent_allowance_explains_itself_and_repeats_the_question(
         clock=lambda: ASKED_AT,
     )
 
-    assert "NIP 1234567890" in lister.run(nip=NIP, token="tajny-token").directions[0].message
+    assert "NIP 1234567890" in lister.run(nip=NIP, token=CREDENTIAL).directions[0].message
 
 
 def test_a_spent_allowance_reports_no_moment_of_asking(
@@ -435,7 +437,7 @@ def test_a_spent_allowance_reports_no_moment_of_asking(
         clock=lambda: ASKED_AT,
     )
 
-    assert lister.run(nip=NIP, token="tajny-token").directions[0].queried_at is None
+    assert lister.run(nip=NIP, token=CREDENTIAL).directions[0].queried_at is None
 
 
 def a_lister_meeting(
@@ -472,7 +474,7 @@ def test_a_rate_limit_on_one_subject_type_keeps_the_answers_already_paid_for(
         protection=protection,
     )
 
-    assert [one.outcome for one in lister.run(nip=NIP, token="tajny-token").directions] == [
+    assert [one.outcome for one in lister.run(nip=NIP, token=CREDENTIAL).directions] == [
         ListingOutcome.LISTED,
         ListingOutcome.BUDGET_SPENT,
         ListingOutcome.LISTED,
@@ -492,7 +494,7 @@ def test_a_rate_limit_passes_on_the_wait_ksef_itself_asked_for(
         protection=protection,
     )
 
-    assert "odczekanie 90 s" in lister.run(nip=NIP, token="tajny-token").directions[1].message
+    assert "odczekanie 90 s" in lister.run(nip=NIP, token=CREDENTIAL).directions[1].message
 
 
 def test_a_rate_limit_without_a_wait_promises_nothing_about_waiting(
@@ -505,7 +507,7 @@ def test_a_rate_limit_without_a_wait_promises_nothing_about_waiting(
         protection=protection,
     )
 
-    assert "odczekanie" not in lister.run(nip=NIP, token="tajny-token").directions[1].message
+    assert "odczekanie" not in lister.run(nip=NIP, token=CREDENTIAL).directions[1].message
 
 
 @pytest.mark.parametrize(
@@ -525,7 +527,7 @@ def test_a_failure_that_is_not_about_the_allowance_is_not_reported_as_one(
     lister = a_lister_meeting(failure, cache=cache, protection=protection)
 
     with pytest.raises(type(failure)):
-        lister.run(nip=NIP, token="tajny-token")
+        lister.run(nip=NIP, token=CREDENTIAL)
 
 
 def test_the_default_clock_reads_utc() -> None:

@@ -26,6 +26,7 @@ from ksef_mcp.ksef_port.errors import (
 )
 from ksef_mcp.ksef_port.types import (
     PAGE_SIZE,
+    Credential,
     DateType,
     ExportEncryption,
     ExportHandle,
@@ -358,7 +359,7 @@ class Ksef2Port:
     environment: KsefEnvironment
 
     @contextmanager
-    def session(self, *, nip: str, token: str) -> Iterator[Ksef2Session]:
+    def session(self, *, nip: str, token: Credential) -> Iterator[Ksef2Session]:
         with (
             translated(),
             Client(
@@ -367,5 +368,8 @@ class Ksef2Port:
             ) as client,
             httpx.Client(timeout=PART_DOWNLOAD_TIMEOUT) as transport,
         ):
-            authenticated = client.authentication.with_token(ksef_token=token, nip=nip)
+            # The one place the secret is unwrapped, one line before the SDK
+            # spends it. Everything upstream carries it as a value that keeps
+            # itself out of `repr` (GH-115).
+            authenticated = client.authentication.with_token(ksef_token=token.value, nip=nip)
             yield Ksef2Session(authenticated=authenticated, transport=transport)

@@ -56,9 +56,11 @@ from ksef_mcp.review import (
     now_utc,
     review_period,
 )
-from synthetic import synthetic_metadata
+from synthetic import synthetic_credential, synthetic_metadata
 
 NIP = "1234567890"
+
+CREDENTIAL = synthetic_credential()
 
 ASKED_AT = datetime(2026, 9, 14, 7, 41, 17, tzinfo=UTC)
 
@@ -417,7 +419,7 @@ def test_the_answer_never_carries_an_invoice_body(question: Question) -> None:
 
 
 def test_the_review_covers_every_subject_type(reviewer: InvoiceReviewer) -> None:
-    reviewed = reviewer.run(nip=NIP, token="tajny-token")
+    reviewed = reviewer.run(nip=NIP, token=CREDENTIAL)
 
     assert [one.question.direction for one in reviewed.directions] == [
         InvoiceDirection.SELLER,
@@ -428,15 +430,15 @@ def test_the_review_covers_every_subject_type(reviewer: InvoiceReviewer) -> None
 
 
 def test_the_first_pass_reports_the_invoice_as_new(reviewer: InvoiceReviewer) -> None:
-    reviewed = reviewer.run(nip=NIP, token="tajny-token")
+    reviewed = reviewer.run(nip=NIP, token=CREDENTIAL)
 
     assert reviewed.directions[0].outcome is ReviewOutcome.REPORTED
 
 
 def test_the_second_pass_reports_nothing_new(reviewer: InvoiceReviewer) -> None:
-    reviewer.run(nip=NIP, token="tajny-token")
+    reviewer.run(nip=NIP, token=CREDENTIAL)
 
-    assert [one.outcome for one in reviewer.run(nip=NIP, token="tajny-token").directions] == [
+    assert [one.outcome for one in reviewer.run(nip=NIP, token=CREDENTIAL).directions] == [
         ReviewOutcome.NOTHING_NEW
     ] * 4
 
@@ -445,7 +447,7 @@ def test_what_was_shown_survives_a_new_process(
     reviewer: InvoiceReviewer, store: ReviewStore
 ) -> None:
     # Znacznik jest trwały: to jest cała różnica między funkcją a higieną [D-022].
-    reviewer.run(nip=NIP, token="tajny-token")
+    reviewer.run(nip=NIP, token=CREDENTIAL)
 
     assert store.load().reviewed == {IN_JULY}
 
@@ -453,7 +455,7 @@ def test_what_was_shown_survives_a_new_process(
 def test_the_ledger_records_when_the_invoice_reached_ksef(
     reviewer: InvoiceReviewer, store: ReviewStore
 ) -> None:
-    reviewer.run(nip=NIP, token="tajny-token")
+    reviewer.run(nip=NIP, token=CREDENTIAL)
 
     assert store.load().entries[0].received_on == date(2026, 7, 7)
 
@@ -461,15 +463,15 @@ def test_the_ledger_records_when_the_invoice_reached_ksef(
 def test_the_review_points_at_the_ledger_it_keeps(
     reviewer: InvoiceReviewer, store: ReviewStore
 ) -> None:
-    assert reviewer.run(nip=NIP, token="tajny-token").ledger_path == str(store.path)
+    assert reviewer.run(nip=NIP, token=CREDENTIAL).ledger_path == str(store.path)
 
 
 def test_the_review_states_the_window_it_asked_about(reviewer: InvoiceReviewer) -> None:
-    assert reviewer.run(nip=NIP, token="tajny-token").period == review_period(moment=ASKED_AT)
+    assert reviewer.run(nip=NIP, token=CREDENTIAL).period == review_period(moment=ASKED_AT)
 
 
 def test_the_review_names_the_subject_and_environment(reviewer: InvoiceReviewer) -> None:
-    reviewed = reviewer.run(nip=NIP, token="tajny-token")
+    reviewed = reviewer.run(nip=NIP, token=CREDENTIAL)
 
     assert (reviewed.nip, reviewed.environment, reviewed.threshold) == (
         NIP,
@@ -481,8 +483,8 @@ def test_the_review_names_the_subject_and_environment(reviewer: InvoiceReviewer)
 def test_asking_again_within_the_hour_spends_no_further_query(
     reviewer: InvoiceReviewer, session: RecordingSession
 ) -> None:
-    reviewer.run(nip=NIP, token="tajny-token")
-    reviewer.run(nip=NIP, token="tajny-token")
+    reviewer.run(nip=NIP, token=CREDENTIAL)
+    reviewer.run(nip=NIP, token=CREDENTIAL)
 
     assert len(session.asked) == 4
 
@@ -500,7 +502,7 @@ def test_an_unfetched_subject_type_reports_the_delta_as_unknown(
         clock=lambda: ASKED_AT,
     )
 
-    assert [one.outcome for one in reviewer.run(nip=NIP, token="tajny-token").directions] == [
+    assert [one.outcome for one in reviewer.run(nip=NIP, token=CREDENTIAL).directions] == [
         ReviewOutcome.BUDGET_SPENT
     ] * 4
 
@@ -539,7 +541,7 @@ def test_a_rate_limit_on_one_subject_type_keeps_the_rest_of_the_review(
         protection=protection,
     )
 
-    assert [one.outcome for one in reviewer.run(nip=NIP, token="tajny-token").directions] == [
+    assert [one.outcome for one in reviewer.run(nip=NIP, token=CREDENTIAL).directions] == [
         ReviewOutcome.REPORTED,
         ReviewOutcome.BUDGET_SPENT,
         ReviewOutcome.REPORTED,
@@ -558,8 +560,7 @@ def test_a_rate_limited_subject_type_says_it_does_not_know(
     )
 
     assert (
-        "nie wiem, czy coś doszło"
-        in reviewer.run(nip=NIP, token="tajny-token").directions[1].message
+        "nie wiem, czy coś doszło" in reviewer.run(nip=NIP, token=CREDENTIAL).directions[1].message
     )
 
 
@@ -575,7 +576,7 @@ def test_an_unfetched_subject_type_does_not_claim_anything_was_shown(
         allowance=protection,
         clock=lambda: ASKED_AT,
     )
-    reviewer.run(nip=NIP, token="tajny-token")
+    reviewer.run(nip=NIP, token=CREDENTIAL)
 
     assert store.path.exists() is False
 
@@ -593,7 +594,9 @@ def test_an_unfetched_subject_type_says_it_does_not_know(
         clock=lambda: ASKED_AT,
     )
 
-    assert "nie wiem, czy coś doszło" in reviewer.run(nip=NIP, token="x").directions[0].message
+    reviewed = reviewer.run(nip=NIP, token=CREDENTIAL)
+
+    assert "nie wiem, czy coś doszło" in reviewed.directions[0].message
 
 
 def test_the_default_clock_reads_utc() -> None:

@@ -21,6 +21,7 @@ from conftest import an_allowance
 from doubles import HWM
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port import (
+    Credential,
     ExportEncryption,
     ExportHandle,
     ExportPart,
@@ -137,6 +138,23 @@ def port(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> Kse
 
 def test_both_implementations_are_the_port(port: KsefPort) -> None:
     assert isinstance(port, KsefPort)
+
+
+def test_the_credential_the_port_takes_is_a_stored_token() -> None:
+    # GH-115: the token used to be unwrapped at the server boundary and travel
+    # as a bare string through seven frames, so a network failure anywhere in
+    # between built a traceback carrying the secret in its locals.
+    assert isinstance(TOKEN, Credential)
+
+
+def test_a_bare_string_is_not_a_credential() -> None:
+    # The protection is only worth what the type refuses. A `str` satisfying the
+    # port's signature would let the old shape back in unnoticed.
+    assert not isinstance("aaaabbbbccccdddd", Credential)
+
+
+def test_the_credential_keeps_the_secret_out_of_what_a_traceback_prints() -> None:
+    assert TOKEN.value not in repr(TOKEN)
 
 
 def test_both_hand_out_something_that_is_a_session(port: KsefPort) -> None:
