@@ -24,7 +24,7 @@ jobs:
 
     steps:
       - name: Download the PR context
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: pr-context
           path: pr-context
@@ -75,7 +75,7 @@ jobs:
 
       - name: Checkout the base repository
         if: steps.context.outputs.skip != 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           # Never the PR head: this job holds the API key and write
           # permission (see docs/fork-review-split.md).

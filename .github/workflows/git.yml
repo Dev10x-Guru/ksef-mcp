@@ -17,13 +17,13 @@ jobs:
     if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Block fixup commit merge
-        uses: 13rac1/block-fixup-merge-action@v2.0.0
+        uses: 13rac1/block-fixup-merge-action@bd5504fb9ca0253e109d98eb86b7debc01970cdc # v2.0.0
 
       - name: GitLint commit messages
-        uses: aschbacd/gitlint-action@v1.2.0
+        uses: aschbacd/gitlint-action@a288aade2ea0f18fceee46f3878576b265cce0c1 # v1.2.0
         with:
           commit-message-subject-max-length: 72
           re-commit-message-subject: ^([A-Z]|[\u2300-\u2B07]|[\uD83C-\uD83F][\uDC00-\uDFFF]).*((?!\.).)$
