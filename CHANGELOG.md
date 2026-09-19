@@ -10,6 +10,9 @@ udokumentowane.
 
 ## Bez wydania
 
+## 0.3.2 — 2026-09-19
+
+
 ### Poprawione
 
 - Gotowa paczka trafia na dysk. Synchronizacja dociągała faktury, po czym
@@ -23,7 +26,6 @@ udokumentowane.
 - Odmowa generatora PDF nie niesie już fragmentów odrzucanej faktury.
   Generator Ministerstwa cytuje w komunikacie wartości odczytane z pliku,
   a komunikat od wersji 0.3.1 dociera do klienta (GH-85).
-
 ## 0.3.1 — 2026-09-18
 
 
