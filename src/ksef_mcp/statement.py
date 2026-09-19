@@ -40,7 +40,7 @@ import csv
 import io
 import re
 from calendar import monthrange
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -50,7 +50,12 @@ from typing import Final, Self
 from platformdirs import user_data_path
 
 from ksef_mcp.allowance import Allowance
-from ksef_mcp.archive import INVOICE_SUFFIX, InvoiceArchive, digest_of
+from ksef_mcp.archive import (
+    INVOICE_SUFFIX,
+    ArchiveIndexUnreadable,
+    InvoiceArchive,
+    digest_of,
+)
 from ksef_mcp.config import (
     INVOICE_DIRECTORY_MODE,
     KsefEnvironment,
@@ -195,23 +200,48 @@ class VerificationCode:
         return f"{self.seller_nip}-{self.issue_date.strftime('%Y%m%d')}-{self.content_hash}"
 
 
+def archived_digests(archive: InvoiceArchive) -> dict[str, str]:
+    """Every digest the deduplication index already holds, read once for the month.
+
+    An unreadable index answers with nothing rather than refusing the statement.
+    The index is this module's shortcut and not its source of truth — the files
+    are — so a damaged one costs the reads it was meant to save and nothing more.
+    Refusing to hand an accountant her month over a helper file would be the
+    worse failure by far.
+    """
+    try:
+        return {entry.ksef_number: entry.content_hash for entry in archive.load_index().entries}
+    except ArchiveIndexUnreadable:
+        return {}
+
+
 def verification_code(
     *,
     invoice: InvoiceMetadata,
     archive: InvoiceArchive,
+    digests: Mapping[str, str],
 ) -> VerificationCode | None:
-    """Hash the archived body, or say there is none. Never hash the metadata row.
+    """The digest of the archived body, or say there is none. Never the metadata row.
 
     A digest over a metadata row would verify our own bookkeeping against itself.
-    The file the archive holds is the thing a verification is about.
+    The file the archive holds is the thing a verification is about — but the
+    index already recorded that file's digest when it was written, so a month of
+    four hundred invoices no longer means four hundred whole XML documents read
+    off the disk to state what is already known (GH-148).
+
+    The full read stays underneath as the fallback, because the index can be
+    older than the directory it describes and a code is a claim about the bytes
+    on disk. The existence of the body is still checked against the disk and
+    never against the index, for the same reason.
     """
     body = archive.invoice_directory / f"{invoice.ksef_number}{INVOICE_SUFFIX}"
     if not body.is_file():
         return None
+    recorded = digests.get(str(invoice.ksef_number))
     return VerificationCode(
         seller_nip=invoice.seller_nip,
         issue_date=invoice.issue_date,
-        content_hash=digest_of(body.read_bytes()),
+        content_hash=digest_of(body.read_bytes()) if recorded is None else recorded,
     )
 
 
@@ -241,8 +271,12 @@ def rows_for(
     invoices: tuple[InvoiceMetadata, ...],
     archive: InvoiceArchive,
 ) -> tuple[StatementRow, ...]:
+    digests = archived_digests(archive)
     return tuple(
-        StatementRow(invoice=invoice, code=verification_code(invoice=invoice, archive=archive))
+        StatementRow(
+            invoice=invoice,
+            code=verification_code(invoice=invoice, archive=archive, digests=digests),
+        )
         for invoice in invoices
     )
 

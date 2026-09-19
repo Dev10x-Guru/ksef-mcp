@@ -10,6 +10,7 @@ Braki są nazwane: niekompletny okres, kilka walut i pozycje bez pliku wracają 
 ostrzeżeniach, bo CSV nie ma gdzie pomieścić zastrzeżenia (D-023).
 """
 
+import json
 import shutil
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -49,6 +50,7 @@ from ksef_mcp.statement import (
     WorkingDirectory,
     WorkingDirectoryRefused,
     amount,
+    archived_digests,
     completeness_warning,
     currency_warning,
     internal_root_conflict,
@@ -287,14 +289,44 @@ def test_kod_pierwszy_sklada_sie_z_trzech_czlonow() -> None:
     assert str(code) == f"{SELLER_NIP}-20260901-abc123"
 
 
-def test_kod_pierwszy_bierze_skrot_z_pliku_archiwum(archived: InvoiceArchive) -> None:
-    code = verification_code(invoice=synthetic_metadata(1), archive=archived)
+def test_kod_pierwszy_bierze_skrot_z_indeksu(archived: InvoiceArchive) -> None:
+    code = verification_code(
+        invoice=synthetic_metadata(1),
+        archive=archived,
+        digests=archived_digests(archived),
+    )
 
     assert code is not None and code.content_hash == digest_of(synthetic_body(1))
 
 
+def test_kod_pierwszy_wraca_do_pliku_gdy_indeks_o_fakturze_nie_wie(
+    archived: InvoiceArchive,
+) -> None:
+    """Indeks bywa starszy niż katalog, który opisuje — pełny odczyt zostaje siatką."""
+    code = verification_code(invoice=synthetic_metadata(1), archive=archived, digests={})
+
+    assert code is not None and code.content_hash == digest_of(synthetic_body(1))
+
+
+def test_nieczytelny_indeks_nie_odmawia_zestawienia(archived: InvoiceArchive) -> None:
+    """Indeks jest skrótem tego modułu, a nie jego źródłem prawdy — są nim pliki."""
+    archived.index_path.write_text(
+        json.dumps({"schema_version": 99, "entries": []}), encoding="utf-8"
+    )
+
+    assert archived_digests(archived) == {}
+
+
 def test_faktura_spoza_archiwum_nie_dostaje_kodu(archived: InvoiceArchive) -> None:
-    assert verification_code(invoice=synthetic_metadata(2), archive=archived) is None
+    """Obecność treści sprawdza dysk, nigdy indeks: kod jest twierdzeniem o bajtach."""
+    assert (
+        verification_code(
+            invoice=synthetic_metadata(2),
+            archive=archived,
+            digests={str(synthetic_metadata(2).ksef_number): "cudzy-skrot"},
+        )
+        is None
+    )
 
 
 def test_wiersz_niesie_osiem_kolumn_walute_i_kod(archived: InvoiceArchive) -> None:
