@@ -10,6 +10,9 @@ udokumentowane.
 
 ## Bez wydania
 
+## 0.3.3 — 2026-09-19
+
+
 ### Poprawione
 
 - Synchronizacja wychodzi z zakleszczenia na wygasłej paczce. Odnośnik do
@@ -20,7 +23,6 @@ udokumentowane.
   o status eksportu, a gdy KSeF już go nie podaje, wpis zostaje zdjęty,
   punkt cofnięty przed utracone okno, i ten sam przebieg prosi o nie
   jeszcze raz (GH-93).
-
 ## 0.3.2 — 2026-09-19
 
 
