@@ -20,6 +20,13 @@ udokumentowane.
   środowiska, obok stanu synchronizacji — nie w cache'u, który czyszczarka
   dysku ma prawo skasować. Egzekwowane są też limity sekundowy i minutowy,
   dotąd odczytywane z KSeF i nigdy niesprawdzane (GH-97).
+- `ksef-mcp verify` przestaje po cichu wydawać limit, który ma pilnować.
+  Polecenie diagnostyczne pytało KSeF z pominięciem licznika i cache'u, a
+  uruchamia się je zwykle kilka razy pod rząd — właśnie wtedy, gdy coś już
+  szwankuje. Teraz zapytanie jest liczone jak każde inne, a okno kończy się
+  na pełnej godzinie, więc powtórzenie w tej samej godzinie nie kosztuje
+  nic. Limity kontekstu, dwa żądania przy każdym otwarciu sesji i dotąd
+  nieliczone, zapamiętywane są na godzinę (GH-98).
 - Odrzucony eksport przestaje blokować swój typ podmiotu. Gdy KSeF odmówił
   zbudowania paczki, jej wpis zostawał w kolejce roboczej na zawsze —
   a kolejka rozstrzyga, o co prosić dalej, więc ten typ podmiotu zamawiał
