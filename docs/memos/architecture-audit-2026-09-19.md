@@ -268,9 +268,8 @@ obejście cyklu — każdy ma komentarz nazywający powód.
 
 ### Dwa ruchy, które trzeba zrobić najpierw
 
-**Warstwa antykorupcyjna zależy od warstwy zastosowania.** Wedle ADR-102
-`ksef_port` ma leżeć najniżej i być samowystarczalna, ale jej rdzeniowe
-wyliczenie mieszka w module odczytu konfiguracji:
+**Warstwa antykorupcyjna sięga po moduł konfiguracji.** Rdzeniowe wyliczenie
+portu mieszka w module odczytu konfiguracji:
 
 ```
 ksef_port/protocol.py:4    from ksef_mcp.config import KsefEnvironment
@@ -278,8 +277,28 @@ ksef_port/connection.py:5  from ksef_mcp.config import KsefEnvironment
 ksef_port/adapter.py:19    from ksef_mcp.config import KsefEnvironment
 ```
 
-Dziś portu nie da się wyjąć ani przetestować bez `config`. Strzałka biegnie
-odwrotnie do zamierzonej.
+Dziś portu nie da się wyjąć ani przetestować bez `config`, co uniemożliwia
+zapisanie kontraktu warstwowego bez wyjątku — a kontrakt z wyjątkiem nie
+chroni niczego.
+
+**To jednak nie jest naruszenie ADR-102, tylko zmiana jego decyzji.** ADR
+zapisał ten stan świadomie, w tabeli odwzorowania słownika (linia 71):
+`| Środowisko | KsefEnvironment (istniejący, w config.py) |`. ADR pilnuje,
+by port nie sięgał po **sekrety** i po **wejście-wyjście** — i tego pilnuje
+skutecznie (token jest argumentem, keyring zostaje w `token_store.py`). Nie
+deklaruje natomiast niezależności od modułu konfiguracji.
+
+Konsekwencja praktyczna: krok musi obejmować aktualizację ADR-102, inaczej
+sam wprowadzi rozjazd, który `bin/check-adr-drift.py` istnieje po to, żeby
+wykrywać. Nakład rośnie z S do M. Cel przenosin to **nie** `ksef_port/types.py`
+(285 linii — `config` płaciłoby pełnym słownikiem KSeF za trzyczłonowy enum,
+czyli dokładnie ten anty-wzorzec, który zwalczamy poniżej), lecz osobny liść
+`ksef_port/environment.py`. Zasięg: 13 modułów produkcyjnych i 17 plików
+testowych, w każdym jedna linia importu.
+
+Ta sama tabela ADR-102 odsłania rzecz ostrzejszą: przypisuje pojęciu
+`KontekstPodmiotu` typ `SubjectContext` — ten sam, który jest martwy
+(rozdział 4). ADR obiecuje odwzorowanie, którego produkcja nie używa.
 
 **Stałe ciągną duże moduły.** `SUBJECT_DIRECTORY` mieszka w `sync_store.py:34`
 i jest importowane przez `archive`, `audit`, `period_cache`, `review` — cztery
@@ -478,6 +497,9 @@ i `RetryPolicy`.
 | **M12** | Wspólny prymityw magazynu | MEDIUM | M | M2 |
 | **M13** | Zamrożenie struktury bramką CI | MEDIUM | S | M10 |
 | **M14** | Kontrakt, dokumentacja, `README` | MEDIUM | S+M | — |
+| **M15** | Spójna sygnalizacja błędu i trwałość konfiguracji | HIGH | M+S+S | — |
+| **M16** | Testy, które sprawdzają zachowanie, nie linie | HIGH | S+M+M+L | — |
+| **M17** | Kompletność odpowiedzi ponad 250 faktur | HIGH | S+S+L | M1 |
 
 \* wpływ warunkowy wobec weryfikacji, czy KSeF udostępnia typ dokumentu.
 
@@ -495,6 +517,123 @@ wykonać w jednym ciągu — żadna z przeprowadzek nie zmienia zachowania, wię
 siatką: czerwony przebieg jednoznacznie oznacza błąd przenoszenia.
 
 ---
+
+## 10a. Uzupełnienie: pokrycie JTBD i spójność przekrojowa
+
+Dwie fazy wróciły po złożeniu pierwszej wersji tej notatki i przyniosły
+ustalenia, które zmieniają obraz.
+
+### Port nie potrafi pobrać drugiej strony metadanych — najpoważniejsze
+
+```python
+# ksef_port/types.py:199-204
+class MetadataPage:
+    invoices: tuple[InvoiceMetadata, ...]
+    has_more: bool  # raportowane
+    truncated: bool
+    hwm_date: datetime | None
+    # brak kursora, offsetu i numeru strony
+
+
+# ksef_port/adapter.py:279
+params = InvoiceMetadataParams(page_size=PAGE_SIZE, sort_order="desc")
+# brak parametru strony
+```
+
+Zweryfikowane osobiście. To nie jest „nie zrobiono", tylko **nie da się przez
+ten interfejs**. `has_more` jest raportowane i nie ma jak na nie zareagować.
+Tymczasem synchronizacja ma pełny mechanizm punktów kontynuacji — dwa
+niezgodne paradygmaty w jednym systemie.
+
+Skutek dla produktu: `review_new_invoices` obiecuje „co przyszło od ostatniego
+przeglądu" w oknie 89 dni dla czterech typów podmiotu. Powyżej 250 faktur
+rejestr przeglądu zapisuje jako pokazane tylko to, co się zmieściło, a przy
+następnym wywołaniu okno się przesuwa — **pominięte faktury nigdy nie wrócą**.
+To dokładnie klasa błędu, którą ten moduł napisano, żeby wykrywać: historia
+faktury z siódmego lipca w docstringu `review.py:1-40`. `_incompleteness:289`
+ostrzega przed przypadkiem odwrotnym, ten groźniejszy jest niepokryty.
+
+Poprawka doraźna jest tania i niezależna od ADR-a: `assess` nie oznacza niczego
+jako pokazane przy `complete=False`, tą samą logiką, którą już stosuje powyżej
+progu (`review.py:344-363`).
+
+### Bramka pokrycia przepuszcza cztery klasy błędów
+
+Teza z rozdziału 4 domyka się liczbą. Przy 959 testach i stu procentach linii
+oraz gałęzi przechodzą:
+
+1. **Martwy kod z własnym testem.** Wyczerpująco sprawdzone na wszystkich 31
+   eksportach `ksef_port/__init__.py`: martwe są dokładnie dwa byty —
+   `SubjectContext` i `RetryPolicy`/`NO_AUTOMATIC_RETRY`. Pozostałe 28 ma
+   wywołania produkcyjne. Nie ma tego więcej.
+2. **Test utrwalający błąd jako zachowanie oczekiwane.**
+   `test_a_refused_export_is_kept_under_its_reference` z asercją
+   `[FAILED, FAILED]`.
+3. **Zachowanie rozciągnięte na wiele wywołań.** Wszystkie testy budżetu
+   trzymają jeden obiekt w pamięci; zachowanie *pomiędzy* wywołaniami nie jest
+   sprawdzane nigdzie.
+4. **Kontrakt z cudzym API sprawdzany wyłącznie wobec własnej atrapy.** Marker
+   `ksef_live` jest zadeklarowany w `pyproject.toml`, wykluczany przez CI,
+   wymagany przez `CLAUDE.md` i cztery specyfikacje agentów przeglądu — i nie
+   nosi go ani jeden test. Wspólna przyczyna zgłoszeń #90 i #82.
+
+Piąty przypadek jest najczystszym dowodem tezy: **obsługa wyczerpanego limitu
+jest w produkcji nieosiągalna**. `SYNCHRONISED_DIRECTIONS` ma cztery pozycje,
+więc jedno wywołanie wydaje najwyżej cztery zapytania z budżetu budowanego od
+zera — `remaining()` nie spadnie do zera, chyba że KSeF przyzna mniej niż
+cztery zapytania na godzinę. Gałęzie `except` w `listing.py:302` i
+`review.py:438` wraz z `refused()` i `unasked()`, napisane świadomie i
+z komentarzem tłumaczącym zamiar, są nieuruchamialne. Testy sięgają tam
+wyłącznie przez ręcznie skonstruowany `per_hour=0` — stan, którego system nie
+potrafi wytworzyć.
+
+Praktyczny wniosek: naprawa budżetu i ta gałąź to **jedno zadanie**. Degradacja
+jest już napisana; brakuje wyłącznie budżetu, który faktycznie się wyczerpuje.
+
+### Rozjazd CLI wobec serwera dotyczy codziennego cyklu pracy
+
+`REFUSALS` (`server.py:105-112`) ma sześć pozycji; poza nią zostaje dziewięć
+własnych wyjątków magazynów plus `JSONDecodeError` i `OSError`.
+`refuse_a_locked_collection()` jest wołane przed każdym dotknięciem sekretu,
+a kolekcja keyringu zamyka się sama po uśpieniu maszyny. Wszystkie pięć
+narzędzi MCP idzie przez `authenticated_subject()` → `read_token()`, więc po
+uśpieniu laptopa każde zwróci gołe „Error executing tool …" — mając gotowy,
+napisany na tę sytuację komunikat z instrukcją wyjścia. `cli.py:667` go
+pokazuje, serwer gubi.
+
+Pokrycie `REFUSALS` jest odwrotnie proporcjonalne do ryzyka: najlepiej pokryte
+jest `render_invoice_pdf`, czyli narzędzie, którego autor pisał tę krotkę.
+`review_new_invoices` jest pokryte najsłabiej — `ReviewLedgerUnreadable`,
+wyjątek istniejący *wyłącznie* po to, by nieść wyjaśnienie, nie dociera do
+nikogo.
+
+### Konfiguracja jest jedynym dokumentem bez obu zabezpieczeń
+
+`config.save_configuration` (`config.py:72-93`) jest jedyną z siedmiu procedur
+zapisu bez wzorca temp→rename — pisze w plik docelowy z `O_TRUNC`, bez `fsync`.
+`load_configuration` nie łapie `JSONDecodeError` i nie łapie go żadne z sześciu
+wywołań. Przerwany zapis sprawia, że **serwer i CLI przestają startować**,
+a jedynym wyjściem jest ręczne skasowanie pliku. Ten sam plik jest też jedynym
+z sześciu dokumentów trwałych bez `schema_version`.
+
+### Poprawka do planu restrukturyzacji
+
+Nazwy pakietów `mcp/` i `console/` z rozdziału 5 zastępuję przez **`server/`
+i `cli/`** — czyli dokładnie te, które te moduły mają dziś. Skutek jest
+istotniejszy niż estetyka: `ksef-mcp = "ksef_mcp.cli:main"` działa bez zmiany,
+bo pakiet z `__init__.py` re-eksportującym `main` spełnia wpis skryptu
+konsolowego identycznie jak moduł, a `from ksef_mcp.server import server`
+przeżywa. **Dwa z trzech kroków łamiących przestają być łamiące.** Znika też
+kolizja `ksef_mcp.mcp` z zależnością `mcp==2.2.0`, którą importuje
+`server.py:8-9`.
+
+Potwierdzone dowodem, nie wnioskowaniem: w repozytorium nie ma `pythonpath`,
+`importmode`, `consider_namespace_packages`, `setup.cfg`, `pytest.ini`,
+`tox.ini` ani `conftest.py` w korzeniu, a `tests/` nie ma `__init__.py`. Czyli
+`from synthetic import` w trzynastu plikach stoi wyłącznie na domyślnym trybie
+`prepend`, a `tests/support/` jest twardym warunkiem wstępnym przeprowadzek.
+Awaria byłaby przy tym głośna — błąd zbierania testów — więc kroku nie da się
+pominąć przez nieuwagę.
 
 ## 11. Metoda
 
