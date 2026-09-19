@@ -29,6 +29,15 @@ udokumentowane.
   przydziału — wtedy warto ponowić za godzinę — czy uciął je sam KSeF.
   Niekompletnego okna narzędzie nie zapamiętuje, więc kolejne wywołanie
   dokończy je zamiast podać z dysku to, co zdążyło dojść (GH-182).
+- Skrócone zestawienie miesięczne mówi o tym samo, a nie dopiero w przypisie.
+  Produktem tego narzędzia jest liczba, którą człowiek wysyła księgowej, a
+  suma policzona z części miesiąca wygląda dokładnie tak samo jak pełna.
+  Ostrzeżenie trafiało wyłącznie do odpowiedzi narzędzia — do samej księgowej
+  jechał plik CSV, po którym nic nie było widać. Teraz zdanie podające sumę
+  zaczyna się od wyraźnego ostrzeżenia, a plik niekompletnego okresu nazywa
+  się `...-NIEKOMPLETNE.csv`, więc widać to już w skrzynce pocztowej.
+  Ostrzeżenie rozróżnia też brak godzinowego przydziału — wtedy warto ponowić
+  za godzinę — od okresu uciętego przez sam KSeF (GH-181).
 
 ## 0.3.4 — 2026-09-19
 

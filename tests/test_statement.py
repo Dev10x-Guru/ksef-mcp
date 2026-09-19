@@ -349,6 +349,14 @@ def test_nazwa_pliku_mowi_czym_jest_zalacznik() -> None:
     assert statement_file_name(period=SEPTEMBER, nip=NIP) == "zestawienie-2026-09-1234567890.csv"
 
 
+def test_nazwa_pliku_niesie_ostrzezenie_o_skroceniu() -> None:
+    # Ostrzeżenie z odpowiedzi narzędzia nie dojeżdża do księgowej — plik tak.
+    assert (
+        statement_file_name(period=SEPTEMBER, nip=NIP, complete=False)
+        == "zestawienie-2026-09-1234567890-NIEKOMPLETNE.csv"
+    )
+
+
 @pytest.mark.parametrize("root", ["dane", "cache"])
 def test_katalog_wewnatrz_magazynu_wewnetrznego_jest_odrzucany(tmp_path: Path, root: str) -> None:
     with pytest.raises(WorkingDirectoryRefused, match="D-032"):
@@ -435,6 +443,69 @@ def test_zapis_nie_zostawia_pliku_przejsciowego(tmp_path: Path) -> None:
 )
 def test_niekompletny_okres_jest_powiedziany_wprost(complete: bool, expected: int) -> None:
     assert len(completeness_warning(complete=complete)) == expected
+
+
+def test_brak_przydzialu_mowi_ksiegowej_zeby_ponowila() -> None:
+    assert "Ponów za godzinę" in completeness_warning(complete=False, budget_bound=True)[0]
+
+
+def test_okres_uciety_przez_ksef_nie_kaze_czekac_na_przydzial() -> None:
+    assert "przydział" not in completeness_warning(complete=False, budget_bound=False)[0]
+
+
+def test_kompletne_zestawienie_nie_zakloca_zdania_z_suma(statement: Statement) -> None:
+    assert statement.shortfall == ""
+
+
+def test_zdanie_z_suma_samo_mowi_ze_okres_jest_skrocony(
+    composer: StatementComposer, working: Path
+) -> None:
+    # Produktem tego narzędzia jest liczba wysyłana księgowej, a suma z części
+    # miesiąca wygląda tak samo jak pełna — ostrzeżenie obok bywa czytane po
+    # decyzji albo wcale.
+    composer.port.session_object.page = replace(
+        composer.port.session_object.page,
+        has_more=False,
+        truncated=True,
+    )
+
+    result = composer.run(nip=NIP, token=CREDENTIAL, period=SEPTEMBER, directory=working)
+
+    assert result.message.startswith("Zestawienie za 2026-09") and "UWAGA" in result.message
+
+
+def test_skrocone_zestawienie_niesie_ostrzezenie_w_nazwie_pliku(
+    composer: StatementComposer, working: Path
+) -> None:
+    composer.port.session_object.page = replace(
+        composer.port.session_object.page,
+        has_more=False,
+        truncated=True,
+    )
+
+    result = composer.run(nip=NIP, token=CREDENTIAL, period=SEPTEMBER, directory=working)
+
+    assert result.path.endswith("-NIEKOMPLETNE.csv")
+
+
+def test_zestawienie_uciete_przez_ksef_nie_obwinia_przydzialu(
+    composer: StatementComposer, working: Path
+) -> None:
+    composer.port.session_object.page = replace(
+        composer.port.session_object.page,
+        has_more=False,
+        truncated=True,
+    )
+
+    result = composer.run(nip=NIP, token=CREDENTIAL, period=SEPTEMBER, directory=working)
+
+    assert (result.budget_bound, "przydział" in result.message) == (False, False)
+
+
+def test_brak_przydzialu_widac_w_zdaniu_z_suma(statement: Statement) -> None:
+    starved = replace(statement, complete=False, budget_bound=True)
+
+    assert "przydział" in starved.shortfall
 
 
 def test_jedna_waluta_nie_wymaga_ostrzezenia(statement: Statement) -> None:

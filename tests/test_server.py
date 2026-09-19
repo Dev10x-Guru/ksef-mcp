@@ -635,6 +635,7 @@ class StubComposer:
             row_count=1,
             gross_totals=(CurrencyTotal(currency="PLN", gross=Decimal("1230.00")),),
             complete=True,
+            budget_bound=False,
             from_cache=False,
             queried_at=REACHED,
             warnings=("Katalog roboczy wygląda na synchronizowany do chmury (onedrive).",),
