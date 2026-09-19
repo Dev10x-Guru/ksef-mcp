@@ -79,6 +79,10 @@ STATEMENT_PREFIX: Final[str] = "zestawienie"
 
 STATEMENT_SUFFIX: Final[str] = ".csv"
 
+# Upper case and in the recipient's language, because it has one job: to be
+# read in a mailbox, by somebody who did not run the tool.
+STATEMENT_INCOMPLETE_MARK: Final[str] = "NIEKOMPLETNE"
+
 # The rows name counterparties, so the file is created with its final mode
 # rather than written and then tightened (D-011).
 STATEMENT_FILE_MODE: Final[int] = 0o600
@@ -251,15 +255,26 @@ def rendered(rows: tuple[StatementRow, ...]) -> str:
     return BYTE_ORDER_MARK + buffer.getvalue()
 
 
-def statement_file_name(*, period: AccountingPeriod, nip: str) -> str:
+def statement_file_name(
+    *,
+    period: AccountingPeriod,
+    nip: str,
+    complete: bool = True,
+) -> str:
     """A name that says what the attachment is once it is out of its directory.
 
     The word first, because the recipient sees it in a mailbox and not in the
     working directory. Then the month, so a year of them sorts chronologically.
     Then the NIP, because the directory is per subject and the file stops being
     in it the moment it is attached to anything.
+
+    An incomplete period says so in the name. Everything else this module knows
+    about the shortfall stays in the tool's answer, which the accountant never
+    sees — the file is what gets forwarded, so the caveat has to travel on the
+    file (GH-181).
     """
-    return f"{STATEMENT_PREFIX}-{period}-{nip}{STATEMENT_SUFFIX}"
+    mark = "" if complete else f"-{STATEMENT_INCOMPLETE_MARK}"
+    return f"{STATEMENT_PREFIX}-{period}-{nip}{mark}{STATEMENT_SUFFIX}"
 
 
 def internal_root_conflict(
@@ -361,6 +376,7 @@ class Statement:
     row_count: int
     gross_totals: tuple[CurrencyTotal, ...]
     complete: bool
+    budget_bound: bool
     from_cache: bool
     queried_at: datetime
     warnings: tuple[str, ...]
@@ -375,18 +391,47 @@ class Statement:
         return (
             f"Zestawienie za {self.period}: {invoices_phrase(self.row_count)}, "
             f"brutto {', '.join(str(total) for total in self.gross_totals) or '—'}. "
-            f"Plik: {self.path}"
+            f"{self.shortfall}Plik: {self.path}"
+        )
+
+    @property
+    def shortfall(self) -> str:
+        """The caveat, in the sentence that carries the number rather than beside it.
+
+        The product of this tool is a figure a person forwards to an accountant,
+        and a sum counted from part of a month looks exactly like a whole one. A
+        warning in a separate list is read after the decision, if at all
+        (GH-181).
+        """
+        if self.complete:
+            return ""
+        if self.budget_bound:
+            return (
+                "UWAGA: to nie jest cały okres — skończył się godzinowy przydział "
+                "zapytań, więc suma obejmuje część dokumentów. Ponów za godzinę, "
+                "zanim to wyślesz. "
+            )
+        return (
+            "UWAGA: to nie jest cały okres — KSeF nie oddał go w całości, więc "
+            "suma obejmuje część dokumentów. "
         )
 
 
-def completeness_warning(*, complete: bool) -> tuple[str, ...]:
+def completeness_warning(*, complete: bool, budget_bound: bool = False) -> tuple[str, ...]:
     if complete:
         return ()
     # D-023's rule, and it matters more here than in a chat window: a CSV keeps
-    # no room for a caveat, so the caveat has to travel in the answer.
+    # no room for a caveat, so the caveat has to travel in the answer. Which of
+    # the two shortfalls it was decides what the reader should do about it.
+    if budget_bound:
+        return (
+            "Nie dociągnąłem całego okresu — skończył się godzinowy przydział "
+            "zapytań o metadane. Zestawienie nie jest kompletem, a suma nie "
+            "uzgodni się z Aplikacją Podatnika. Ponów za godzinę.",
+        )
     return (
-        "KSeF nie oddał całego okresu w jednej odpowiedzi — zestawienie nie "
-        "jest kompletem i suma nie uzgodni się z Aplikacją Podatnika.",
+        "KSeF nie oddał całego okresu — zestawienie nie jest kompletem i suma "
+        "nie uzgodni się z Aplikacją Podatnika.",
     )
 
 
@@ -452,9 +497,10 @@ class StatementComposer:
         rows = rows_for(invoices=answer.page.invoices, archive=self.archive)
         totals = gross_totals(answer.page.invoices)
         complete = not (answer.page.has_more or answer.page.truncated)
+        budget_bound = answer.page.budget_bound
         path = write_statement(
             rows=rows,
-            path=working.path / statement_file_name(period=period, nip=nip),
+            path=working.path / statement_file_name(period=period, nip=nip, complete=complete),
         )
         return Statement(
             nip=nip,
@@ -464,11 +510,12 @@ class StatementComposer:
             row_count=len(rows),
             gross_totals=totals,
             complete=complete,
+            budget_bound=budget_bound,
             from_cache=answer.from_cache,
             queried_at=answer.queried_at,
             warnings=(
                 *working.warnings,
-                *completeness_warning(complete=complete),
+                *completeness_warning(complete=complete, budget_bound=budget_bound),
                 *currency_warning(totals),
                 *unverifiable_warning(rows),
             ),
