@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Final
 
 from ksef_mcp.config import KsefEnvironment
+from ksef_mcp.errors import KsefMcpError
 from ksef_mcp.ksef_port.types import (
     ContinuationPoint,
     ExportEncryption,
@@ -50,11 +51,11 @@ SETTLED_JOURNAL_LIMIT: Final[int] = 50
 STATE_FILE_MODE: Final[int] = 0o600
 
 
-class SyncStateUnreadable(RuntimeError):
+class SyncStateUnreadable(KsefMcpError):
     """The record on disk was written by something this build does not understand."""
 
 
-class ExportKeyDiscarded(RuntimeError):
+class ExportKeyDiscarded(KsefMcpError):
     """Asked for the key of an export that has already finished."""
 
 

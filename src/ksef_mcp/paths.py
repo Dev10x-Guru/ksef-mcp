@@ -31,6 +31,7 @@ from typing import Final, Self
 from platformdirs import user_cache_path, user_data_path
 
 from ksef_mcp.config import KsefEnvironment
+from ksef_mcp.errors import KsefMcpInputRejected
 from ksef_mcp.metadata import SERVER_NAME
 
 SUBJECT_DIRECTORY: Final[str] = "subjects"
@@ -48,7 +49,7 @@ COUNTRY_PREFIX: Final[str] = "PL"
 SEPARATORS: Final[str] = "-"
 
 
-class NipRejected(ValueError):
+class NipRejected(KsefMcpInputRejected):
     """A spelling that is not a NIP.
 
     The rejected value is never repeated in the message. A taxpayer identifier

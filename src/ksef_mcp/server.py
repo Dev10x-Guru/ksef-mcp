@@ -24,18 +24,13 @@ from ksef_mcp.audit import (
     Disclosure,
     token_basis,
 )
+from ksef_mcp.errors import KsefMcpError
 from ksef_mcp.ksef_port.errors import KsefPortError
 from ksef_mcp.ksef_port.types import InvoiceMetadata, Period
 from ksef_mcp.listing import DirectionListing, InvoiceLister, InvoiceListing
 from ksef_mcp.metadata import SERVER_NAME, VERSION
-from ksef_mcp.paths import Nip, NipRejected
-from ksef_mcp.pdf import (
-    GeneratorFailed,
-    InvoiceNotArchived,
-    InvoiceRenderer,
-    NodeUnavailable,
-    RenderedInvoice,
-)
+from ksef_mcp.paths import Nip
+from ksef_mcp.pdf import InvoiceRenderer, RenderedInvoice
 from ksef_mcp.period_cache import PeriodCache
 from ksef_mcp.review import DirectionReview, InvoiceReview, InvoiceReviewer, ReviewStore
 from ksef_mcp.statement import (
@@ -43,8 +38,6 @@ from ksef_mcp.statement import (
     AccountingPeriod,
     Statement,
     StatementComposer,
-    UnreadablePeriod,
-    WorkingDirectoryRefused,
     prepare_working_directory,
 )
 from ksef_mcp.sync_store import SyncStore
@@ -94,29 +87,24 @@ class SynchronisationResult(BaseModel):
     state_file: str
 
 
-class NotConfigured(RuntimeError):
+class NotConfigured(KsefMcpError):
     pass
 
 
 # Refusals whose text was written for the person reading it: each names
 # something the caller can act on — KSeF declining the call, a number not in the
 # archive, a directory the server will not write to, a missing Node, a month it
-# could not parse — and none carries the NIP, the token or a line of invoice XML
-# (D-011). Anything outside this tuple is a genuine crash and keeps the generic
-# message, because its text was never written with a reader in mind.
+# could not parse, a keyring collection that locked itself while the laptop
+# slept — and none carries the NIP, the token or a line of invoice XML (D-011).
 #
-# Listed rather than caught by a shared base class, and that is deliberate:
-# membership here is a claim about a message, not about where the exception was
-# raised, so it should cost a reviewer's glance to add one.
-REFUSALS: Final[tuple[type[Exception], ...]] = (
-    KsefPortError,
-    InvoiceNotArchived,
-    NodeUnavailable,
-    GeneratorFailed,
-    WorkingDirectoryRefused,
-    UnreadablePeriod,
-    NipRejected,
-)
+# Two roots rather than a hand-kept list of names. The list was the earlier
+# design and its argument was that membership should cost a reviewer's glance;
+# what it actually cost was three of five tools answering `Error executing tool`
+# with the explaining sentence already written and thrown away (GH-167). The
+# promise did not disappear — it moved to `KsefMcpError`, where the person
+# writing the exception makes it, instead of to a tuple in another module that
+# nobody was reminded to visit.
+REFUSALS: Final[tuple[type[Exception], ...]] = (KsefPortError, KsefMcpError)
 
 
 @contextmanager
@@ -134,6 +122,13 @@ def reported(operation: str) -> Iterator[None]:
     answering "Error executing tool" for an invoice that was simply not
     synchronised yet and for a working directory it had declined — both
     outcomes its own docstring promises to explain.
+
+    Enumerating those refusals one by one had the same failure a second time,
+    and on the commonest path of all: a keyring collection locks itself when the
+    machine suspends, four of the five tools read a token, and none of them
+    reached `LOCKED_MESSAGE` (GH-167). The tuple is now two roots, so an
+    exception written for a reader arrives without anyone remembering to list
+    it.
     """
     try:
         yield

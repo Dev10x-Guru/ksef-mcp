@@ -31,6 +31,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Final
 
+from ksef_mcp.errors import KsefMcpError
+
 LOCK_FILE: Final[str] = ".lock"
 
 # The lock file sits in a directory that already holds AES keys and KSeF
@@ -48,7 +50,7 @@ STAGING_SUFFIX: Final[str] = ".tmp"
 _reentry = threading.local()
 
 
-class WriteExclusivityUnavailable(RuntimeError):
+class WriteExclusivityUnavailable(KsefMcpError):
     """Another writer holds this subject's directory, and waiting is not the answer."""
 
 

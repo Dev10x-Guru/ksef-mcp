@@ -44,13 +44,14 @@ from typing import Final
 
 from ksef_mcp.archive import INVOICE_SUFFIX, InvoiceArchive
 from ksef_mcp.audit import XML_FORMAT, AuditEntry, Authorisation, Disclosure
+from ksef_mcp.errors import KsefMcpInputRejected
 from ksef_mcp.ksef_port.errors import KsefRequestRejected
 from ksef_mcp.ksef_port.types import KsefNumber
 
 PURGE_OPERATION: Final[str] = "purge_archive"
 
 
-class PurgeWindowInverted(ValueError):
+class PurgeWindowInverted(KsefMcpInputRejected):
     """The window ends before it begins, so it names no day at all.
 
     Refused at the boundary rather than silently deleting nothing: a command
