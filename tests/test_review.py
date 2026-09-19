@@ -385,6 +385,23 @@ def test_a_reported_answer_says_it_will_not_repeat_itself(question: Question) ->
     assert "nie powtórzy" in assessed(question, (arrived(IN_JULY),)).message
 
 
+def test_a_reported_invoice_from_an_incomplete_window_is_not_marked_as_shown(
+    question: Question,
+) -> None:
+    # Sedno #180: KSeF oddał tylko to, co się zmieściło. Zapis „pokazane" dla tej
+    # części pozwala oknu przesunąć się ponad resztą i faktura nie wróci nigdy.
+    assert assessed(question, (arrived(IN_JULY),), complete=False).marked is False
+
+
+def test_a_reported_answer_from_an_incomplete_window_says_it_will_repeat_itself(
+    question: Question,
+) -> None:
+    assert (
+        "kolejne wywołanie je powtórzy"
+        in assessed(question, (arrived(IN_JULY),), complete=False).message
+    )
+
+
 def test_a_delta_over_the_threshold_carries_no_rows(question: Question) -> None:
     assert assessed(question, many(LISTING_THRESHOLD + 1)).new_invoices == ()
 
@@ -450,6 +467,18 @@ def test_what_was_shown_survives_a_new_process(
     reviewer.run(nip=NIP, token=CREDENTIAL)
 
     assert store.load().reviewed == {IN_JULY}
+
+
+def test_an_incomplete_window_leaves_the_ledger_untouched(
+    reviewer: InvoiceReviewer, session: RecordingSession, store: ReviewStore
+) -> None:
+    # #180 od strony pliku: nic nie wchodzi do rejestru, dopóki okno nie jest
+    # kompletem — inaczej pominięte faktury nie mają jak wrócić.
+    session.page = page_of((arrived(IN_JULY),), has_more=True)
+
+    reviewer.run(nip=NIP, token=CREDENTIAL)
+
+    assert store.load().reviewed == frozenset()
 
 
 def test_the_ledger_records_when_the_invoice_reached_ksef(

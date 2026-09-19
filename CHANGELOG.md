@@ -10,6 +10,16 @@ udokumentowane.
 
 ## Bez wydania
 
+### Poprawione
+
+- Faktura, która nie zmieściła się w odpowiedzi KSeF, nie zniknie już na
+  zawsze z przeglądu. Przegląd pyta o okno dziewięćdziesięciu dni, a KSeF
+  oddaje naraz najwyżej dwieście pięćdziesiąt pozycji. Rejestr zapisywał
+  jako pokazane to, co się zmieściło, więc przy kolejnym wywołaniu okno
+  przesuwało się ponad resztą i te faktury nie wracały. Dopóki odpowiedź
+  nie jest kompletem, nic nie idzie do rejestru: przegląd powtórzy te
+  pozycje, zamiast po cichu je zgubić (GH-180).
+
 ## 0.3.4 — 2026-09-19
 
 
