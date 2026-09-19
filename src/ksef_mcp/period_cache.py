@@ -323,7 +323,7 @@ class PeriodCache:
             page=page,
             queried_at=self.clock(),
         )
-        if not is_cacheable(period) or page.has_more or page.truncated:
+        if not is_cacheable(period) or not page.complete:
             return entry
         path = self.path_for(period=period, direction=direction)
         document = _encode(entry, nip=self.nip, environment=self.environment)

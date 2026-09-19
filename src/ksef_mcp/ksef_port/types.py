@@ -233,6 +233,36 @@ class MetadataPage:
     page_offset: int = 0
     budget_bound: bool = False
 
+    @property
+    def complete(self) -> bool:
+        """Whether this page is the whole answer to the window it was asked for.
+
+        The rule used to be spelled out at every reader, so a fifth signal of
+        shortfall would have had to be added correctly in four places at once —
+        and a missed one reports a shortened window as the whole truth, silently.
+        It reads only this page's own fields, so it stays on the port's side of
+        ADR-102.
+        """
+        return not (self.has_more or self.truncated)
+
+    @property
+    def shortfall_note(self) -> str:
+        """The sentence a reader appends when the page is not the whole answer.
+
+        Ready to append rather than ready to print: an answer that is complete
+        must add nothing at all, and a note that carried its own leading space
+        only at the call site is the same duplication one layer down.
+        """
+        if self.complete:
+            return ""
+        # KSeF's own shortening, and it falls under the same rule as ours: the
+        # person has to hear about it, or the count beside it reads as the whole
+        # truth about the window.
+        return (
+            " KSeF ma dla tego okna więcej faktur, niż zmieściło się w jednej "
+            "odpowiedzi — to nie jest komplet."
+        )
+
 
 @dataclass(frozen=True)
 class ExportEncryption:

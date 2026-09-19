@@ -497,7 +497,7 @@ class InvoiceReviewer:
                     question=question,
                     invoices=answer.page.invoices,
                     reviewed=reviewed,
-                    complete=not (answer.page.has_more or answer.page.truncated),
+                    complete=answer.page.complete,
                     budget_bound=answer.page.budget_bound,
                     moment=moment,
                     queried_at=answer.queried_at,

@@ -194,18 +194,6 @@ class InvoiceListing:
     directions: tuple[DirectionListing, ...]
 
 
-def _incompleteness(page: MetadataPage) -> str:
-    if page.has_more or page.truncated:
-        # KSeF's own shortening, and it falls under the same rule as ours: the
-        # person has to hear about it, or the count below reads as the whole
-        # truth about the window.
-        return (
-            " KSeF ma dla tego okna więcej faktur, niż zmieściło się w jednej "
-            "odpowiedzi — to nie jest komplet."
-        )
-    return ""
-
-
 def summarise(
     *,
     question: Question,
@@ -217,7 +205,7 @@ def summarise(
     invoices = page.invoices
     count = len(invoices)
     totals = gross_totals(invoices)
-    complete = not (page.has_more or page.truncated)
+    complete = page.complete
     if count == 0:
         # A distinct answer, not an empty list: the question comes back with it,
         # because "nothing here" and "you asked about the wrong month" look
@@ -227,7 +215,7 @@ def summarise(
             outcome=ListingOutcome.EMPTY,
             message=(
                 f"Nie znalazłem żadnej faktury. Pytanie brzmiało — {question.restated}."
-                f"{_incompleteness(page)}"
+                f"{page.shortfall_note}"
             ),
             invoices=(),
             invoice_count=0,
@@ -244,7 +232,7 @@ def summarise(
                 f"Nie wypisuję pozycji: {invoices_phrase(count)} to więcej niż "
                 f"próg {LISTING_THRESHOLD}. Podsumowanie okresu — "
                 f"{invoices_phrase(count)}, brutto {describe_totals(totals)}. "
-                f"Pytanie brzmiało — {question.restated}.{_incompleteness(page)}"
+                f"Pytanie brzmiało — {question.restated}.{page.shortfall_note}"
             ),
             invoices=(),
             invoice_count=count,
@@ -259,7 +247,7 @@ def summarise(
         message=(
             f"{invoices_phrase(count)}, brutto {describe_totals(totals)}. "
             f"Wypisuję wszystkie — próg {LISTING_THRESHOLD} nie został "
-            f"przekroczony.{_incompleteness(page)}"
+            f"przekroczony.{page.shortfall_note}"
         ),
         invoices=invoices,
         invoice_count=count,

@@ -497,7 +497,7 @@ class StatementComposer:
             )
         rows = rows_for(invoices=answer.page.invoices, archive=self.archive)
         totals = gross_totals(answer.page.invoices)
-        complete = not (answer.page.has_more or answer.page.truncated)
+        complete = answer.page.complete
         budget_bound = answer.page.budget_bound
         path = write_statement(
             rows=rows,
