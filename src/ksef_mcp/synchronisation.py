@@ -88,6 +88,23 @@ POLL_ATTEMPTS: Final[int] = 3
 
 POLL_INTERVAL: Final[timedelta] = timedelta(seconds=10)
 
+# How long an export may stay in `running` before a pass stops believing in it,
+# takes the record off the queue and asks for the same window again.
+#
+# From observed behaviour rather than from taste (GH-190). In the production run
+# this came from, the exports that carried invoices were requested, built,
+# fetched and archived inside one evening, while two that carried none were
+# still `running` more than thirteen hours later — across four releases of this
+# connector. A day leaves a healthy export many times the room it has ever
+# needed, and it costs the rare subject types nothing at all: `OCCASIONAL_INTERVAL`
+# already asks them once a day, so the retry lands on a pass that was due anyway.
+#
+# Abandoning is one export request, exactly what the `FAILED` branch below
+# already spends. Nothing here polls harder than before — a shorter ceiling
+# would, and repeated requests are the pattern the Ministry answers with a
+# lengthening block (D-031 §5).
+ABANDONED_AFTER: Final[timedelta] = timedelta(hours=24)
+
 # Everything that can stop a ready package short of the archive: the port
 # refusing or failing to hand over a part, bytes that are not the package KSeF
 # described, a manifest that names no KSeF number, an unreadable index, and a
@@ -111,6 +128,7 @@ class SyncOutcome(StrEnum):
     NOT_ARCHIVED = "not_archived"
     STILL_RUNNING = "still_running"
     FAILED = "failed"
+    EMPTY_WINDOW = "empty_window"
     NOT_DUE = "not_due"
     BUDGET_SPENT = "budget_spent"
     INCONCLUSIVE = "inconclusive"
@@ -178,6 +196,35 @@ def rolled_back_to(export: PendingExport, *, stored: SubjectRoleState | None) ->
         else export.covering_from
     )
     return remembered if stored is None else min(remembered, stored.reached)
+
+
+def in_hours(span: timedelta) -> int:
+    """The ceiling spelled out for a reader, so the message cannot drift from it."""
+    return int(span.total_seconds() // 3600)
+
+
+def standing_at(state: SyncState, *, export: PendingExport) -> SubjectRoleState:
+    """Where the subject type this export belongs to stands, or a refusal.
+
+    The point does not move while an export waits, so this is also where the
+    export's own window began — which is why both endings that advance it read
+    the point from here rather than from anything the export carries.
+
+    A record carrying a queued export for a subject type that has no
+    continuation point says nothing about where that window started, and a
+    guessed start skips invoices no later run ever asks for again. Refusing by
+    name beats the `KeyError` this used to raise from the middle of a pass,
+    which said nothing about what was wrong.
+    """
+    stored = state.subject_roles.get(export.subject_role)
+    if stored is None:
+        raise ContinuationPointMissing(
+            f"Eksport {export.reference} czeka na typ podmiotu, dla którego "
+            f"zapis synchronizacji nie ma punktu kontynuacji. Punkt musi "
+            f"wynikać z zapisu, nie ze zgadywania — usuń wpis oczekującego "
+            f"eksportu, żeby ten typ podmiotu zaczął sekwencję od nowa."
+        )
+    return stored
 
 
 @dataclass(frozen=True)
@@ -421,13 +468,38 @@ class Synchroniser:
                 ),
             )
         if status.state is ExportState.RUNNING:
+            waiting = self.clock() - export.started_at
+            if waiting >= ABANDONED_AFTER:
+                # Past the ceiling the record stops being a promise and starts
+                # being a lock: the point cannot move until the package closes,
+                # and a package that has not closed in a day is one nothing
+                # here can distinguish from one that never will (GH-190). The
+                # same road GH-93 built for a package KSeF no longer serves —
+                # entry off the queue, point back before its window, one export
+                # spent asking again.
+                return self._abandon(
+                    state=state,
+                    export=export,
+                    reason=(
+                        f"KSeF buduje paczkę {export.reference} od "
+                        f"{export.started_at.isoformat()}, czyli dłużej niż "
+                        f"{in_hours(ABANDONED_AFTER)} h; przebieg uznaje eksport za porzucony."
+                    ),
+                )
+            # The moment it was asked for, not a bare „nadal buduje": that
+            # sentence read the same after one minute and after thirteen hours,
+            # so a stuck subject type looked healthy in the report and only the
+            # state file on disk said otherwise (GH-190).
             return state, SubjectRoleReport(
                 subject_role=export.subject_role,
                 outcome=SyncOutcome.STILL_RUNNING,
                 detail=(
-                    f"KSeF nadal buduje paczkę {export.reference}; dokończy ją kolejny przebieg."
+                    f"KSeF buduje paczkę {export.reference} od "
+                    f"{export.started_at.isoformat()}; dokończy ją kolejny przebieg."
                 ),
             )
+        if status.state is ExportState.EMPTY:
+            return self._settle_empty(state=state, export=export)
         if status.state is ExportState.FAILED:
             # The point never moved, so the same window is asked for again —
             # one export spent, nothing skipped.
@@ -450,6 +522,40 @@ class Synchroniser:
             status=status,
         )
 
+    def _settle_empty(
+        self,
+        *,
+        state: SyncState,
+        export: PendingExport,
+    ) -> tuple[SyncState, SubjectRoleReport]:
+        """KSeF closed this export and there was nothing in the window to build.
+
+        The point moves although KSeF named no continuation marker, which is the
+        one exception to the rule everywhere else in this module — and it is not
+        a guess. A closed export answers for the whole window it was given, so
+        the window's own end is where the subject type now stands.
+
+        That end is computed from the record rather than from `started_at`
+        alone: `Period.for_synchronisation` closes a window at
+        `min(now, since + MAX_QUERY_WINDOW)`, so a subject type that had fallen
+        far behind was handed a clipped window and moving it to the moment of
+        the request would skip everything between (D-031 §4).
+        """
+        stored = standing_at(state, export=export)
+        reached = min(export.started_at, stored.reached + MAX_QUERY_WINDOW)
+        return state.with_settled(export.emptied()).with_subject_role(
+            export.subject_role,
+            SubjectRoleState(reached=reached, attempted_at=stored.attempted_at),
+        ), SubjectRoleReport(
+            subject_role=export.subject_role,
+            outcome=SyncOutcome.EMPTY_WINDOW,
+            detail=(
+                f"KSeF zamknął eksport {export.reference} bez żadnej faktury; "
+                f"okno było puste, punkt kontynuacji przesunięty na {reached.isoformat()}."
+            ),
+            reached=reached,
+        )
+
     def _complete(
         self,
         *,
@@ -460,19 +566,7 @@ class Synchroniser:
         export: PendingExport,
         status: ExportStatus,
     ) -> tuple[SyncState, SubjectRoleReport]:
-        stored = state.subject_roles.get(export.subject_role)
-        if stored is None:
-            # A record carrying a queued export for a subject type that has no
-            # continuation point: nothing says where this window began, and a
-            # guessed start skips invoices no later run ever asks for again.
-            # Refusing by name beats the `KeyError` this used to raise from the
-            # middle of a pass, which said nothing about what was wrong.
-            raise ContinuationPointMissing(
-                f"Eksport {export.reference} czeka na typ podmiotu, dla którego "
-                f"zapis synchronizacji nie ma punktu kontynuacji. Punkt musi "
-                f"wynikać z zapisu, nie ze zgadywania — usuń wpis oczekującego "
-                f"eksportu, żeby ten typ podmiotu zaczął sekwencję od nowa."
-            )
+        stored = standing_at(state, export=export)
         moved = advance(
             stored.continuation_point(subject_role=export.subject_role),
             status=status,
@@ -646,7 +740,11 @@ class Synchroniser:
             status = session.check_export(handle=export.handle)
         except KsefRefused as refusal:
             # KSeF answered, and the answer was about this export: it is gone.
-            return self._abandon(state=state, export=export, refusal=refusal)
+            return self._abandon(
+                state=state,
+                export=export,
+                reason=self._expired(export=export, answer=str(refusal)),
+            )
         except KsefPortError:
             # Everything else the port can raise says nothing about whether the
             # export still exists — no answer at all, a rate limit, a session
@@ -657,7 +755,11 @@ class Synchroniser:
             # Ministry records and answers with a lengthening block.
             return state, self._stalled(export=export, failure=expiry, reached=reached)
         if status.state is not ExportState.READY or not status.parts:
-            return self._abandon(state=state, export=export, refusal=None)
+            return self._abandon(
+                state=state,
+                export=export,
+                reason=self._expired(export=export, answer="nie ma już jej części"),
+            )
         renewed = export.relinked(parts=status.parts)
         return self._archive(
             session=session,
@@ -671,29 +773,33 @@ class Synchroniser:
             renewed=True,
         )
 
+    def _expired(self, *, export: PendingExport, answer: str) -> str:
+        """What `_abandon` is told when the links died and KSeF confirmed the loss."""
+        return f"Odnośniki do paczki {export.reference} wygasły, a KSeF odpowiedział, że {answer}."
+
     def _abandon(
         self,
         *,
         state: SyncState,
         export: PendingExport,
-        refusal: KsefRefused | None,
+        reason: str,
     ) -> tuple[SyncState, SubjectRoleReport]:
-        """Take a lost export off the record and put the point back before it.
+        """Take an export nothing can finish off the record and put the point back.
 
         This is the only place the continuation point moves backwards, and it
-        moves only for an export KSeF itself no longer serves. Leaving the
-        record in place instead would hold the subject type against a door that
-        will not open again, with the point already past the window behind it —
-        the deadlock GH-93 was reported from.
+        moves for the two endings a later pass cannot mend: an export KSeF no
+        longer serves (GH-93), and one still unbuilt long past the ceiling
+        anybody would wait (GH-190). Leaving either record in place holds the
+        subject type against a door that will not open, with the point already
+        past the window behind it.
 
-        `refusal` is what KSeF said when asked, or `None` when it answered
-        without refusing and simply had no parts to offer. Either way the
-        message carries it, so the next operator reading the report knows which
-        of the two happened without going back to the registry.
+        `reason` is the sentence the caller has and this method does not — which
+        of those two happened, and what KSeF said if it was asked — so the
+        operator reading the report never has to go back to the registry to
+        find out.
         """
         stored = state.subject_roles.get(export.subject_role)
         returned = rolled_back_to(export, stored=stored)
-        answer = "nie ma już jej części" if refusal is None else str(refusal)
         return state.without_export(reference=export.reference).with_subject_role(
             export.subject_role,
             SubjectRoleState(
@@ -703,11 +809,7 @@ class Synchroniser:
         ), SubjectRoleReport(
             subject_role=export.subject_role,
             outcome=SyncOutcome.RECOVERED,
-            detail=(
-                f"Odnośniki do paczki {export.reference} wygasły, a KSeF "
-                f"odpowiedział, że {answer}; wpis zdjęty, punkt kontynuacji "
-                f"cofnięty na {returned.isoformat()}."
-            ),
+            detail=(f"{reason} Wpis zdjęty, punkt kontynuacji cofnięty na {returned.isoformat()}."),
             reached=returned,
         )
 

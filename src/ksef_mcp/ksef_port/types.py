@@ -304,9 +304,20 @@ class ExportPart:
 
 
 class ExportState(StrEnum):
+    """How far KSeF has got with one export, in the four shapes a pass can act on.
+
+    `EMPTY` is the fourth because the other three cannot say what it says. An
+    export KSeF has closed over a window holding no invoice has no package to
+    fetch, so it is not `READY`; nothing went wrong with it, so it is not
+    `FAILED`; and calling it `RUNNING` — which is what this connector did until
+    GH-190 — leaves the subject type waiting on a package that will never
+    arrive, for good.
+    """
+
     RUNNING = "running"
     READY = "ready"
     FAILED = "failed"
+    EMPTY = "empty"
 
 
 @dataclass(frozen=True)

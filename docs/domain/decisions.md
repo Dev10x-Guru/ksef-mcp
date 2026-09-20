@@ -1506,3 +1506,66 @@ Odwołania do `olegtyshcneko/ksef-mcp` w [D-030] dotyczą cudzego projektu.
   modelu językowego, a nie człowiek, który tę fakturę trzyma; oraz sam
   skrócony numer bez kanału diagnostycznego — odrzucone, bo odbiera
   wsparciu jedyny sposób, żeby powiedzieć, o którą fakturę chodziło.
+
+## D-039 — Eksport, który się nie kończy: dwa zakończenia zamiast czekania bez końca
+
+- **Status:** Aktywna
+- **Decyzja:** Eksport w stanie „buduję" ma odtąd dwa zakończenia, których
+  wcześniej nie miał. **Pierwsze:** eksport, który KSeF zamknął, a który nie
+  niesie ani jednej części, jest stanem końcowym `ExportState.EMPTY` —
+  okno było puste, nie ma czego pobierać, a punkt kontynuacji przechodzi
+  na **koniec okna, o które ten eksport prosił**. **Drugie:** eksport
+  w stanie `running` starszy niż `ABANDONED_AFTER` (dziś 24 h) jest
+  porzucany — wpis schodzi z kolejki, punkt wraca na początek okna, a to
+  samo okno jest pytane od nowa, tą samą ścieżką co paczka, której KSeF
+  już nie podaje [D-022, #93].
+- **Przyczyna:** gałąź `running` nie miała żadnego ograniczenia czasowego.
+  Punkt kontynuacji nie rusza, dopóki paczka się nie domknie [ADR-103 §3],
+  więc paczka, która nigdy się nie domyka, blokuje swój typ podmiotu na
+  stałe. Objaw był cichy: `still_running` to stan normalny, więc raport
+  wyglądał zdrowo. Zgłoszone z przebiegu produkcyjnego [#190], w którym dwa
+  typy podmiotu wisiały ponad trzynaście godzin z zerem faktur, podczas gdy
+  eksporty z fakturami z tej samej godziny zostały w tym czasie zbudowane,
+  pobrane i zarchiwizowane.
+- **Dlaczego oba zakończenia, a nie jedno:** odpowiadają na dwie różne
+  możliwości i żadnej z nich nie da się dziś wykluczyć bez dostępu
+  produkcyjnego. Jeśli KSeF domyka pusty eksport, pierwsze zakończenie
+  załatwia sprawę od razu i nie każe czekać doby na coś, co już się
+  skończyło. Jeśli nie domyka go nigdy — albo domyka w kształcie, którego
+  odwzorowanie statusu jeszcze nie zna — drugie zakończenie jest jedynym,
+  które w ogóle zadziała. Pułap wieku jest więc zabezpieczeniem, a nie
+  wariantem tego samego pomysłu.
+- **Dlaczego `completedDate`, a nie próg kodu statusu:** SDK `ksef2` nie ma
+  żadnego wyliczenia stanów eksportu — `ExportStatusInfo` niesie goły `int`
+  i opis. Jedynym polem, które wprost mówi, że KSeF skończył, jest
+  `InvoiceExportStatusResponse.completedDate`, i nasze odwzorowanie nie
+  czytało go w ogóle. Próg kodu (SDK stosuje `>= 200` dla partii) byłby
+  wnioskowaniem, a fałszywe uznanie żywego eksportu za skończony przeskakuje
+  faktury, o które nic już nie zapyta. Model SDK **dopuszcza** paczkę bez
+  części w stanie końcowym: `parts` to zwykła lista, a samo `package` bywa
+  puste — nic nie wiąże jednego z drugim.
+- **Dlaczego punkt idzie na koniec okna, a nie na moment zlecenia:**
+  `Period.for_synchronisation` zamyka okno na `min(now, since + MAX_QUERY_WINDOW)`
+  [D-031 §4]. Typ podmiotu dostatecznie zaległy dostaje okno przycięte, więc
+  przesunięcie punktu na moment zlecenia przeskoczyłoby wszystko pomiędzy.
+  To jedyne miejsce, w którym punkt rusza bez znacznika kontynuacji od KSeF,
+  i nie jest to zgadywanie: zamknięty eksport odpowiada za całe okno, jakie
+  dostał.
+- **Dlaczego 24 h:** z obserwacji, nie z gustu. Eksporty niosące faktury
+  domykały się w tym samym przebiegu, więc doba zostawia zdrowemu eksportowi
+  wielokrotny zapas. Pokrywa się też z dobowym odstępem, w jakim i tak pytane
+  są rzadkie typy podmiotu [D-031 §5], więc dla nich ponowienie trafia na
+  przebieg, który i tak był należny.
+- **Koszt wobec limitów:** porzucenie to jedno żądanie eksportu — dokładnie
+  tyle, ile kosztuje już dziś gałąź `FAILED`. Nic tu nie odpytuje gęściej niż
+  przedtem. Krótszy próg by odpytywał, a powtarzane żądania to wzorzec, na
+  który Ministerstwo odpowiada rosnącą blokadą [D-031 §5].
+- **Warianty odrzucone:** czekać dalej i opisać problem w dokumentacji —
+  odrzucone, bo blokada jest cicha i nikt nie zagląda do zapisu na dysku;
+  skracać próg do godziny — odrzucone, bo zdrowy eksport pustego okna
+  mógłby się nie zmieścić, a cena pomyłki to dodatkowe żądania w stronę,
+  którą Ministerstwo obserwuje.
+- **Czego to nie rozstrzyga:** czy KSeF faktycznie ustawia `completedDate`
+  dla eksportu pustego okna. Odpowiedź wymaga jednego odczytu statusu dla
+  zawieszonej referencji produkcyjnej, a to wydatek z budżetu KSeF —
+  decyzja właściciela produktu, nie tego zapisu.

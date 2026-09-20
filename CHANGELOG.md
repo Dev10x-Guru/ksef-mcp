@@ -88,6 +88,21 @@ udokumentowane.
 
 ### Poprawione
 
+- Typ podmiotu, którego eksport KSeF zostawił w budowie, przestaje być
+  zablokowany na zawsze. Dotąd taki wpis nie miał żadnego ograniczenia
+  czasowego: punkt kontynuacji nie ruszał, dopóki paczka się nie
+  domknęła, więc paczka, która nigdy się nie domykała, zatrzymywała ten
+  typ podmiotu na stałe — a raport wyglądał zdrowo, bo „trwa" to przecież
+  stan normalny. Zmieniają się trzy rzeczy. Eksport zamknięty przez KSeF
+  bez ani jednej faktury jest odtąd rozpoznawany jako zakończony, a nie
+  jako wciąż budowany, i punkt kontynuacji przechodzi przez puste okno
+  zamiast o nie zawadzać. Eksport, który mimo to wisi dłużej niż dobę,
+  jest porzucany, a to samo okno pytane od nowa — jeden eksport, dokładnie
+  tyle, ile kosztuje odmowa KSeF. A dopóki eksport mieści się w tym progu,
+  odpowiedź mówi, od kiedy trwa, więc paczka budowana od trzynastu godzin
+  nie wygląda już tak samo jak poproszona przed chwilą (GH-190,
+  decyzja D-039).
+
 - Uszkodzony plik konfiguracyjny jest nazywany po imieniu, zamiast
   kończyć się śladem wyjątku. Przerwany zapis zostawia plik, który
   istnieje, więc nic nie uznaje serwera za nieskonfigurowany — a
