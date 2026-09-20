@@ -38,6 +38,10 @@ class FakeMetadata:
     gross_amount: float
     vat_amount: float
     currency: str
+    # Wartość SDK-owa, nie drutowa: `ksef2` tłumaczy `Kor` na `kor`, zanim
+    # rekord dotrze do adaptera, więc atrapa mówiąca `Kor` sprawdzałaby napis,
+    # którego port nigdy nie zobaczy.
+    invoice_type: str = "vat"
 
 
 @dataclass
@@ -121,7 +125,10 @@ class FakeExportStatusResponse:
 
 
 def sdk_metadata(
-    ordinal: int = 1, *, seller_name: str | None = "Dostawca sp. z o.o."
+    ordinal: int = 1,
+    *,
+    seller_name: str | None = "Dostawca sp. z o.o.",
+    invoice_type: str = "vat",
 ) -> FakeMetadata:
     return FakeMetadata(
         ksef_number=f"1234567890-20260901-0100AB12CD{ordinal:02d}-56",
@@ -133,6 +140,7 @@ def sdk_metadata(
         gross_amount=1230.0,
         vat_amount=230.0,
         currency="PLN",
+        invoice_type=invoice_type,
     )
 
 

@@ -29,6 +29,7 @@ from ksef_mcp.ksef_port.types import (
     PAGE_SIZE,
     Credential,
     DateType,
+    DocumentType,
     ExportEncryption,
     ExportHandle,
     ExportPart,
@@ -158,6 +159,20 @@ def as_filters(*, period: Period, subject_role: SubjectRole) -> InvoicesFilter:
     )
 
 
+def as_document_type(value: object) -> DocumentType:
+    """The SDK's invoice type, or `UNKNOWN` when it is one we have not met.
+
+    Lenient on purpose. The type is read so a statement can warn about
+    corrections, and a month that raises `ValueError` because the Ministry
+    added a thirteenth type would trade a missing warning for a missing
+    statement.
+    """
+    try:
+        return DocumentType(value)
+    except ValueError:
+        return DocumentType.UNKNOWN
+
+
 def as_metadata(record: object) -> InvoiceMetadata:
     # Metadata only. Invoice XML carries the counterparty's personal data and
     # never passes through this translation (D-011).
@@ -172,6 +187,7 @@ def as_metadata(record: object) -> InvoiceMetadata:
         net_amount=as_amount(record.net_amount),
         vat_amount=as_amount(record.vat_amount),
         currency=record.currency,
+        document_type=as_document_type(record.invoice_type),
     )
 
 

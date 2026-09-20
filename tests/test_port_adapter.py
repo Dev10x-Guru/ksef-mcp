@@ -31,6 +31,7 @@ from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.diagnostics import correlated
 from ksef_mcp.ksef_port import (
     DateType,
+    DocumentType,
     ExportPart,
     ExportState,
     KsefAuthenticationFailed,
@@ -315,6 +316,32 @@ def test_amounts_arrive_as_decimals_so_a_comparison_cannot_invent_a_grosz(
         Decimal("1000.0"),
         Decimal("230.0"),
     )
+
+
+@pytest.mark.parametrize(
+    ("answered", "expected"),
+    [
+        # Wartość jest SDK-owa: `ksef2` tłumaczy `Kor` na `kor`, zanim rekord tu
+        # dotrze (`infra.mappers.invoices.responses._map_invoice_type`).
+        ("kor", DocumentType.KOR),
+        ("vat", DocumentType.VAT),
+        # Tabela rodzajów rosła i urośnie. Miesiąc, który przewraca się na
+        # trzynastym rodzaju, zamienia brak ostrzeżenia na brak zestawienia.
+        ("kor_czegos_nowego", DocumentType.UNKNOWN),
+    ],
+)
+def test_the_document_type_arrives_so_a_correction_can_be_told_apart(
+    monkeypatch: pytest.MonkeyPatch,
+    port: Ksef2Port,
+    answered: str,
+    expected: DocumentType,
+) -> None:
+    Plan(page=[sdk_metadata(1, invoice_type=answered)]).install(monkeypatch)
+
+    with port.session(nip=NIP, token=TOKEN) as opened:
+        page = opened.query_metadata(period=WINDOW, subject_role=SubjectRole.BUYER)
+
+    assert page.invoices[0].document_type is expected
 
 
 def test_a_page_carries_the_high_water_mark_the_next_window_starts_from(
