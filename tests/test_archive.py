@@ -36,6 +36,7 @@ from ksef_mcp.archive import (
     identities,
 )
 from ksef_mcp.config import KsefEnvironment
+from ksef_mcp.diagnostics import short_reference
 from ksef_mcp.metadata import SERVER_NAME
 from ksef_mcp.package import ExportPackage, PackageDocument
 from ksef_mcp.storage import WriteExclusivityUnavailable, exclusive_write
@@ -109,6 +110,20 @@ def a_package_naming_files(*ordinals: int) -> ExportPackage:
         ),
         metadata=a_manifest(*(an_entry(ordinal) for ordinal in ordinals)),
     )
+
+
+def assert_named_by_handle_only(message: str, *, ordinals: tuple[int, ...]) -> None:
+    """D-038: the client sees the handle, and the number stays in the journal.
+
+    Asserted on the message text rather than on a mocked logger, because the
+    promise is about what leaves the process towards the model — a refusal that
+    also happened to log correctly but quoted the number would still break it.
+    """
+    for ordinal in ordinals:
+        number = str(synthetic_number(ordinal))
+        assert number not in message
+        assert number.split("-")[0] not in message
+        assert short_reference(number) in message
 
 
 def archived_path(archive: InvoiceArchive, ordinal: int) -> Path:
@@ -581,6 +596,70 @@ def test_an_invoice_the_manifest_never_names_is_refused_rather_than_dropped(
 
     with pytest.raises(ArchiveMetadataUnusable, match="does not name"):
         archive.store(package=surplus)
+
+
+def test_an_entry_without_a_locator_is_named_by_its_handle_only() -> None:
+    with pytest.raises(ArchiveMetadataUnusable) as refused:
+        identities(a_manifest({"ksefNumber": str(synthetic_number(1))}))
+
+    assert_named_by_handle_only(str(refused.value), ordinals=(1,))
+
+
+def test_a_digest_the_package_does_not_carry_is_named_by_its_handle_only(
+    archive: InvoiceArchive,
+) -> None:
+    astray = ExportPackage(
+        reference="EXP-1",
+        documents=(PackageDocument(name="faktura-1.xml", content=a_body(1)),),
+        metadata=a_manifest(as_ksef_sends_it(2)),
+    )
+
+    with pytest.raises(ArchiveMetadataUnusable) as refused:
+        archive.store(package=astray)
+
+    assert_named_by_handle_only(str(refused.value), ordinals=(2,))
+
+
+def test_a_file_name_the_package_lacks_is_named_by_its_handle_only(
+    archive: InvoiceArchive,
+) -> None:
+    incomplete = ExportPackage(reference="EXP-1", documents=(), metadata=a_manifest(an_entry(1)))
+
+    with pytest.raises(ArchiveMetadataUnusable) as refused:
+        archive.store(package=incomplete)
+
+    assert_named_by_handle_only(str(refused.value), ordinals=(1,))
+
+
+def test_two_numbers_claiming_one_document_are_both_named_by_handle_only(
+    archive: InvoiceArchive,
+) -> None:
+    contested = ExportPackage(
+        reference="EXP-1",
+        documents=(PackageDocument(name="faktura-1.xml", content=a_body(1)),),
+        metadata=a_manifest(
+            {"ksefNumber": str(synthetic_number(1)), "fileName": "faktura-1.xml"},
+            {"ksefNumber": str(synthetic_number(2)), "fileName": "faktura-1.xml"},
+        ),
+    )
+
+    with pytest.raises(ArchiveMetadataUnusable) as refused:
+        archive.store(package=contested)
+
+    assert_named_by_handle_only(str(refused.value), ordinals=(1, 2))
+
+
+def test_an_index_offered_one_invoice_twice_names_it_by_handle_only() -> None:
+    twice = IndexEntry(
+        ksef_number=str(synthetic_number(1)),
+        content_hash=digest_of(a_body(1)),
+        archived_at=ARCHIVED_AT,
+    )
+
+    with pytest.raises(IndexEntryAlreadyHeld) as refused:
+        DeduplicationIndex(entries=()).extended([twice, twice])
+
+    assert_named_by_handle_only(str(refused.value), ordinals=(1,))
 
 
 def test_the_archivist_keeps_the_report_the_retriever_throws_away(

@@ -39,6 +39,16 @@ udokumentowane.
 
 ### Bezpieczeństwo
 
+- Komunikat odmowy przy archiwizacji paczki nie pokazuje już pełnego
+  numeru KSeF. Numer zaczyna się od NIP-u podmiotu, dla którego fakturę
+  wystawiono, więc dla faktur zakupowych był to NIP kontrahenta trafiający
+  do kontekstu modelu językowego przy każdym wadliwym manifeście.
+  Odmowa nazywa fakturę krótkim uchwytem `ksef:…`, który wystarczy, żeby
+  odróżnić wpisy i rozpoznać ten sam wpis w kolejnym przebiegu. Pełny
+  numer zostaje po stronie podatnika — w dzienniku technicznym, którego
+  agent nie czyta. Dotyczy wszystkich odmów archiwizacji i synchronizacji
+  cytujących numer, nie tylko tej jednej (GH-91, decyzja D-038).
+
 - Wydruk faktury do PDF-a ostrzega o katalogu synchronizowanym z chmurą
   dokładnie tak, jak robi to zestawienie CSV. PDF faktury nazywa
   kontrahenta z imienia, nazwiska i adresu tak samo jak zestawienie, a

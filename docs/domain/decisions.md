@@ -1462,3 +1462,47 @@ Odwołania do `olegtyshcneko/ksef-mcp` w [D-030] dotyczą cudzego projektu.
   nazwa zostaje, odróżnienie idzie do dokumentacji [D-035].
 - „Przejrzana" w #43 = zwrócona agentowi, nie zobaczona przez człowieka.
   Nadal otwarte.
+
+## D-038 — Numer KSeF w odmowie: skrócony do klienta, pełny do dziennika
+
+- **Status:** Aktywna
+- **Decyzja:** Komunikat odmowy, który trafia do klienta MCP, **nie niesie
+  pełnego numeru KSeF**. Niesie nieprzezroczysty uchwyt, który wylicza
+  `diagnostics.short_reference` — dwanaście znaków skrótu SHA-256 z
+  przedrostkiem `ksef:`. Pełny numer trafia **wyłącznie do dziennika
+  technicznego**, który idzie na stderr i do pliku, o który operator
+  poprosił jawnie; nie idzie ani do odpowiedzi narzędzia, ani do kontekstu
+  modelu.
+- **Uzasadnienie:** numer KSeF zaczyna się od NIP-u podmiotu, dla którego
+  fakturę wystawiono. Dla kierunku „nabywca" i „podmiot upoważniony" jest
+  to NIP kontrahenta, nie odpytującego. Odmowa musi jednak dać się na coś
+  przełożyć — bez wskazania wpisu manifestu nie da się jej obsłużyć wcale.
+  Rozcięcie na dwa kanały spełnia oba wymagania naraz, zamiast poświęcać
+  jedno dla drugiego.
+- **Dlaczego skrót, a nie wycinek numeru:** każdy wycinek dość długi, by
+  odróżnić wpisy manifestu, albo zaczyna się od NIP-u, albo kończy na
+  dwuznakowej sumie kontrolnej, która nie odróżnia niczego. Skrót
+  odróżnia wpisy i jest stabilny między przebiegami, a nie da się z niego
+  odtworzyć podmiotu.
+- **Zakres:** obejmuje **wszystkie** odmowy archiwizacji i synchronizacji
+  cytujące numer KSeF, nie tylko `ArchiveMetadataUnusable`, dla której
+  pytanie postawiono [#91]. Zamknięta lista wyjątków byłaby tym samym
+  wzorcem, który zawiódł przy `REFUSALS` [#167]: obowiązek pamiętania o
+  dopisaniu się do listy.
+- **Poza zakresem, świadomie:** odpowiedź narzędzia o **udanej**
+  synchronizacji nadal wymienia numery KSeF zarchiwizowanych faktur, a
+  ślad audytowy nadal je zapisuje [D-011]. To jest kanał dostarczania
+  danych, po które podatnik sięgnął, a nie komunikat odmowy — odebranie
+  mu numerów odebrałoby narzędziu jego zadanie. Poza zakresem jest też
+  numer, który **sam wywołujący podał w argumencie** (`render_invoice_pdf`,
+  `render_invoice`): powtórzenie go w odmowie nie ujawnia niczego, czego
+  wywołujący by już nie miał.
+- **Skutek dla dziennika:** ta decyzja rozstrzyga zarazem, co wolno
+  zapisać do dziennika technicznego [#116], i dlatego poprzedza jego
+  wprowadzenie. Dziennik wolno karmić pełnym numerem KSeF; nie wolno go
+  karmić treścią faktury ani tokenem.
+- **Warianty odrzucone:** zostawić pełny numer w komunikacie („odbiorca i
+  tak tę fakturę dostał") — odrzucone, bo odbiorcą komunikatu jest agent
+  modelu językowego, a nie człowiek, który tę fakturę trzyma; oraz sam
+  skrócony numer bez kanału diagnostycznego — odrzucone, bo odbiera
+  wsparciu jedyny sposób, żeby powiedzieć, o którą fakturę chodziło.
