@@ -27,7 +27,6 @@ from ksef2.domain.models.limits import (
     SessionLimits,
 )
 
-from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.diagnostics import correlated
 from ksef_mcp.ksef_port import (
     DateType,
@@ -35,6 +34,7 @@ from ksef_mcp.ksef_port import (
     ExportPart,
     ExportState,
     KsefAuthenticationFailed,
+    KsefEnvironment,
     KsefRateLimited,
     KsefRefused,
     KsefRequestRejected,

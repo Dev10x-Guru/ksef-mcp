@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from ksef_mcp import pdf, storage
-from ksef_mcp.config import KsefEnvironment
+from ksef_mcp.ksef_port.types import KsefEnvironment
 from ksef_mcp.preflight import NodeReport
 from tests.support.synthetic import BUYER_NAME, SELLER_NIP, synthetic_fa3_invoice
 

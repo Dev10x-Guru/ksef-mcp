@@ -24,10 +24,10 @@ import pytest
 
 from ksef_mcp.allowance import Allowance
 from ksef_mcp.archive import InvoiceArchive, digest_of
-from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port import (
     DateType,
     DocumentType,
+    KsefEnvironment,
     KsefLimits,
     MetadataPage,
     OperationLimit,

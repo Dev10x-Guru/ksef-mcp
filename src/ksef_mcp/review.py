@@ -50,7 +50,6 @@ from pathlib import Path
 from typing import Final
 
 from ksef_mcp.allowance import Allowance
-from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.errors import KsefMcpError
 from ksef_mcp.ksef_port.protocol import KsefPort
 from ksef_mcp.ksef_port.types import (
@@ -58,6 +57,7 @@ from ksef_mcp.ksef_port.types import (
     Credential,
     DateType,
     InvoiceMetadata,
+    KsefEnvironment,
     Period,
 )
 from ksef_mcp.listing import (

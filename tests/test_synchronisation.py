@@ -20,7 +20,6 @@ import pytest
 
 from ksef_mcp.allowance import LEDGER_FILE
 from ksef_mcp.archive import INDEX_FILE, InvoiceArchive
-from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port import (
     ContinuationPoint,
     ExportEncryption,
@@ -29,6 +28,7 @@ from ksef_mcp.ksef_port import (
     ExportState,
     ExportStatus,
     KsefAuthenticationFailed,
+    KsefEnvironment,
     KsefLimits,
     KsefNumber,
     KsefRateLimited,

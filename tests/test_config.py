@@ -5,7 +5,8 @@ from pathlib import Path
 import pytest
 
 from ksef_mcp import config
-from ksef_mcp.config import Configuration, KsefEnvironment
+from ksef_mcp.config import Configuration
+from ksef_mcp.ksef_port.types import KsefEnvironment
 
 
 @pytest.fixture

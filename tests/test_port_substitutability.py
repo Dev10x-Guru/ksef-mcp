@@ -17,7 +17,6 @@ import httpx
 import pytest
 
 import ksef_mcp
-from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port import (
     Credential,
     ExportEncryption,
@@ -26,6 +25,7 @@ from ksef_mcp.ksef_port import (
     ExportState,
     ExportStatus,
     InvoiceMetadata,
+    KsefEnvironment,
     KsefLimits,
     KsefNumber,
     KsefPort,
@@ -48,6 +48,13 @@ from tests.test_port_adapter import NIP, TOKEN, Plan
 PORT_PACKAGE = Path(ksef_mcp.__file__).parent / "ksef_port"
 
 ALLOWED_TO_SEE_THE_SDK = "adapter.py"
+
+# The only two modules above the port it may read. `errors` holds the project's
+# exception root and `diagnostics` the logger; neither opens a file, asks the
+# operating system anything, or knows what this installation was configured to
+# be. Anything else read from above is the edge GH-122 cut: the port stops
+# being extractable and stops being testable on its own.
+ALLOWED_ABOVE_THE_PORT = frozenset({"ksef_mcp.errors", "ksef_mcp.diagnostics"})
 
 
 @dataclass
@@ -266,3 +273,17 @@ def test_only_the_adapter_is_allowed_to_see_the_sdk(module: str) -> None:
     imported = imported_modules(PORT_PACKAGE / module)
 
     assert not any(name.split(".")[0] == "ksef2" for name in imported)
+
+
+@pytest.mark.parametrize(
+    "module",
+    sorted(path.name for path in (Path(ksef_mcp.__file__).parent / "ksef_port").glob("*.py")),
+)
+def test_the_port_reads_nothing_from_the_layer_above_it(module: str) -> None:
+    reached_upwards = {
+        name
+        for name in imported_modules(PORT_PACKAGE / module)
+        if name.startswith("ksef_mcp.") and not name.startswith("ksef_mcp.ksef_port")
+    }
+
+    assert reached_upwards <= ALLOWED_ABOVE_THE_PORT

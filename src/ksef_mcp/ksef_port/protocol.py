@@ -1,12 +1,12 @@
 from contextlib import AbstractContextManager
 from typing import Protocol, runtime_checkable
 
-from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port.types import (
     Credential,
     ExportHandle,
     ExportPart,
     ExportStatus,
+    KsefEnvironment,
     KsefLimits,
     KsefNumber,
     MetadataPage,

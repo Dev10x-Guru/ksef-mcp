@@ -18,9 +18,9 @@ other caller-supplied string that becomes a path segment.
 
 Normalisation happens where a spelling enters the process — the CLI, and the
 server assembling one subject's dependencies — rather than inside
-`load_configuration`. `config` is a leaf that every other module reads, and
-teaching it about subject identity would point it back at this module, which
-reads `KsefEnvironment` from it.
+`load_configuration`. `config` reads a file and answers what this installation
+was told to be; subject identity is a domain question, and an answer that has
+to be read off disk before it can be checked is the wrong shape for one.
 """
 
 import re
@@ -30,8 +30,8 @@ from typing import Final, Self
 
 from platformdirs import user_cache_path, user_data_path
 
-from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.errors import KsefMcpInputRejected
+from ksef_mcp.ksef_port.types import KsefEnvironment
 from ksef_mcp.metadata import SERVER_NAME
 
 SUBJECT_DIRECTORY: Final[str] = "subjects"

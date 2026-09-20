@@ -16,7 +16,6 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Final, Self
 
-from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.errors import KsefMcpError
 from ksef_mcp.ksef_port.types import (
     ContinuationPoint,
@@ -25,6 +24,7 @@ from ksef_mcp.ksef_port.types import (
     ExportPart,
     ExportState,
     ExportStatus,
+    KsefEnvironment,
     SubjectRole,
 )
 from ksef_mcp.paths import SubjectScope

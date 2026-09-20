@@ -16,7 +16,6 @@ from ksef2.core.exceptions import (
 from ksef2.domain.models.invoices import InvoicesFilter
 from ksef2.domain.models.pagination import InvoiceMetadataParams
 
-from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.diagnostics import technical_log
 from ksef_mcp.ksef_port.errors import (
     KsefAuthenticationFailed,
@@ -36,6 +35,7 @@ from ksef_mcp.ksef_port.types import (
     ExportState,
     ExportStatus,
     InvoiceMetadata,
+    KsefEnvironment,
     KsefLimits,
     KsefNumber,
     MetadataPage,

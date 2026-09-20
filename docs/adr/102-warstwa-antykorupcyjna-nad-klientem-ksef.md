@@ -68,7 +68,7 @@ albo cichego rozjazdu między słownikiem a kodem.
 | `MetadaneFaktury` | `InvoiceMetadata` |
 | `KierunekFaktur` | `InvoiceDirection`, `WIRE_SUBJECT_TYPES` |
 | `KontekstPodmiotu` | `SubjectScope`, `Nip` (w `paths.py`) |
-| `Środowisko` | `KsefEnvironment` (istniejący, w `config.py`) |
+| `Środowisko` | `KsefEnvironment` (w `types.py`) |
 | `Poświadczenie` | `Credential` (protokół, w `types.py`) |
 
 Wiersz `KontekstPodmiotu` wskazywał wcześniej `SubjectContext` w
@@ -78,10 +78,15 @@ goły `nip: str`, powielona w sześciu magazynach (GH-111, GH-113). Pojęcie
 mieszka teraz w `paths.py` i jest używane, a martwy typ został usunięty.
 
 Do `paths.py`, a nie do portu, bo kontekst podmiotu odpowiada na pytanie
-*gdzie na dysku*, którego port z założenia nie zadaje. Kierunek importu
-też na to nie pozwala: `paths` czyta `KsefEnvironment` z `config`, a
-`config` jest liściem, po który sięga cała reszta — odwrócenie tej
-zależności zamknęłoby cykl przez `ksef_port/__init__.py`.
+*gdzie na dysku*, którego port z założenia nie zadaje.
+
+Wiersz `Środowisko` wskazywał wcześniej `config.py`. To był jedyny import,
+przez który port sięgał w górę: `protocol.py`, `connection.py` i
+`adapter.py` czytały `KsefEnvironment` z modułu, który otwiera pliki i wie
+o instalacji użytkownika, więc dna warstwy nie dało się ani wydzielić, ani
+uruchomić samodzielnie (GH-122). Typ mieszka teraz w `types.py`, a `config`
+czyta go stamtąd — kierunek jest odwrócony i port nie importuje już nic
+spoza `ksef_mcp.errors` i `ksef_mcp.diagnostics`.
 
 Wiersz `Poświadczenie` jest nowy i pilnuje granicy, której ten ADR strzeże
 od początku: token przyjeżdża jako argument, a keyring zostaje powyżej

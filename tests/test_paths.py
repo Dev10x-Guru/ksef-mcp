@@ -14,7 +14,7 @@ import pytest
 from platformdirs import user_cache_path, user_data_path
 
 from ksef_mcp import paths
-from ksef_mcp.config import KsefEnvironment
+from ksef_mcp.ksef_port.types import KsefEnvironment
 from ksef_mcp.metadata import SERVER_NAME
 from ksef_mcp.paths import Nip, NipRejected, SubjectScope
 

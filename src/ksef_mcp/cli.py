@@ -13,8 +13,9 @@ from ksef_mcp import client, config, messages, preflight, skill, token_store
 from ksef_mcp.allowance import Allowance
 from ksef_mcp.archive import InvoiceArchive
 from ksef_mcp.audit import AuditTrail, Authorisation, AuthorisationBasis
-from ksef_mcp.config import Configuration, KsefEnvironment
+from ksef_mcp.config import Configuration
 from ksef_mcp.diagnostics import technical_log
+from ksef_mcp.ksef_port.types import KsefEnvironment
 from ksef_mcp.metadata import SERVER_NAME, VERSION
 from ksef_mcp.paths import Nip, NipRejected, SubjectScope
 from ksef_mcp.period_cache import MeteredPeriods, PeriodCache

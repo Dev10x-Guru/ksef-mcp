@@ -28,12 +28,12 @@ from ksef_mcp.allowance import (
     LimitsCache,
     RefusalRun,
 )
-from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port import (
     NO_AUTOMATIC_RETRY,
     ExportHandle,
     ExportPart,
     ExportStatus,
+    KsefEnvironment,
     KsefLimits,
     KsefNumber,
     KsefRequestRejected,
