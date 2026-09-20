@@ -20,12 +20,14 @@ from ksef_mcp import (
 from ksef_mcp.archive import InvoiceArchive
 from ksef_mcp.audit import AuditTrail, AuthorisationBasis, Disclosure
 from ksef_mcp.config import Configuration
+from ksef_mcp.ksef_port import adapter as port_adapter
 from ksef_mcp.ksef_port.types import KsefEnvironment
 from ksef_mcp.metadata import SERVER_NAME
 from tests.conftest import raiser
-from tests.support.synthetic import synthetic_metadata
+from tests.support.synthetic import BUYER_NAME, synthetic_metadata
 from tests.test_retention import a_number as a_ksef_number
 from tests.test_retention import a_package as retention_package
+from tests.test_statement import RecordingPort, RecordingSession, page_of
 
 NIP = "1234567890"
 
@@ -576,6 +578,101 @@ def test_accepting_the_check_runs_verify(
     recorder = onboarding_with(["n", "n", "t"])
 
     assert "Gdy zechcesz to potwierdzić" not in recorder.transcript
+
+
+# The crossing GH-76 asked for, and the one neither side tested (GH-177).
+# `test_accepting_the_check_runs_verify` above substitutes `run_verify` itself,
+# so it proves the offer is taken and nothing about what verify then reads; the
+# `test_verify_*` tests below start from a configuration a fixture wrote by
+# hand. Between the two sits the seam that matters: a path, an environment or a
+# NIP written by onboarding in a spelling verify does not read back would look
+# exactly like a working pair on both sides.
+
+
+@pytest.fixture
+def token_kept_in_memory(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
+    """A keyring that keeps what it was handed, so verify can read it back.
+
+    `accepting_token_store` records the write and answers nothing, and
+    `stored_token` answers a token nobody wrote. Neither lets one command read
+    what the other stored, which is half of what this crossing is about.
+    """
+    kept: dict[str, str] = {}
+
+    def store(*, nip: str, token: str) -> token_store.TokenFingerprint:
+        kept[nip] = token
+        return token_store.fingerprint(token)
+
+    def read(*, nip: str) -> token_store.StoredToken | None:
+        held = kept.get(nip)
+        if held is None:
+            return None
+        return token_store.StoredToken(value=held, source=token_store.TokenSource.KEYRING)
+
+    monkeypatch.setattr(token_store, "store_token", store)
+    monkeypatch.setattr(token_store, "read_token", read)
+    return kept
+
+
+@pytest.fixture
+def onboarded_and_then_verified(
+    monkeypatch: pytest.MonkeyPatch,
+    healthy_node: None,
+    usable_keyring: keyring_preflight.KeyringReport,
+    token_kept_in_memory: dict[str, str],
+    configuration_file: Path,
+    invoice_directory: Path,
+) -> tuple[int, Recorder, RecordingSession]:
+    """Onboarding to the end, then `verify` on the same disk, in one run.
+
+    Only the port stands in. `run_verify`, `load_configuration`,
+    `check_connection`, the period cache and the allowance are all the real
+    ones, so the configuration under test is the file onboarding just wrote.
+    """
+    session = RecordingSession(page=page_of(1))
+    monkeypatch.setattr(
+        port_adapter,
+        "Ksef2Port",
+        lambda *, environment: RecordingPort(session_object=session, environment=environment),
+    )
+    recorder = Recorder(
+        answers=[NIP, "", "", str(invoice_directory), "n", "n", "t"],
+        secrets=[TOKEN],
+    )
+    code = cli.main(
+        ["onboarding"],
+        console=recorder.console,
+        working_directory=configuration_file.parent,
+        configuration_file=configuration_file,
+        home=configuration_file.parent,
+    )
+    return code, recorder, session
+
+
+def test_verify_reads_back_the_configuration_onboarding_just_wrote(
+    onboarded_and_then_verified: tuple[int, Recorder, RecordingSession],
+) -> None:
+    code, recorder, _ = onboarded_and_then_verified
+
+    assert (code, f"Odpytuję KSeF (test) jako {NIP}" in recorder.transcript) == (cli.EXIT_OK, True)
+
+
+def test_verify_reaches_ksef_through_the_configuration_it_read(
+    onboarded_and_then_verified: tuple[int, Recorder, RecordingSession],
+) -> None:
+    # The question actually left for KSeF, and as the buyer: a configuration
+    # read wrongly would have stopped the command before any query was asked.
+    _, _, session = onboarded_and_then_verified
+
+    assert session.asked == [ksef_port.SubjectRole.BUYER]
+
+
+def test_verify_greets_the_subject_the_onboarded_token_belongs_to(
+    onboarded_and_then_verified: tuple[int, Recorder, RecordingSession],
+) -> None:
+    _, recorder, _ = onboarded_and_then_verified
+
+    assert f"jesteś połączony jako {BUYER_NAME}" in recorder.transcript
 
 
 def test_onboarding_succeeds(completed_onboarding: tuple[int, Recorder]) -> None:
