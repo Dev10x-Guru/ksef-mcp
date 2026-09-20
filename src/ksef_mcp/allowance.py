@@ -21,9 +21,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Final
+from typing import Final, Self
 
 from ksef_mcp.config import KsefEnvironment
+from ksef_mcp.diagnostics import technical_log
 from ksef_mcp.ksef_port.budget import HOUR, QueryBudget
 from ksef_mcp.ksef_port.errors import KsefRequestRejected
 from ksef_mcp.ksef_port.guard import GuardedSession
@@ -265,6 +266,75 @@ class LimitsCache:
 
 
 @dataclass(frozen=True)
+class CeilingNotice:
+    """How much one session may carry, and who said so (GH-118).
+
+    `SessionCeilings` and `degraded` were read from KSeF on every session and
+    reached nobody. `degraded` is precisely the signal whose absence cost the
+    GH-76 diagnosis: production answered about limits in a shape the SDK could
+    not parse, the conservative fallback took over silently, and the server
+    then counted against numbers KSeF had never granted.
+
+    `assumed` rather than `degraded`, because that is the sentence the reader
+    needs: a ceiling assumed is a different event from a ceiling granted, and
+    the answer says which of the two it is instead of leaving it to be inferred
+    from a flag's name.
+    """
+
+    max_invoice_megabytes: int
+    max_invoice_with_attachment_megabytes: int
+    max_invoices_per_session: int
+    assumed: bool
+
+    @classmethod
+    def read_from(cls, limits: KsefLimits) -> Self:
+        ceilings = limits.ceilings
+        return cls(
+            max_invoice_megabytes=ceilings.max_invoice_megabytes,
+            max_invoice_with_attachment_megabytes=(ceilings.max_invoice_with_attachment_megabytes),
+            max_invoices_per_session=ceilings.max_invoices_per_session,
+            assumed=limits.degraded,
+        )
+
+    @property
+    def sizes(self) -> str:
+        return (
+            f"{self.max_invoice_megabytes} MB na fakturę, "
+            f"{self.max_invoice_with_attachment_megabytes} MB z załącznikiem, "
+            f"{self.max_invoices_per_session} faktur na sesję"
+        )
+
+    @property
+    def message(self) -> str:
+        if self.assumed:
+            return (
+                f"Sufit sesji jest założony, nie przyznany: KSeF odpowiedział "
+                f"o limitach w kształcie, którego nie dało się odczytać, więc "
+                f"obowiązuje ostrożny zapas ({self.sizes}). To nie jest "
+                f"odpowiedź rejestru o tym podmiocie."
+            )
+        return f"Sufit sesji przyznany przez KSeF: {self.sizes}."
+
+
+@dataclass(frozen=True)
+class LimitsReading:
+    """One read of the limits, answering both questions asked of it.
+
+    Two separate reads would be the obvious spelling and the costly one: a
+    degraded answer is never remembered (`LimitsCache.remember`), so asking
+    twice reaches KSeF twice in exactly the situation where the registry is
+    already answering badly.
+    """
+
+    limits: KsefLimits
+    budget: QueryBudget
+
+    @property
+    def ceilings(self) -> CeilingNotice:
+        return CeilingNotice.read_from(self.limits)
+
+
+@dataclass(frozen=True)
 class RefusalRun:
     """How many times in a row KSeF has said no, and until when to stop asking."""
 
@@ -438,6 +508,23 @@ class Allowance:
         cache.remember(limits)
         return limits
 
+    def reading(self, *, session: KsefSession) -> LimitsReading:
+        """The counter and the ceilings, from the one read that paid for both."""
+        limits = self.read_limits(session=session)
+        notice = CeilingNotice.read_from(limits)
+        # Recorded whichever way it came out: knowing the pass ran against a
+        # granted ceiling is as much a part of reconstructing it as knowing it
+        # ran against an assumed one (GH-116, GH-118).
+        technical_log().info("Session ceilings assumed=%s (%s).", notice.assumed, notice.sizes)
+        return LimitsReading(
+            limits=limits,
+            budget=QueryBudget(
+                limits=limits.rates,
+                clock=self.clock,
+                journal=self.ledger,
+            ),
+        )
+
     def budget(self, *, session: KsefSession) -> QueryBudget:
         """The one way a tool obtains a counter, so no tool obtains one that forgets.
 
@@ -446,8 +533,4 @@ class Allowance:
         fixed here rather than at the four call sites, because a fifth caller is
         exactly how the first four drifted apart.
         """
-        return QueryBudget(
-            limits=self.read_limits(session=session).rates,
-            clock=self.clock,
-            journal=self.ledger,
-        )
+        return self.reading(session=session).budget

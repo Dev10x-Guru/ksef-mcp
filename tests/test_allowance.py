@@ -365,6 +365,34 @@ def test_an_answer_ksef_could_not_be_parsed_from_is_not_remembered(
     assert degraded.reads == 2
 
 
+def test_a_ceiling_ksef_granted_is_reported_as_granted(
+    protection: Allowance, session: CountingSession
+) -> None:
+    assert protection.reading(session=session).ceilings.assumed is False
+
+
+def test_a_ceiling_the_fallback_supplied_is_reported_as_assumed(
+    protection: Allowance,
+) -> None:
+    # GH-118: the same `degraded` flag that keeps the answer out of the cache
+    # now also reaches the person, instead of lying idle where GH-76 needed it.
+    fallen_back = CountingSession(limits=granted(degraded=True))
+
+    assert protection.reading(session=fallen_back).ceilings.assumed is True
+
+
+def test_the_ceilings_and_the_counter_come_from_one_read(
+    protection: Allowance, session: CountingSession
+) -> None:
+    # Two reads would reach KSeF twice in exactly the situation where a
+    # degraded answer is never cached — that is, where it already answers badly.
+    read = protection.reading(session=session)
+
+    assert read.ceilings.assumed is False
+    assert read.budget is not None
+    assert session.reads == 1
+
+
 @pytest.mark.parametrize(
     "damage",
     [

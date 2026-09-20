@@ -11,6 +11,7 @@ from mcp import Client
 from mcp.types import CallToolResult, ListToolsResult
 
 from ksef_mcp import config, token_store
+from ksef_mcp.allowance import CeilingNotice
 from ksef_mcp.audit import PDF_FORMAT, AuditEntry, AuditTrail, AuthorisationBasis, Disclosure
 from ksef_mcp.config import Configuration, KsefEnvironment
 from ksef_mcp.diagnostics import UNCORRELATED, technical_log
@@ -89,6 +90,15 @@ REACHED = datetime(2026, 9, 10, tzinfo=UTC)
 
 ARCHIVED_NUMBER = "1234567890-20260901-0100AB12CD01-56"
 
+GRANTED_CEILINGS = CeilingNotice(
+    max_invoice_megabytes=1,
+    max_invoice_with_attachment_megabytes=3,
+    max_invoices_per_session=10_000,
+    assumed=False,
+)
+
+ASSUMED_CEILINGS = replace(GRANTED_CEILINGS, assumed=True)
+
 HELD_NUMBER = "1234567890-20260901-0100AB12CD02-56"
 
 ARCHIVE_DIRECTORY = "/dane/subjects/1234567890/test/invoices"
@@ -129,6 +139,7 @@ class StubSynchroniser:
             ),
             pending_exports=("EXP-1",),
             state_path="/dane/synchronisation.json",
+            ceilings=GRANTED_CEILINGS,
         )
 
 
@@ -434,6 +445,37 @@ async def test_the_tool_hands_back_the_pass_it_ran(with_a_token: None) -> None:
     assert called.structured_content["pending_exports"] == ["EXP-1"]
 
 
+def test_the_answer_says_a_granted_ceiling_was_granted(
+    synchronised: SynchronisationResult,
+) -> None:
+    assert synchronised.session_ceilings.assumed is False
+    assert "przyznany przez KSeF" in synchronised.session_ceilings.message
+
+
+def test_the_answer_says_in_as_many_words_that_a_ceiling_was_only_assumed() -> None:
+    # GH-118, and the signal whose absence cost the GH-76 diagnosis: production
+    # answered about limits in a shape the SDK could not read, the conservative
+    # fallback took over, and nothing said so.
+    described = describe(
+        SynchronisationReport(
+            subject_roles=(),
+            pending_exports=(),
+            state_path="/dane/x.json",
+            ceilings=ASSUMED_CEILINGS,
+        ),
+        environment=KsefEnvironment.DEMO,
+    )
+
+    assert described.session_ceilings.assumed is True
+    assert "założony, nie przyznany" in described.session_ceilings.message
+
+
+def test_the_answer_carries_the_figures_the_ceiling_is_made_of(
+    synchronised: SynchronisationResult,
+) -> None:
+    assert synchronised.session_ceilings.max_invoices_per_session == 10_000
+
+
 @pytest.mark.anyio
 async def test_the_answer_names_the_call_in_the_journal(with_a_token: None) -> None:
     # GH-117: without this the only way to tie the answer to its journal lines
@@ -455,7 +497,12 @@ async def test_two_passes_are_named_differently(with_a_token: None) -> None:
 
 def test_the_description_survives_an_empty_pass() -> None:
     described = describe(
-        SynchronisationReport(subject_roles=(), pending_exports=(), state_path="/dane/x.json"),
+        SynchronisationReport(
+            subject_roles=(),
+            pending_exports=(),
+            state_path="/dane/x.json",
+            ceilings=GRANTED_CEILINGS,
+        ),
         environment=KsefEnvironment.DEMO,
     )
 
