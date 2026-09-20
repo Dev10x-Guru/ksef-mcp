@@ -187,3 +187,11 @@ naruszenia jako REQUIRED/CRITICAL, nie jako preferencje stylistyczne:
    konfigurację CI). Test sieciowy uruchamiany bez oznaczenia w
    domyślnym zestawie to WARNING; taki, który mógłby trafić na
    produkcję, to CRITICAL.
+5. **Numery KSeF w komunikatach do klienta** — każdy komunikat
+   trafiający do klienta MCP (odpowiedź narzędzia, komunikat błędu,
+   ostrzeżenie), który wymienia numer KSeF musi używać `short_reference()`
+   z modułu `diagnostics`. Pełny numer KSeF zawiera NIP, który może być
+   kontrahentem, nie podmiotem odpytującym (D-038). Zgłoś każdy
+   komunikat zawierający pełny numer w polu odpowiedzi (CRITICAL),
+   ale zauważ, że `technical_log().info(...)` z pełnym numerem to OK
+   (kanał techniczny nie przechodzi sieć).
