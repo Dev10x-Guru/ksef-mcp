@@ -1569,3 +1569,47 @@ Odwołania do `olegtyshcneko/ksef-mcp` w [D-030] dotyczą cudzego projektu.
   dla eksportu pustego okna. Odpowiedź wymaga jednego odczytu statusu dla
   zawieszonej referencji produkcyjnej, a to wydatek z budżetu KSeF —
   decyzja właściciela produktu, nie tego zapisu.
+
+## D-040 — Co jest zmianą łamiącą: trzy powierzchnie objęte SemVer
+
+- **Status:** Aktywna
+- **Decyzja:** SemVer tego projektu obejmuje wprost trzy powierzchnie, nie
+  jedną:
+  1. **Nazwy i sygnatury narzędzi MCP** — nazwa narzędzia, nazwa i typ
+     parametru, usunięcie parametru. Zmiana tutaj łamie klienta MCP tak
+     samo, jak usunięcie publicznego API.
+  2. **Pola modeli odpowiedzi** — usunięcie albo zmiana znaczenia pola w
+     modelu zwracanym przez narzędzie (np. `SynchronisationResult`) łamie
+     prompty agenta, który na te pola liczy, nawet gdy sama sygnatura
+     narzędzia się nie zmienia. Wygląda na kosmetykę; dla wywołującego jest
+     tym samym co usunięcie narzędzia.
+  3. **Wersje schematów plików trwałych** — `audit.SCHEMA_VERSION`
+     (`audit.py`) oraz odpowiedniki w innych magazynach stanu. Podniesienie
+     tej liczby sprawia, że nowe wydanie **odmawia odczytu** pliku
+     zapisanego przez starsze — efekt identyczny z usunięciem narzędzia,
+     tylko odroczony do momentu, w którym ktoś odpali nową wersję na
+     starym pliku.
+  Dodawanie nowego narzędzia, nowego opcjonalnego parametru albo nowego
+  pola w odpowiedzi jest zmianą minor. Poprawka zachowania bez zmiany
+  żadnej z trzech powierzchni jest patch.
+- **Rozstrzygnięcie o dzienniku audytu:** `SCHEMA_VERSION` dziennika audytu
+  podnosimy **wyłącznie przy wersji major**, nigdy przy minor ani patch.
+  Dziennik ma przeżyć faktury, które opisuje — podniesienie go przy okazji
+  niezwiązanej poprawki zablokowałoby odczyt historycznego dziennika
+  wydaniem, które nic w nim nie zmieniło. `audit.py` już dziś domyka ten
+  sam schemat wewnętrznie bez podnoszenia liczby (patrz komentarze przy
+  `SCHEMA_VERSION` w tym pliku) — ta decyzja czyni tę praktykę jawną regułą
+  projektu, nie tylko lokalnym komentarzem.
+- **Precedens — GH-144 jako wzorzec zmiany łamiącej bez okresu
+  przejściowego:** zmiana pól `subject_types`/`subject_type` na
+  `subject_roles`/`subject_role` w odpowiedziach `synchronise_invoices`,
+  `list_recent_invoices` i `review_new_invoices` jest konkretnym
+  przykładem powierzchni (2) — to samo pojęcie miało cztery nazwy w
+  czterech miejscach, ujednolicone bez okresu przejściowego, bo trwały
+  dualizm nazw byłby gorszy niż jedna łamiąca zmiana. Taka zmiana
+  wymaga podniesienia wersji major, nawet gdy żadne narzędzie MCP nie
+  zmieniło nazwy ani sygnatury.
+- **Czego to nie obejmuje:** treść komunikatów błędów i tekstu
+  przeznaczonego do czytania przez człowieka (patrz D-041 / GH-163) nie
+  jest częścią kontraktu SemVer — zmiana słów nie łamie parsowania przez
+  agenta, o ile kształt pól się nie zmienia.
