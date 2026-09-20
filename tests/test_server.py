@@ -13,6 +13,7 @@ from mcp.types import CallToolResult, ListToolsResult
 from ksef_mcp import config, token_store
 from ksef_mcp.audit import PDF_FORMAT, AuditEntry, AuditTrail, AuthorisationBasis, Disclosure
 from ksef_mcp.config import Configuration, KsefEnvironment
+from ksef_mcp.diagnostics import technical_log
 from ksef_mcp.errors import KsefMcpError
 from ksef_mcp.ksef_port import (
     DateType,
@@ -459,6 +460,18 @@ async def test_server_info_call_succeeds(server_info_result: CallToolResult) -> 
 
 def test_main_starts_the_server(recorded_run_calls: list[str]) -> None:
     assert recorded_run_calls == ["run"]
+
+
+def test_the_journal_is_open_before_the_first_frame_is_served(
+    recorded_run_calls: list[str],
+) -> None:
+    # A refusal during the very first tool call has to land somewhere (GH-116),
+    # and the journal must not hand records up to a root the host may have
+    # pointed at stdout.
+    journal = technical_log()
+
+    assert journal.handlers != []
+    assert journal.propagate is False
 
 
 LISTING_PERIOD = Period(

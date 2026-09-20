@@ -30,6 +30,7 @@ from ksef_mcp.archive import (
     InvoiceArchive,
     PackageArchivist,
 )
+from ksef_mcp.diagnostics import technical_log
 from ksef_mcp.ksef_port.budget import QueryBudget
 from ksef_mcp.ksef_port.errors import (
     KsefPortError,
@@ -243,6 +244,11 @@ class Synchroniser:
                 # goes out by temp→rename, so four writes a pass cost nothing
                 # next to one unreadable package.
                 self.store.save(state)
+                technical_log().info(
+                    "Subject role %s finished as %s.",
+                    report.subject_role,
+                    report.outcome,
+                )
                 reports.append(report)
         return SynchronisationReport(
             subject_roles=tuple(reports),
@@ -579,8 +585,19 @@ class Synchroniser:
         """The window is still owed and the record on disk is what says so.
 
         The message names the failure, never the invoice — these exceptions
-        carry no package content (D-011).
+        carry no package content (D-011) and no KSeF number in full (D-038).
+
+        The journal entry is what makes the pass reconstructible without asking
+        KSeF for the package a second time out of twenty exports an hour
+        (GH-116). It is the technical journal and not `AuditTrail`: that one
+        records data access and would misreport a failure as a disclosure.
         """
+        technical_log().warning(
+            "Export %s for subject role %s stayed on disk with its key: %s",
+            export.reference,
+            export.subject_role,
+            failure,
+        )
         return SubjectRoleReport(
             subject_role=export.subject_role,
             outcome=SyncOutcome.NOT_ARCHIVED,

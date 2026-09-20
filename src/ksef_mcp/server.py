@@ -1,3 +1,4 @@
+import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
@@ -23,6 +24,11 @@ from ksef_mcp.audit import (
     Authorisation,
     AuthorisationBasis,
     Disclosure,
+)
+from ksef_mcp.diagnostics import (
+    configure_diagnostics,
+    requested_log_directory,
+    technical_log,
 )
 from ksef_mcp.errors import KsefMcpError
 from ksef_mcp.ksef_port.errors import KsefPortError
@@ -117,14 +123,23 @@ def reported(operation: AuditedOperation) -> Iterator[None]:
     reached `LOCKED_MESSAGE` (GH-167). The tuple is now two roots, so an
     exception written for a reader arrives without anyone remembering to list
     it.
+
+    The refusal is journalled too (GH-116): a client that saw the sentence
+    still leaves nothing an operator can reconstruct the pass from, and the
+    sentence itself is gone as soon as the conversation moves on.
     """
     try:
         yield
     except NotConfigured as error:
+        technical_log().warning("%s refused: not configured. %s", operation, error)
         raise ToolError(
             f"{operation} needs configuration first. Run `ksef-mcp onboarding`. ({error})"
         ) from error
     except REFUSALS as error:
+        # The message is safe to repeat here for the same reason it is safe to
+        # send to the client: `KsefMcpError` promises it carries no token, no
+        # invoice body and, since D-038, no KSeF number in full.
+        technical_log().warning("%s refused: %s", operation, error)
         raise ToolError(f"{operation} could not finish. {error}") from error
 
 
@@ -969,4 +984,5 @@ def render_invoice_pdf(
 
 
 def main() -> None:
+    configure_diagnostics(directory=requested_log_directory(os.environ))
     server.run()
