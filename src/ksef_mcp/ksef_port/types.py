@@ -102,6 +102,23 @@ class SubjectRole(StrEnum):
     AUTHORIZED_SUBJECT = "authorized_subject"
 
 
+# Every role, every run: a company appears in different roles on different
+# invoices, and only the full set lets a period be called complete (D-031 §5).
+#
+# A property of the concept, not of the pass that walks it, so it lives beside
+# the roles themselves. Declared in `synchronisation` it made `listing` and
+# `review` — both readers — import the writer for a four-element tuple, which
+# is the wrong way round and the reason both modules dragged five hundred lines
+# of export machinery behind one name (GH-124). The intervals stay where the
+# pass keeps its own timing.
+SYNCHRONISED_SUBJECT_ROLES: Final[tuple[SubjectRole, ...]] = (
+    SubjectRole.SELLER,
+    SubjectRole.BUYER,
+    SubjectRole.THIRD_SUBJECT,
+    SubjectRole.AUTHORIZED_SUBJECT,
+)
+
+
 # The translation table D-017 asks for, written out rather than inferred. The
 # SDK speaks roles, the wire speaks Subject*, and the two vocabularies drifting
 # apart is exactly the kind of change this port exists to absorb.

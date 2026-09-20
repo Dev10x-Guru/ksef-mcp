@@ -41,6 +41,7 @@ from ksef_mcp.ksef_port.errors import (
 from ksef_mcp.ksef_port.protocol import KsefPort, KsefSession
 from ksef_mcp.ksef_port.types import (
     MAX_QUERY_WINDOW,
+    SYNCHRONISED_SUBJECT_ROLES,
     ContinuationPoint,
     Credential,
     ExportState,
@@ -57,16 +58,6 @@ from ksef_mcp.sync_store import (
     SubjectRoleState,
     SyncState,
     SyncStore,
-)
-
-# Every subject type, every run: a company appears in different roles on
-# different invoices, and only the loop lets the period be called complete
-# (D-031 §5).
-SYNCHRONISED_SUBJECT_ROLES: Final[tuple[SubjectRole, ...]] = (
-    SubjectRole.SELLER,
-    SubjectRole.BUYER,
-    SubjectRole.THIRD_SUBJECT,
-    SubjectRole.AUTHORIZED_SUBJECT,
 )
 
 # How far back a first run reaches. This only says where the sequence starts; a

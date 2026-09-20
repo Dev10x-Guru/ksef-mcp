@@ -20,6 +20,7 @@ from ksef_mcp.ksef_port.guard import GuardedSession, RefusalBreaker
 from ksef_mcp.ksef_port.protocol import KsefPort, KsefSession
 from ksef_mcp.ksef_port.retry import NO_AUTOMATIC_RETRY, RetryPolicy
 from ksef_mcp.ksef_port.types import (
+    SYNCHRONISED_SUBJECT_ROLES,
     ContinuationPoint,
     Credential,
     DateType,
@@ -44,6 +45,7 @@ from ksef_mcp.ksef_port.types import (
 
 __all__ = [
     "NO_AUTOMATIC_RETRY",
+    "SYNCHRONISED_SUBJECT_ROLES",
     "ConnectionCheck",
     "ContinuationPoint",
     "Credential",
