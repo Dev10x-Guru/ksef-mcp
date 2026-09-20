@@ -66,10 +66,16 @@ albo cichego rozjazdu między słownikiem a kodem.
 | `Okres` (z `DateType`) | `Period`, `DateType` |
 | `PunktKontynuacji` | `ContinuationPoint` |
 | `MetadaneFaktury` | `InvoiceMetadata` |
-| `KierunekFaktur` | `InvoiceDirection`, `WIRE_SUBJECT_TYPES` |
+| `KierunekFaktur` | `SubjectRole`, `WIRE_SUBJECT_TYPES` |
 | `KontekstPodmiotu` | `SubjectScope`, `Nip` (w `paths.py`) |
 | `Środowisko` | `KsefEnvironment` (w `types.py`) |
 | `Poświadczenie` | `Credential` (protokół, w `types.py`) |
+
+Wiersz `KierunekFaktur` wskazywał wcześniej `InvoiceDirection` — PR #206
+(#144) ujednolicił nazwę do `SubjectRole` / `subject_role`, a odpowiedzi
+narzędzi MCP zmieniły pole `subject_types` na `subject_roles` (liczba
+mnoga), bez okresu przejściowego — świadoma decyzja właściciela
+produktu z 2026-09-20, uzasadniona statusem Alpha projektu.
 
 Wiersz `KontekstPodmiotu` wskazywał wcześniej `SubjectContext` w
 `types.py` — typ, którego nie wołał żaden moduł produkcyjny. Odwzorowanie
@@ -104,8 +110,8 @@ class KsefPort(Protocol):
 
 class KsefSession(Protocol):
     def read_limits(self) -> KsefLimits: ...
-    def query_metadata(self, *, period: Period, direction: InvoiceDirection) -> MetadataPage: ...
-    def start_export(self, *, period: Period, direction: InvoiceDirection) -> ExportHandle: ...
+    def query_metadata(self, *, period: Period, subject_role: SubjectRole) -> MetadataPage: ...
+    def start_export(self, *, period: Period, subject_role: SubjectRole) -> ExportHandle: ...
     def check_export(self, *, handle: ExportHandle) -> ExportStatus: ...
     def fetch_part(self, *, handle: ExportHandle, part: ExportPart) -> bytes: ...
     def download_invoice(self, *, ksef_number: KsefNumber) -> bytes: ...
