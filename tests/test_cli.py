@@ -963,6 +963,38 @@ def test_verify_refuses_without_configuration(configuration_file: Path) -> None:
     )
 
 
+@pytest.fixture
+def damaged_configuration(configuration_file: Path) -> Path:
+    # What an interrupted write leaves behind: the file exists, so nothing
+    # treats the server as unconfigured, and it is not JSON.
+    configuration_file.parent.mkdir(parents=True, exist_ok=True)
+    configuration_file.write_text('{"nip": "12345', encoding="utf-8")
+    return configuration_file
+
+
+def test_a_damaged_configuration_file_is_named_rather_than_traced(
+    damaged_configuration: Path,
+) -> None:
+    # GH-119: this used to leave the CLI with a bare `JSONDecodeError`
+    # traceback, which says nothing about deleting or rewriting one file.
+    recorder = Recorder()
+
+    code = cli.main(["verify"], console=recorder.console, configuration_file=damaged_configuration)
+
+    assert code == cli.EXIT_UNREADABLE_CONFIGURATION
+    assert str(damaged_configuration) in recorder.transcript
+
+
+def test_a_damaged_configuration_file_says_how_to_get_unstuck(
+    damaged_configuration: Path,
+) -> None:
+    recorder = Recorder()
+
+    cli.main(["verify"], console=recorder.console, configuration_file=damaged_configuration)
+
+    assert "ksef-mcp onboarding" in recorder.transcript
+
+
 def test_verify_refuses_without_a_token(
     configured: Path,
     monkeypatch: pytest.MonkeyPatch,

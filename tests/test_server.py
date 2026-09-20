@@ -227,6 +227,19 @@ async def unconfigured_listing(monkeypatch: pytest.MonkeyPatch) -> CallToolResul
 
 
 @pytest.fixture
+async def damaged_configuration(monkeypatch: pytest.MonkeyPatch) -> CallToolResult:
+    def refuse() -> SynchronisationResult:
+        raise config.ConfigurationUnreadable(
+            "/dane/configuration.json is not readable JSON — an interrupted "
+            "write leaves the file truncated. Run `ksef-mcp onboarding` to "
+            "write it again."
+        )
+
+    monkeypatch.setattr(server_module, "synchronise", refuse)
+    return await failing_call("synchronise_invoices")
+
+
+@pytest.fixture
 async def crashed_review(monkeypatch: pytest.MonkeyPatch) -> CallToolResult:
     def crash() -> InvoiceReviewResult:
         raise ZeroDivisionError("a path fragment nobody vetted")
@@ -257,6 +270,27 @@ async def test_a_missing_configuration_names_the_command_that_fixes_it(
     unconfigured_listing: CallToolResult,
 ) -> None:
     assert "ksef-mcp onboarding" in str(unconfigured_listing.content)
+
+
+@pytest.mark.anyio
+async def test_a_damaged_configuration_says_the_file_is_damaged(
+    damaged_configuration: CallToolResult,
+) -> None:
+    # GH-119: the agent used to see a bare `Error executing tool
+    # synchronise_invoices`, which reads as a broken server rather than as one
+    # file to rewrite. Same failure mode GH-76 and GH-84 already fixed
+    # elsewhere.
+    assert "not readable JSON" in str(damaged_configuration.content)
+
+
+@pytest.mark.anyio
+async def test_a_damaged_configuration_names_the_file_and_the_remedy(
+    damaged_configuration: CallToolResult,
+) -> None:
+    said = str(damaged_configuration.content)
+
+    assert "/dane/configuration.json" in said
+    assert "ksef-mcp onboarding" in said
 
 
 @pytest.mark.anyio

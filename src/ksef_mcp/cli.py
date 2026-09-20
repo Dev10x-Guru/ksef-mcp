@@ -14,6 +14,7 @@ from ksef_mcp.allowance import Allowance
 from ksef_mcp.archive import InvoiceArchive
 from ksef_mcp.audit import AuditTrail, Authorisation, AuthorisationBasis
 from ksef_mcp.config import Configuration, KsefEnvironment
+from ksef_mcp.diagnostics import technical_log
 from ksef_mcp.metadata import SERVER_NAME, VERSION
 from ksef_mcp.paths import Nip, NipRejected, SubjectScope
 from ksef_mcp.period_cache import MeteredPeriods, PeriodCache
@@ -48,6 +49,8 @@ EXIT_PURGE_DECLINED: Final[int] = 6
 EXIT_INVALID_WINDOW: Final[int] = 7
 
 EXIT_INVALID_NIP: Final[int] = 8
+
+EXIT_UNREADABLE_CONFIGURATION: Final[int] = 9
 
 AFFIRMATIVE_ANSWERS: Final[frozenset[str]] = frozenset({"t", "tak"})
 
@@ -740,8 +743,15 @@ def main(
             configuration_file=configuration_file,
             home=Path.home() if home is None else home,
         )
-    # This message was written for exactly this moment; a traceback would bury
-    # the one instruction that gets the person unstuck.
+    # These messages were written for exactly this moment; a traceback would
+    # bury the one instruction that gets the person unstuck.
     except token_store.TokenStoreUnavailable as unavailable:
         reporting.write(str(unavailable))
         return EXIT_UNUSABLE_KEYRING
+    # Every command that reads the configuration reaches this, rather than each
+    # of the three call sites catching it for itself (GH-119). A damaged file
+    # stops all of them, and the remedy is the same sentence for all of them.
+    except config.ConfigurationUnreadable as damaged:
+        technical_log().warning("Configuration unreadable: %s", damaged)
+        reporting.write(str(damaged))
+        return EXIT_UNREADABLE_CONFIGURATION
