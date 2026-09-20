@@ -19,8 +19,6 @@ from pathlib import Path
 
 import pytest
 
-from ksef_mcp.archive import InvoiceArchive
-from ksef_mcp.audit import AuditedOperation, Authorisation, AuthorisationBasis, Disclosure
 from ksef_mcp.ksef_port.types import KsefEnvironment
 from ksef_mcp.package import ExportPackage, PackageDocument
 from ksef_mcp.retention import (
@@ -29,7 +27,9 @@ from ksef_mcp.retention import (
     PurgeWindowInverted,
     purge_entry,
 )
-from tests.test_archive import a_manifest
+from ksef_mcp.storage.archive import InvoiceArchive
+from ksef_mcp.storage.audit import AuditedOperation, Authorisation, AuthorisationBasis, Disclosure
+from tests.storage.test_archive import a_manifest
 
 NIP = "1234567890"
 

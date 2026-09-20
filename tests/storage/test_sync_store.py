@@ -14,7 +14,6 @@ from pathlib import Path
 
 import pytest
 
-from ksef_mcp import storage
 from ksef_mcp.ksef_port import (
     ContinuationPoint,
     ExportEncryption,
@@ -23,8 +22,9 @@ from ksef_mcp.ksef_port import (
     KsefEnvironment,
     SubjectRole,
 )
-from ksef_mcp.storage import WriteExclusivityUnavailable
-from ksef_mcp.sync_store import (
+from ksef_mcp.storage import durability
+from ksef_mcp.storage.durability import WriteExclusivityUnavailable
+from ksef_mcp.storage.sync_store import (
     MINIMUM_INTERVAL,
     SCHEMA_VERSION,
     SETTLED_JOURNAL_LIMIT,
@@ -206,7 +206,7 @@ def test_no_staging_file_outlives_the_write(store: SyncStore, populated: SyncSta
     store.save(populated)
 
     assert sorted(path.name for path in store.directory.iterdir()) == [
-        storage.LOCK_FILE,
+        durability.LOCK_FILE,
         "synchronisation.json",
     ]
 

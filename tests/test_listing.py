@@ -47,7 +47,7 @@ from ksef_mcp.listing import (
     now_utc,
     summarise,
 )
-from ksef_mcp.period_cache import PeriodCache
+from ksef_mcp.storage.period_cache import PeriodCache
 from tests.conftest import an_allowance
 from tests.support.synthetic import synthetic_credential, synthetic_metadata
 

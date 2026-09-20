@@ -31,6 +31,28 @@ niż jedna zmiana łamiąca.
   Integrator czytający odpowiedzi po polu `detail` musi przestawić
   się na `message`; nic innego w kształcie pól nie ubyło (GH-171).
 
+- Moduły trwałego stanu zebrano w pakiecie `ksef_mcp.storage`.
+  Zmieniają się wyłącznie ścieżki importu — nazwa dystrybucji,
+  skrypt konsolowy, `SERVER_NAME` i `DISTRIBUTION_NAME` zostają bez
+  zmian, a żadne narzędzie MCP nie zmieniło nazwy ani sygnatury.
+  Integrator importujący te moduły przestawia się tak (GH-129):
+
+  - moduł `sync_store` przeniesiony z `ksef_mcp.sync_store` do
+    `ksef_mcp.storage.sync_store`,
+  - moduł `archive` przeniesiony z `ksef_mcp.archive` do
+    `ksef_mcp.storage.archive`,
+  - moduł `period_cache` przeniesiony z `ksef_mcp.period_cache` do
+    `ksef_mcp.storage.period_cache`,
+  - moduł `audit` przeniesiony z `ksef_mcp.audit` do
+    `ksef_mcp.storage.audit`,
+  - moduł `token_store` przeniesiony z `ksef_mcp.token_store` do
+    `ksef_mcp.storage.token_store`,
+  - moduł `storage` przeniesiony z `ksef_mcp.storage` do
+    `ksef_mcp.storage.durability`. Ta jedna przeprowadzka zmienia
+    nazwę modułu, a nie tylko jego miejsce: nazwa `ksef_mcp.storage`
+    należy teraz do pakietu, a nazwa `durability` mówi, co ten moduł
+    naprawdę trzyma — wyłączność zapisu i trwałość podmiany.
+
 ### Dodane
 
 - Zestawienie okresu ostrzega, gdy w okresie jest faktura korygująca.

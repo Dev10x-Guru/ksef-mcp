@@ -51,7 +51,7 @@ from ksef_mcp.ksef_port.types import (
 )
 from ksef_mcp.metadata import SERVER_NAME
 from ksef_mcp.paths import SubjectScope
-from ksef_mcp.storage import JsonDocumentStore, SchemaMismatch, exclusive_write
+from ksef_mcp.storage.durability import JsonDocumentStore, SchemaMismatch, exclusive_write
 
 PERIOD_DIRECTORY: Final[str] = "periods"
 

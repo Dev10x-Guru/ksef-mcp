@@ -9,9 +9,10 @@ from pathlib import Path
 import pytest
 from pypdf import PdfReader
 
-from ksef_mcp import pdf, storage
+from ksef_mcp import pdf
 from ksef_mcp.ksef_port.types import KsefEnvironment
 from ksef_mcp.node_preflight import NodeReport
+from ksef_mcp.storage import durability
 from tests.support.synthetic import BUYER_NAME, SELLER_NIP, synthetic_fa3_invoice
 
 KSEF_NUMBER = "1234567890-20260817-0100AB12CD01-56"
@@ -303,7 +304,7 @@ def test_the_rendered_file_is_readable_only_by_its_owner(rendered: pdf.RenderedI
 
 
 def test_the_render_leaves_no_staging_file_behind(rendered: pdf.RenderedInvoice) -> None:
-    assert list(rendered.path.parent.glob(f"*{storage.STAGING_SUFFIX}")) == []
+    assert list(rendered.path.parent.glob(f"*{durability.STAGING_SUFFIX}")) == []
 
 
 def test_the_result_names_the_generator_version(rendered: pdf.RenderedInvoice) -> None:

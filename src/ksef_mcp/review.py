@@ -73,8 +73,8 @@ from ksef_mcp.listing import (
     invoices_phrase,
 )
 from ksef_mcp.paths import SubjectScope
-from ksef_mcp.period_cache import PeriodCache, PeriodMetadataReader
-from ksef_mcp.storage import JsonDocumentStore, SchemaMismatch, exclusive_write
+from ksef_mcp.storage.durability import JsonDocumentStore, SchemaMismatch, exclusive_write
+from ksef_mcp.storage.period_cache import PeriodCache, PeriodMetadataReader
 
 REVIEW_FILE: Final[str] = "review.json"
 

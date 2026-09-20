@@ -23,7 +23,6 @@ from typing import Final
 import pytest
 
 from ksef_mcp.allowance import Allowance
-from ksef_mcp.archive import InvoiceArchive, digest_of
 from ksef_mcp.ksef_port import (
     DateType,
     DocumentType,
@@ -37,7 +36,6 @@ from ksef_mcp.ksef_port import (
     SubjectRole,
 )
 from ksef_mcp.paths import SUBJECT_DIRECTORY
-from ksef_mcp.period_cache import PeriodCache
 from ksef_mcp.statement import (
     COLUMNS,
     NO_ARCHIVED_BODY,
@@ -64,6 +62,8 @@ from ksef_mcp.statement import (
     verification_code,
     write_statement,
 )
+from ksef_mcp.storage.archive import InvoiceArchive, digest_of
+from ksef_mcp.storage.period_cache import PeriodCache
 from tests.conftest import an_allowance
 from tests.support.synthetic import (
     SELLER_NIP,

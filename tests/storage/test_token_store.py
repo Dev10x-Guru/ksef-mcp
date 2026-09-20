@@ -3,8 +3,9 @@ from collections.abc import Callable
 import pytest
 from keyring.errors import KeyringError, PasswordDeleteError
 
-from ksef_mcp import keyring_preflight, token_store
+from ksef_mcp import keyring_preflight
 from ksef_mcp.metadata import SERVER_NAME
+from ksef_mcp.storage import token_store
 
 NIP = "1234567890"
 

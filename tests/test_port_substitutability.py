@@ -39,7 +39,7 @@ from ksef_mcp.ksef_port import (
     check_connection,
 )
 from ksef_mcp.ksef_port.adapter import Ksef2Port
-from ksef_mcp.period_cache import MeteredPeriods, PeriodCache
+from ksef_mcp.storage.period_cache import MeteredPeriods, PeriodCache
 from tests.conftest import an_allowance
 from tests.support.doubles import HWM
 from tests.support.synthetic import synthetic_metadata

@@ -35,7 +35,7 @@ from ksef_mcp.ksef_port import (
     check_connection,
 )
 from ksef_mcp.ksef_port.connection import DEFAULT_LIMIT, check_period
-from ksef_mcp.period_cache import MeteredPeriods, PeriodCache
+from ksef_mcp.storage.period_cache import MeteredPeriods, PeriodCache
 from tests.conftest import an_allowance
 from tests.support.synthetic import BUYER_NAME, synthetic_credential, synthetic_metadata
 

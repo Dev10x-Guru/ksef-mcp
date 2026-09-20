@@ -40,7 +40,6 @@ from ksef_mcp.ksef_port import (
 from ksef_mcp.ksef_port.types import MAX_QUERY_WINDOW
 from ksef_mcp.listing import LISTING_THRESHOLD, Question
 from ksef_mcp.metadata import SERVER_NAME
-from ksef_mcp.period_cache import PeriodCache
 from ksef_mcp.review import (
     REVIEW_WINDOW,
     InvoiceReviewer,
@@ -55,6 +54,7 @@ from ksef_mcp.review import (
     now_utc,
     review_period,
 )
+from ksef_mcp.storage.period_cache import PeriodCache
 from tests.conftest import an_allowance
 from tests.support.synthetic import synthetic_credential, synthetic_metadata
 

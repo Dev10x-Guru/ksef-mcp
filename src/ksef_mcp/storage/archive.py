@@ -46,7 +46,7 @@ from ksef_mcp.ksef_port.errors import InvalidKsefIdentifier
 from ksef_mcp.ksef_port.types import KsefEnvironment, KsefNumber
 from ksef_mcp.package import ExportPackage
 from ksef_mcp.paths import SubjectScope
-from ksef_mcp.storage import (
+from ksef_mcp.storage.durability import (
     JsonDocumentStore,
     SchemaMismatch,
     exclusive_write,

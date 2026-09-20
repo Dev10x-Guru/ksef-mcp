@@ -10,10 +10,8 @@ import pytest
 from mcp import Client
 from mcp.types import CallToolResult, ListToolsResult
 
-from ksef_mcp import config, token_store
+from ksef_mcp import config
 from ksef_mcp.allowance import CeilingNotice
-from ksef_mcp.archive import InvoiceArchive
-from ksef_mcp.audit import PDF_FORMAT, AuditEntry, AuditTrail, AuthorisationBasis, Disclosure
 from ksef_mcp.config import Configuration
 from ksef_mcp.diagnostics import UNCORRELATED, technical_log
 from ksef_mcp.errors import KsefMcpError
@@ -64,6 +62,15 @@ from ksef_mcp.server import (
     window_criteria,
 )
 from ksef_mcp.statement import AccountingPeriod, Statement, WorkingDirectoryRefused
+from ksef_mcp.storage import token_store
+from ksef_mcp.storage.archive import InvoiceArchive
+from ksef_mcp.storage.audit import (
+    PDF_FORMAT,
+    AuditEntry,
+    AuditTrail,
+    AuthorisationBasis,
+    Disclosure,
+)
 from ksef_mcp.synchronisation import (
     SYNCHRONISED_SUBJECT_ROLES,
     SubjectRoleReport,

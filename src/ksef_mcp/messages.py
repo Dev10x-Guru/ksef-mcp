@@ -11,10 +11,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ksef_mcp import config, keyring_preflight, node_preflight, token_store
+from ksef_mcp import config, keyring_preflight, node_preflight
 from ksef_mcp.config import Configuration
 from ksef_mcp.metadata import DISTRIBUTION_NAME, SERVER_NAME, VERSION
 from ksef_mcp.retention import PurgePlan, PurgeWindow
+from ksef_mcp.storage import token_store
 
 if TYPE_CHECKING:
     from pathlib import Path

@@ -37,7 +37,7 @@ from ksef_mcp.ksef_port.types import (
     SessionCeilings,
 )
 from ksef_mcp.paths import SubjectScope
-from ksef_mcp.storage import JsonDocumentStore, SchemaMismatch
+from ksef_mcp.storage.durability import JsonDocumentStore, SchemaMismatch
 
 LEDGER_FILE: Final[str] = "budget.json"
 
