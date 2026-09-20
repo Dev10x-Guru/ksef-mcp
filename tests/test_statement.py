@@ -228,7 +228,7 @@ def written(statement: Statement) -> str:
         (Decimal("12345678.99"), "12345678,99"),
     ],
 )
-def test_kwota_trafia_do_komorki_bez_straty_grosza(value: Decimal, expected: str) -> None:
+def test_an_amount_reaches_the_cell_without_losing_a_grosz(value: Decimal, expected: str) -> None:
     # Notacja wykładnicza i zaokrąglenie to dwa sposoby na rozjazd z Aplikacją
     # Podatnika, których nikt nie przypisałby do generatora CSV.
     assert amount(value) == expected
@@ -238,23 +238,23 @@ def test_kwota_trafia_do_komorki_bez_straty_grosza(value: Decimal, expected: str
     ("spelling", "expected"),
     [("2026-01", (2026, 1)), ("2026-12", (2026, 12)), ("1999-08", (1999, 8))],
 )
-def test_okres_czyta_sie_jako_miesiac(spelling: str, expected: tuple[int, int]) -> None:
+def test_a_period_reads_as_a_calendar_month(spelling: str, expected: tuple[int, int]) -> None:
     parsed = AccountingPeriod.parsed(spelling)
 
     assert (parsed.year, parsed.month) == expected
 
 
 @pytest.mark.parametrize("spelling", ["2026-13", "2026-00", "sierpień", "2026-8", "2026"])
-def test_okres_nie_do_odczytania_konczy_sie_wyjatkiem(spelling: str) -> None:
+def test_a_period_that_cannot_be_read_is_refused(spelling: str) -> None:
     with pytest.raises(UnreadablePeriod, match="RRRR-MM"):
         AccountingPeriod.parsed(spelling)
 
 
-def test_okres_wraca_do_zapisu_ktory_go_zrodzil() -> None:
+def test_a_period_spells_itself_back_the_way_it_was_given() -> None:
     assert str(AccountingPeriod.parsed("2026-08")) == "2026-08"
 
 
-def test_okno_obejmuje_caly_miesiac() -> None:
+def test_the_window_covers_the_whole_month() -> None:
     window = AccountingPeriod(year=2026, month=2).queried
 
     assert (window.date_from, window.date_to) == (
@@ -263,13 +263,13 @@ def test_okno_obejmuje_caly_miesiac() -> None:
     )
 
 
-def test_okno_pyta_o_date_wystawienia() -> None:
+def test_the_window_asks_by_issue_date() -> None:
     # Data trwałego zapisu wrzuciłaby fakturę do miesiąca, w którym KSeF
     # skończył ją przetwarzać, a nie do tego, do którego należy.
     assert SEPTEMBER.queried.date_type is DateType.ISSUE
 
 
-def test_okno_konczy_sie_na_ostatnim_dniu_miesiaca() -> None:
+def test_the_window_ends_on_the_last_day_of_the_month() -> None:
     # Okno zestawienia ma obejmować dokładnie miesiąc, o który zapytano.
     # Sprawdzenie „ma koniec" byłoby od GH-84 tautologią — koniec jest wymagany
     # przez typ — więc test pilnuje tego, co nadal może się zepsuć: którego dnia
@@ -277,11 +277,11 @@ def test_okno_konczy_sie_na_ostatnim_dniu_miesiaca() -> None:
     assert SEPTEMBER.queried.date_to.date() == date(2026, 9, 30)
 
 
-def test_domyslny_zegar_czyta_utc() -> None:
+def test_the_default_clock_reads_utc() -> None:
     assert now_utc().tzinfo is UTC
 
 
-def test_kod_pierwszy_sklada_sie_z_trzech_czlonow() -> None:
+def test_a_verification_code_is_made_of_three_parts() -> None:
     code = VerificationCode(
         seller_nip=SELLER_NIP,
         issue_date=date(2026, 9, 1),
@@ -291,7 +291,7 @@ def test_kod_pierwszy_sklada_sie_z_trzech_czlonow() -> None:
     assert str(code) == f"{SELLER_NIP}-20260901-abc123"
 
 
-def test_kod_pierwszy_bierze_skrot_z_indeksu(archived: InvoiceArchive) -> None:
+def test_a_verification_code_takes_its_digest_from_the_index(archived: InvoiceArchive) -> None:
     code = verification_code(
         invoice=synthetic_metadata(1),
         archive=archived,
@@ -301,7 +301,7 @@ def test_kod_pierwszy_bierze_skrot_z_indeksu(archived: InvoiceArchive) -> None:
     assert code is not None and code.content_hash == digest_of(synthetic_body(1))
 
 
-def test_kod_pierwszy_wraca_do_pliku_gdy_indeks_o_fakturze_nie_wie(
+def test_a_verification_code_falls_back_to_the_file_the_index_never_heard_of(
     archived: InvoiceArchive,
 ) -> None:
     """Indeks bywa starszy niż katalog, który opisuje — pełny odczyt zostaje siatką."""
@@ -310,7 +310,7 @@ def test_kod_pierwszy_wraca_do_pliku_gdy_indeks_o_fakturze_nie_wie(
     assert code is not None and code.content_hash == digest_of(synthetic_body(1))
 
 
-def test_nieczytelny_indeks_nie_odmawia_zestawienia(archived: InvoiceArchive) -> None:
+def test_an_unreadable_index_does_not_refuse_the_statement(archived: InvoiceArchive) -> None:
     """Indeks jest skrótem tego modułu, a nie jego źródłem prawdy — są nim pliki."""
     archived.index_path.write_text(
         json.dumps({"schema_version": 99, "entries": []}), encoding="utf-8"
@@ -319,7 +319,7 @@ def test_nieczytelny_indeks_nie_odmawia_zestawienia(archived: InvoiceArchive) ->
     assert archived_digests(archived) == {}
 
 
-def test_faktura_spoza_archiwum_nie_dostaje_kodu(archived: InvoiceArchive) -> None:
+def test_an_invoice_outside_the_archive_gets_no_code(archived: InvoiceArchive) -> None:
     """Obecność treści sprawdza dysk, nigdy indeks: kod jest twierdzeniem o bajtach."""
     assert (
         verification_code(
@@ -331,7 +331,9 @@ def test_faktura_spoza_archiwum_nie_dostaje_kodu(archived: InvoiceArchive) -> No
     )
 
 
-def test_wiersz_niesie_osiem_kolumn_walute_i_kod(archived: InvoiceArchive) -> None:
+def test_a_row_carries_the_eight_columns_the_currency_and_the_code(
+    archived: InvoiceArchive,
+) -> None:
     row = rows_for(invoices=(synthetic_metadata(1),), archive=archived)[0]
 
     assert row.cells == (
@@ -348,18 +350,18 @@ def test_wiersz_niesie_osiem_kolumn_walute_i_kod(archived: InvoiceArchive) -> No
     )
 
 
-def test_sprzedawca_bez_nazwy_daje_puste_pole(archived: InvoiceArchive) -> None:
+def test_a_seller_without_a_name_leaves_the_field_empty(archived: InvoiceArchive) -> None:
     row = StatementRow(invoice=synthetic_metadata(1, seller_name=None), code=None)
 
     assert row.cells[4] == ""
 
 
-def test_pozycja_bez_pliku_mowi_o_tym_wprost() -> None:
+def test_a_row_with_no_archived_body_says_so_in_as_many_words() -> None:
     # Pusta komórka wyglądałaby jak faktura, której skrótu nie policzono.
     assert StatementRow(invoice=synthetic_metadata(1), code=None).cells[-1] == NO_ARCHIVED_BODY
 
 
-def test_wiersz_nazywa_walute_kwot(archived: InvoiceArchive) -> None:
+def test_a_row_names_the_currency_its_amounts_are_in(archived: InvoiceArchive) -> None:
     # Bez tego miesiąc z fakturą w euro obok złotówkowej sumował się w jedną
     # liczbę, która nie znaczyła nic (#63).
     row = rows_for(invoices=(synthetic_metadata(1),), archive=archived)[0]
@@ -367,23 +369,23 @@ def test_wiersz_nazywa_walute_kwot(archived: InvoiceArchive) -> None:
     assert row.cells[COLUMNS.index("Waluta")] == "PLN"
 
 
-def test_plik_zaczyna_sie_naglowkiem_wszystkich_kolumn() -> None:
+def test_the_file_opens_with_a_header_of_every_column() -> None:
     first = rendered(()).splitlines()[0]
 
     assert first.lstrip("﻿") == ";".join(COLUMNS)
 
 
-def test_plik_otwiera_znacznik_kolejnosci_bajtow() -> None:
+def test_the_file_opens_with_a_byte_order_mark() -> None:
     # Bez niego polski Excel czyta UTF-8 jako stronę kodową i nazwy
     # kontrahentów przychodzą rozsypane.
     assert rendered(()).startswith("﻿")
 
 
-def test_nazwa_pliku_mowi_czym_jest_zalacznik() -> None:
+def test_the_file_name_says_what_the_attachment_is() -> None:
     assert statement_file_name(period=SEPTEMBER, nip=NIP) == "zestawienie-2026-09-1234567890.csv"
 
 
-def test_nazwa_pliku_niesie_ostrzezenie_o_skroceniu() -> None:
+def test_the_file_name_carries_the_warning_about_a_shortened_period() -> None:
     # Ostrzeżenie z odpowiedzi narzędzia nie dojeżdża do księgowej — plik tak.
     assert (
         statement_file_name(period=SEPTEMBER, nip=NIP, complete=False)
@@ -392,7 +394,7 @@ def test_nazwa_pliku_niesie_ostrzezenie_o_skroceniu() -> None:
 
 
 @pytest.mark.parametrize("root", ["dane", "cache"])
-def test_katalog_wewnatrz_magazynu_wewnetrznego_jest_odrzucany(tmp_path: Path, root: str) -> None:
+def test_a_directory_inside_internal_storage_is_refused(tmp_path: Path, root: str) -> None:
     with pytest.raises(WorkingDirectoryRefused, match="D-032"):
         prepare_working_directory(
             tmp_path / root / "zestawienia",
@@ -401,7 +403,7 @@ def test_katalog_wewnatrz_magazynu_wewnetrznego_jest_odrzucany(tmp_path: Path, r
         )
 
 
-def test_sam_korzen_danych_tez_jest_odrzucany(tmp_path: Path) -> None:
+def test_the_data_root_itself_is_refused_too(tmp_path: Path) -> None:
     with pytest.raises(WorkingDirectoryRefused, match="D-032"):
         prepare_working_directory(
             tmp_path / "dane",
@@ -410,7 +412,7 @@ def test_sam_korzen_danych_tez_jest_odrzucany(tmp_path: Path) -> None:
         )
 
 
-def test_katalog_poza_oboma_korzeniami_nie_powoduje_kolizji(tmp_path: Path) -> None:
+def test_a_directory_outside_both_roots_collides_with_neither(tmp_path: Path) -> None:
     assert (
         internal_root_conflict(
             tmp_path / "robocze",
@@ -421,13 +423,13 @@ def test_katalog_poza_oboma_korzeniami_nie_powoduje_kolizji(tmp_path: Path) -> N
     )
 
 
-def test_nowy_katalog_roboczy_powstaje_z_uprawnieniami_0700(working: Path) -> None:
+def test_a_new_working_directory_is_created_0700(working: Path) -> None:
     prepared = prepare_working_directory(working)
 
     assert (prepared.created, prepared.mode) == (True, 0o700)
 
 
-def test_istniejacy_katalog_zachowuje_swoje_uprawnienia(tmp_path: Path) -> None:
+def test_an_existing_directory_keeps_the_permissions_it_had(tmp_path: Path) -> None:
     # Ktoś mógł wskazać katalog domowy albo współdzielony; ciche zacieśnienie
     # uprawnień to zmiana, o którą nie prosił.
     existing = tmp_path / "wspolny"
@@ -438,23 +440,23 @@ def test_istniejacy_katalog_zachowuje_swoje_uprawnienia(tmp_path: Path) -> None:
     assert prepared.warnings[0].startswith("Katalog roboczy istniał wcześniej")
 
 
-def test_katalog_z_uprawnieniami_0700_nie_wywoluje_ostrzezenia(working: Path) -> None:
+def test_a_directory_already_0700_raises_no_caveat(working: Path) -> None:
     assert prepare_working_directory(working).warnings == ()
 
 
-def test_sciezka_synchronizowana_do_chmury_jest_nazwana_wprost(tmp_path: Path) -> None:
+def test_a_cloud_synced_path_is_named_in_as_many_words(tmp_path: Path) -> None:
     prepared = prepare_working_directory(tmp_path / "OneDrive" / "ksef")
 
     assert "onedrive" in prepared.warnings[0]
 
 
-def test_katalog_bez_znacznika_chmury_nic_o_niej_nie_mowi() -> None:
+def test_a_directory_with_no_cloud_marker_says_nothing_about_one() -> None:
     directory = WorkingDirectory(path=Path("/robocze"), created=True, mode=0o700, cloud_marker=None)
 
     assert directory.warnings == ()
 
 
-def test_zapis_zostawia_plik_tylko_dla_wlasciciela(
+def test_the_write_leaves_the_file_readable_only_by_its_owner(
     tmp_path: Path, archived: InvoiceArchive
 ) -> None:
     path = write_statement(
@@ -465,7 +467,7 @@ def test_zapis_zostawia_plik_tylko_dla_wlasciciela(
     assert path.stat().st_mode & 0o777 == 0o600
 
 
-def test_zapis_nie_zostawia_pliku_przejsciowego(tmp_path: Path) -> None:
+def test_the_write_leaves_no_temporary_file_behind(tmp_path: Path) -> None:
     write_statement(rows=(), path=tmp_path / "zestawienie.csv")
 
     assert sorted(one.name for one in tmp_path.iterdir()) == ["zestawienie.csv"]
@@ -475,23 +477,23 @@ def test_zapis_nie_zostawia_pliku_przejsciowego(tmp_path: Path) -> None:
     ("complete", "expected"),
     [(True, 0), (False, 1)],
 )
-def test_niekompletny_okres_jest_powiedziany_wprost(complete: bool, expected: int) -> None:
+def test_an_incomplete_period_is_said_in_as_many_words(complete: bool, expected: int) -> None:
     assert len(completeness_warning(complete=complete)) == expected
 
 
-def test_brak_przydzialu_mowi_ksiegowej_zeby_ponowila() -> None:
+def test_a_spent_allowance_tells_the_accountant_to_ask_again() -> None:
     assert "Ponów za godzinę" in completeness_warning(complete=False, budget_bound=True)[0]
 
 
-def test_okres_uciety_przez_ksef_nie_kaze_czekac_na_przydzial() -> None:
+def test_a_period_cut_short_by_ksef_does_not_blame_the_allowance() -> None:
     assert "przydział" not in completeness_warning(complete=False, budget_bound=False)[0]
 
 
-def test_kompletne_zestawienie_nie_zakloca_zdania_z_suma(statement: Statement) -> None:
+def test_a_complete_statement_leaves_the_sentence_with_the_sum_alone(statement: Statement) -> None:
     assert statement.shortfall == ""
 
 
-def test_zdanie_z_suma_samo_mowi_ze_okres_jest_skrocony(
+def test_the_sentence_with_the_sum_says_itself_that_the_period_is_short(
     composer: StatementComposer, working: Path
 ) -> None:
     # Produktem tego narzędzia jest liczba wysyłana księgowej, a suma z części
@@ -508,7 +510,7 @@ def test_zdanie_z_suma_samo_mowi_ze_okres_jest_skrocony(
     assert result.message.startswith("Zestawienie za 2026-09") and "UWAGA" in result.message
 
 
-def test_skrocone_zestawienie_niesie_ostrzezenie_w_nazwie_pliku(
+def test_a_shortened_statement_carries_the_warning_in_its_file_name(
     composer: StatementComposer, working: Path
 ) -> None:
     composer.port.session_object.page = replace(
@@ -522,7 +524,7 @@ def test_skrocone_zestawienie_niesie_ostrzezenie_w_nazwie_pliku(
     assert result.path.endswith("-NIEKOMPLETNE.csv")
 
 
-def test_zestawienie_uciete_przez_ksef_nie_obwinia_przydzialu(
+def test_a_statement_cut_short_by_ksef_does_not_blame_the_allowance(
     composer: StatementComposer, working: Path
 ) -> None:
     composer.port.session_object.page = replace(
@@ -536,17 +538,19 @@ def test_zestawienie_uciete_przez_ksef_nie_obwinia_przydzialu(
     assert (result.budget_bound, "przydział" in result.message) == (False, False)
 
 
-def test_brak_przydzialu_widac_w_zdaniu_z_suma(statement: Statement) -> None:
+def test_a_spent_allowance_shows_in_the_sentence_with_the_sum(statement: Statement) -> None:
     starved = replace(statement, complete=False, budget_bound=True)
 
     assert "przydział" in starved.shortfall
 
 
-def test_jedna_waluta_nie_wymaga_ostrzezenia(statement: Statement) -> None:
+def test_a_single_currency_needs_no_caveat(statement: Statement) -> None:
     assert currency_warning(statement.gross_totals) == ()
 
 
-def test_kilka_walut_ostrzega_o_kolumnie_brutto(composer: StatementComposer, working: Path) -> None:
+def test_several_currencies_caution_about_the_gross_column(
+    composer: StatementComposer, working: Path
+) -> None:
     # Kolumny waluty nie ma (rozstrzygnięte w #41), więc faktura w EUR i w PLN
     # dają w kolumnie Brutto liczby nie do odróżnienia.
     composer.port.session_object.page = MetadataPage(
@@ -561,13 +565,15 @@ def test_kilka_walut_ostrzega_o_kolumnie_brutto(composer: StatementComposer, wor
     assert any("kilku walutach" in one for one in result.warnings)
 
 
-def test_okres_bez_korekt_nie_wymaga_ostrzezenia(archived: InvoiceArchive) -> None:
+def test_a_period_without_corrections_needs_no_caveat(archived: InvoiceArchive) -> None:
     rows = rows_for(invoices=(synthetic_metadata(1), synthetic_metadata(2)), archive=archived)
 
     assert correction_warning(rows) == ()
 
 
-def test_korekta_w_okresie_ostrzega_o_sumie_brutto(archived: InvoiceArchive) -> None:
+def test_a_correction_in_the_period_cautions_about_the_gross_total(
+    archived: InvoiceArchive,
+) -> None:
     # Korekta niesie różnicę wobec faktury korygowanej, a nie tę fakturę na
     # nowo (schemat MF, P_15), więc suma po wszystkich wierszach jest sumą
     # dokumentów, nie zobowiązania.
@@ -582,7 +588,7 @@ def test_korekta_w_okresie_ostrzega_o_sumie_brutto(archived: InvoiceArchive) -> 
     assert correction_warning(rows)[0].startswith("Okres zawiera faktury korygujące (1 z 2")
 
 
-def test_ostrzezenie_o_korekcie_wskazuje_ktora_pozycje(archived: InvoiceArchive) -> None:
+def test_a_correction_caveat_names_which_row_it_means(archived: InvoiceArchive) -> None:
     # Bez numeru czytelnik szuka korekty wśród stu trzydziestu wierszy, a
     # ostrzeżenie, które każe szukać, jest ostrzeżeniem pomijanym.
     rows = rows_for(
@@ -603,7 +609,7 @@ def test_ostrzezenie_o_korekcie_wskazuje_ktora_pozycje(archived: InvoiceArchive)
         DocumentType.KOR_VAT_RR,
     ],
 )
-def test_kazdy_rodzaj_korekty_jest_rozpoznany(
+def test_every_kind_of_correction_is_recognised(
     archived: InvoiceArchive, document_type: DocumentType
 ) -> None:
     # FA, zaliczkowa, rozliczeniowa, PEF i FA_RR mają własny rodzaj korygujący.
@@ -619,7 +625,7 @@ def test_kazdy_rodzaj_korekty_jest_rozpoznany(
     "document_type",
     [DocumentType.VAT, DocumentType.ZAL, DocumentType.ROZ, DocumentType.UPR],
 )
-def test_zwykly_dokument_nie_jest_korekta(
+def test_an_ordinary_document_is_not_a_correction(
     archived: InvoiceArchive, document_type: DocumentType
 ) -> None:
     rows = rows_for(
@@ -629,7 +635,7 @@ def test_zwykly_dokument_nie_jest_korekta(
     assert correction_warning(rows) == ()
 
 
-def test_nierozpoznany_rodzaj_nie_przechodzi_za_zwykla_fakture(
+def test_an_unrecognised_kind_does_not_pass_for_an_ordinary_invoice(
     archived: InvoiceArchive,
 ) -> None:
     # Tabela rodzajów już rosła. Milczenie o dokumencie, którego ta wersja nie
@@ -642,7 +648,7 @@ def test_nierozpoznany_rodzaj_nie_przechodzi_za_zwykla_fakture(
     assert correction_warning(rows)[0].startswith("Nie rozpoznaję rodzaju 1 z 1")
 
 
-def test_zestawienie_z_korekta_niesie_ostrzezenie(
+def test_a_statement_with_a_correction_carries_the_caveat(
     composer: StatementComposer, working: Path
 ) -> None:
     composer.port.session_object.page = MetadataPage(
@@ -660,36 +666,38 @@ def test_zestawienie_z_korekta_niesie_ostrzezenie(
     assert any("korygujące" in one for one in result.warnings)
 
 
-def test_pozycje_bez_pliku_sa_policzone(archived: InvoiceArchive) -> None:
+def test_rows_with_no_archived_body_are_counted(archived: InvoiceArchive) -> None:
     rows = rows_for(invoices=(synthetic_metadata(1), synthetic_metadata(2)), archive=archived)
 
     assert unverifiable_warning(rows)[0].startswith("Bez KOD I: 1 z 2")
 
 
-def test_komplet_pozycji_z_kodem_nie_ostrzega(archived: InvoiceArchive) -> None:
+def test_rows_that_all_carry_a_code_raise_no_caveat(archived: InvoiceArchive) -> None:
     assert unverifiable_warning(rows_for(invoices=(synthetic_metadata(1),), archive=archived)) == ()
 
 
-def test_zestawienie_lezy_w_katalogu_roboczym(statement: Statement, working: Path) -> None:
+def test_the_statement_lands_in_the_working_directory(statement: Statement, working: Path) -> None:
     assert Path(statement.path).parent == working
 
 
-def test_zestawienie_liczy_pozycje(statement: Statement) -> None:
+def test_the_statement_counts_its_rows(statement: Statement) -> None:
     assert statement.row_count == 2
 
 
-def test_zestawienie_podaje_sume_brutto(statement: Statement) -> None:
+def test_the_statement_states_the_gross_total(statement: Statement) -> None:
     assert statement.gross_totals[0].gross == Decimal("2460.00")
 
 
-def test_suma_zgadza_sie_z_kolumna_brutto(statement: Statement, written: str) -> None:
+def test_the_total_agrees_with_the_gross_column_of_the_file(
+    statement: Statement, written: str
+) -> None:
     rows = written.lstrip("﻿").strip().splitlines()[1:]
     summed = sum(Decimal(row.split(";")[5].replace(",", ".")) for row in rows)
 
     assert summed == statement.gross_totals[0].gross
 
 
-def test_zestawienie_pyta_ksef_tylko_o_role_nabywcy(
+def test_the_statement_asks_ksef_only_about_the_buyer_role(
     statement: Statement, session: RecordingSession
 ) -> None:
     # Kontrahentem w każdej z ośmiu kolumn jest sprzedawca, więc podmiot
@@ -697,7 +705,7 @@ def test_zestawienie_pyta_ksef_tylko_o_role_nabywcy(
     assert session.asked == [SubjectRole.BUYER]
 
 
-def test_drugie_zlozenie_tego_samego_miesiaca_nie_kosztuje_zapytania(
+def test_a_second_pass_over_the_same_month_costs_no_query(
     composer: StatementComposer, working: Path, session: RecordingSession
 ) -> None:
     composer.run(nip=NIP, token=CREDENTIAL, period=SEPTEMBER, directory=working)
@@ -706,7 +714,7 @@ def test_drugie_zlozenie_tego_samego_miesiaca_nie_kosztuje_zapytania(
     assert len(session.asked) == 1
 
 
-def test_zestawienie_z_dysku_mowi_ze_jest_z_dysku(
+def test_a_statement_answered_from_disk_says_it_came_from_disk(
     composer: StatementComposer, working: Path
 ) -> None:
     composer.run(nip=NIP, token=CREDENTIAL, period=SEPTEMBER, directory=working)
@@ -716,25 +724,25 @@ def test_zestawienie_z_dysku_mowi_ze_jest_z_dysku(
     assert repeated.from_cache is True
 
 
-def test_pierwsze_zlozenie_nie_jest_z_dysku(statement: Statement) -> None:
+def test_the_first_pass_did_not_come_from_disk(statement: Statement) -> None:
     assert statement.from_cache is False
 
 
-def test_zestawienie_stempluje_moment_zapytania(statement: Statement) -> None:
+def test_the_statement_stamps_the_moment_it_asked(statement: Statement) -> None:
     assert statement.queried_at == ASKED_AT
 
 
-def test_zestawienie_nazywa_srodowisko_z_ktorym_rozmawialo(statement: Statement) -> None:
+def test_the_statement_names_the_environment_it_spoke_to(statement: Statement) -> None:
     assert statement.environment is KsefEnvironment.TEST
 
 
-def test_komunikat_niesie_liczbe_sume_i_sciezke(statement: Statement) -> None:
+def test_the_message_carries_the_count_the_sum_and_the_path(statement: Statement) -> None:
     assert statement.message == (
         f"Zestawienie za 2026-09: 2 faktury, brutto 2460.00 PLN. Plik: {statement.path}"
     )
 
 
-def test_pusty_miesiac_ma_komunikat_bez_sumy(
+def test_an_empty_month_answers_with_a_message_and_no_sum(
     cache: PeriodCache, archived: InvoiceArchive, protection: Allowance
 ) -> None:
     composer = StatementComposer(
@@ -755,7 +763,7 @@ def test_pusty_miesiac_ma_komunikat_bez_sumy(
     assert "brutto —" in result.message
 
 
-def test_uciety_okres_wraca_z_ostrzezeniem(
+def test_a_period_cut_short_comes_back_with_a_caveat(
     cache: PeriodCache, archived: InvoiceArchive, working: Path, protection: Allowance
 ) -> None:
     composer = StatementComposer(
@@ -771,19 +779,19 @@ def test_uciety_okres_wraca_z_ostrzezeniem(
     assert (result.complete, "nie jest kompletem" in result.warnings[0]) == (False, True)
 
 
-def test_plik_nie_niesie_tresci_faktury(written: str) -> None:
+def test_the_file_carries_no_invoice_content(written: str) -> None:
     # FA(2)/FA(3) to dane osobowe kontrahenta i nie przekraczają tej granicy
     # (D-011) — do CSV trafia skrót pliku, nigdy jego zawartość.
     assert "<Faktura" not in written
 
 
-def test_plik_nie_niesie_sciezek_lokalnych(written: str, archived: InvoiceArchive) -> None:
+def test_the_file_carries_no_local_paths(written: str, archived: InvoiceArchive) -> None:
     # Ścieżka po przesłaniu jest bezużyteczna albo myląca; niesie ją odpowiedź
     # narzędzia, nie załącznik (D-011).
     assert str(archived.invoice_directory) not in written
 
 
-def test_skasowanie_katalogu_roboczego_nie_rusza_archiwum_ani_cache(
+def test_deleting_the_working_directory_touches_neither_archive_nor_cache(
     statement: Statement, archived: InvoiceArchive, cache: PeriodCache, working: Path
 ) -> None:
     # Sedno D-032: katalog roboczy jest produktem, magazyn jest wewnętrzny.
@@ -799,7 +807,7 @@ def test_skasowanie_katalogu_roboczego_nie_rusza_archiwum_ani_cache(
     )
 
 
-def test_katalog_roboczy_lezy_poza_korzeniem_danych(
+def test_the_working_directory_lies_outside_the_data_root(
     statement: Statement, archived: InvoiceArchive
 ) -> None:
     assert not Path(statement.path).is_relative_to(archived.root / SUBJECT_DIRECTORY)
