@@ -184,7 +184,7 @@ def test_a_newer_schema_is_refused_rather_than_guessed_at(store: SyncStore) -> N
         encoding="utf-8",
     )
 
-    with pytest.raises(SyncStateUnreadable, match="skips invoices"):
+    with pytest.raises(SyncStateUnreadable, match="pomija faktury"):
         store.load()
 
 

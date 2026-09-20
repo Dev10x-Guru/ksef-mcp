@@ -90,12 +90,12 @@ def load_configuration(*, path: Path | None = None) -> Configuration | None:
     require_schema(
         {"schema_version": SCHEMA_VERSION} | stored,
         expected=SCHEMA_VERSION,
-        named="The configuration",
+        named="Konfiguracja",
         refused_as=ConfigurationUnreadable,
         consequence=(
-            "a misread NIP or environment files under the wrong subject, or "
-            "against the live registry. Run `ksef-mcp onboarding` to write it "
-            "again."
+            "źle odczytany NIP albo środowisko zapisuje pliki pod niewłaściwym "
+            "podmiotem albo trafia do żywego rejestru. Uruchom "
+            "`ksef-mcp onboarding`, żeby zapisać ją od nowa."
         ),
     )
     try:

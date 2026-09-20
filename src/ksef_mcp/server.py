@@ -11,7 +11,7 @@ from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import BaseModel
 
-from ksef_mcp import config, token_store
+from ksef_mcp import config, messages, token_store
 from ksef_mcp.allowance import Allowance
 from ksef_mcp.archive import InvoiceArchive
 from ksef_mcp.audit import (
@@ -155,14 +155,14 @@ def reported(operation: AuditedOperation) -> Iterator[None]:
         except NotConfigured as error:
             technical_log().warning("%s refused: not configured. %s", operation, error)
             raise ToolError(
-                f"{operation} needs configuration first. Run `ksef-mcp onboarding`. ({error})"
+                f"{operation} wymaga konfiguracji. Uruchom `ksef-mcp onboarding`. ({error})"
             ) from error
         except REFUSALS as error:
             # The message is safe to repeat here for the same reason it is safe
             # to send to the client: `KsefMcpError` promises it carries no
             # token, no invoice body and, since D-038, no KSeF number in full.
             technical_log().warning("%s refused: %s", operation, error)
-            raise ToolError(f"{operation} could not finish. {error}") from error
+            raise ToolError(f"{operation} nie zakończyło się: {error}") from error
 
 
 @server.tool()
@@ -217,7 +217,7 @@ def configured_subject() -> config.Configuration:
     """
     configuration = config.load_configuration()
     if configuration is None:
-        raise NotConfigured("Brak konfiguracji. Uruchom najpierw: ksef-mcp onboarding")
+        raise NotConfigured(messages.describe_not_configured())
     return replace(configuration, nip=Nip.parsed(configuration.nip).value)
 
 

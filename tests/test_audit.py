@@ -234,7 +234,7 @@ def test_a_line_from_another_schema_is_refused_rather_than_guessed_at(
     document = first_line(recorded) | {"schema_version": 99}
     recorded.write_text(json.dumps(document) + "\n", encoding="utf-8")
 
-    with pytest.raises(AuditTrailUnreadable, match="schema 99"):
+    with pytest.raises(AuditTrailUnreadable, match="schemat 99"):
         trail.entries()
 
 

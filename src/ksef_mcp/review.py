@@ -171,11 +171,12 @@ def _encode(ledger: ReviewLedger, *, nip: str, environment: KsefEnvironment) -> 
 REVIEW_DOCUMENT: Final = JsonDocumentStore(
     schema_version=SCHEMA_VERSION,
     file_mode=REVIEW_FILE_MODE,
-    named="The review ledger",
+    named="Rejestr przeglądu",
     on_mismatch=SchemaMismatch.REFUSE,
     refused_as=ReviewLedgerUnreadable,
     consequence=(
-        "a misread ledger either repeats invoices already reviewed or hides one never shown."
+        "źle odczytany rejestr albo powtarza faktury już przejrzane, albo "
+        "ukrywa taką, której jeszcze nie pokazano."
     ),
 )
 

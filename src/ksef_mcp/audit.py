@@ -227,10 +227,11 @@ def _decode(document: dict[str, object]) -> AuditEntry:
     require_schema(
         document,
         expected=SCHEMA_VERSION,
-        named="An audit line",
+        named="Wpis dziennika audytu",
         refused_as=AuditTrailUnreadable,
         consequence=(
-            "a misread trail either invents an access that never happened or hides one that did."
+            "źle odczytany dziennik albo zmyśla dostęp, którego nie było, albo "
+            "ukrywa taki, który był."
         ),
     )
     role = document["subject_role"]

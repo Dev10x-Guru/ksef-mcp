@@ -419,10 +419,10 @@ def _decode_subject_role(stored: dict[str, object]) -> SubjectRoleState:
 STATE_DOCUMENT: Final = JsonDocumentStore(
     schema_version=SCHEMA_VERSION,
     file_mode=STATE_FILE_MODE,
-    named="Synchronisation state",
+    named="Stan synchronizacji",
     on_mismatch=SchemaMismatch.REFUSE,
     refused_as=SyncStateUnreadable,
-    consequence="a misread continuation point skips invoices nothing asks for again.",
+    consequence=("źle odczytany punkt kontynuacji pomija faktury, o które nic już nie zapyta."),
 )
 
 

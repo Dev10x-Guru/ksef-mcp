@@ -1610,6 +1610,6 @@ Odwołania do `olegtyshcneko/ksef-mcp` w [D-030] dotyczą cudzego projektu.
   wymaga podniesienia wersji major, nawet gdy żadne narzędzie MCP nie
   zmieniło nazwy ani sygnatury.
 - **Czego to nie obejmuje:** treść komunikatów błędów i tekstu
-  przeznaczonego do czytania przez człowieka (patrz D-041 / GH-163) nie
+  przeznaczonego do czytania przez człowieka (patrz ADR-108 / GH-163) nie
   jest częścią kontraktu SemVer — zmiana słów nie łamie parsowania przez
   agenta, o ile kształt pól się nie zmienia.
