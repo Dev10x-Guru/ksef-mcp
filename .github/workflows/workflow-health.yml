@@ -12,15 +12,12 @@ name: Workflow Health
 # loaded", for any file, for any reason — no guessing at which expression
 # broke.
 #
-# PUSH TO THE DEFAULT BRANCH ONLY, and that is a limitation worth stating
-# rather than hiding. GitHub does not validate workflow files that live on a
-# branch: it registers and compiles them from the default branch. Probing
-# this during #194 settled it — a deliberately broken workflow file pushed
-# to a PR branch produced no run at all, and neither did a correct one.
-# A pre-merge check for this failure class is therefore impossible; on a PR
-# both checks below could only ever report the state already on main, and
-# would fail even on the PR that fixes it. Immediately after merge is the
-# earliest moment the breakage is observable, so that is when this runs.
+# Runs on push to the default branch only. The registry check below reads
+# the state of main, so on a PR it would report main's breakage against
+# the very PR that fixes it. Before merge, look at the run list for the
+# branch's own SHA instead: a file that fails to compile still produces a
+# failed `push` run there, named after its path — that is how #194 was
+# finally located, from the "Invalid workflow file" line on such a run.
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -57,7 +54,7 @@ jobs:
           if [ -n "$BROKEN" ]; then
             echo "::error::Te pliki workflow nie dają się wczytać przez GitHub Actions — ich przebiegi nie tworzą żadnego zadania, więc awaria nie pojawia się wśród kontroli."
             while IFS= read -r path; do
-              echo "::error file=${path}::GitHub nie odczytał pola name: z ${path}. Najczęstsza przyczyna: wyrażenie na poziomie workflow (concurrency, run-name, env) sięgające po kontekst zdarzenia, którego przy kompilacji pliku nie ma. Zabezpiecz je operatorem || albo przenieś blok na poziom zadania."
+              echo "::error file=${path}::GitHub nie odczytał pola name: z ${path}. Dokładny komunikat kompilatora (linia i kolumna) jest na stronie nieudanego przebiegu push dla tego pliku, pod nagłówkiem „Invalid workflow file”. Typowa przyczyna: niepoprawne wyrażenie Actions gdziekolwiek w pliku, także w komentarzu wewnątrz run: (#194)."
             done <<< "$BROKEN"
             exit 1
           fi

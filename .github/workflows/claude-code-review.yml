@@ -20,26 +20,11 @@ jobs:
     # which PR is in play, so there is nothing to review.
     if: github.event.workflow_run.conclusion == 'success'
 
-    # Two deliberate details here, both of them the fix for #194: this block
-    # sits at job level rather than workflow level, and the expression has a
-    # fallback. Either alone would probably do; together they cannot fail.
-    #
-    # A workflow-level `concurrency` group is evaluated while GitHub compiles
-    # the file, which happens on every push to every branch — including
-    # pushes that have nothing to do with the `workflow_run` trigger above.
-    # An unguarded `github.event.workflow_run.head_sha` has nothing to
-    # resolve to at that moment, the file fails to load, and GitHub records a
-    # run with zero jobs named after the file path instead of `name:`. No job
-    # means no `check_run`, so the failure never reaches a PR's checks: the
-    # review looks clean because it never ran at all.
-    #
-    # The evidence is a one-line bisect. Commit 1887587 changed this group
-    # from `github.event.pull_request.number || github.ref` to the unguarded
-    # form, and the workflow has not loaded since. Every workflow in this
-    # repository that still loads keeps a `||` fallback.
-    #
     # `github.run_id` is the fallback because it is unique per run, so the
-    # degenerate case groups nothing together and cancels nothing.
+    # degenerate case groups nothing together and cancels nothing. Job-level
+    # placement is harmless with a single job; it was moved here during
+    # #194 on a wrong hypothesis and is not what fixed the file — see the
+    # comment in the verification step below for what did.
     concurrency:
       group: ${{ github.workflow }}-${{ github.event.workflow_run.head_sha || github.run_id }}
       cancel-in-progress: true
@@ -74,8 +59,11 @@ jobs:
           set -euo pipefail
           # Everything read out of the artifact is attacker-controlled. It
           # goes into a shell variable and is only ever used quoted — never
-          # interpolated through `${{ }}`, which would splice it into this
-          # script before the shell ever sees it.
+          # through an Actions expression, which would splice it into this
+          # script before the shell ever sees it. Do not write the
+          # expression delimiters in this comment either, not even empty:
+          # GitHub scans the whole `run:` text for them, and an empty pair
+          # fails compilation of the entire file (#194).
           PR_NUMBER=$(tr -d '[:space:]' < pr-context/number)
           case "$PR_NUMBER" in
             ''|*[!0-9]*)

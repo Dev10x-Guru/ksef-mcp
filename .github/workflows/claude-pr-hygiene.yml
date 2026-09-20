@@ -13,10 +13,8 @@ jobs:
   hygiene-review:
     if: github.event.workflow_run.conclusion == 'success'
 
-    # Job level and guarded, for the reasons set out at length in
-    # claude-code-review.yml. An unguarded workflow-level group referencing
-    # `github.event.workflow_run` is evaluated at compile time, when that
-    # context does not exist, and the whole file then fails to load (#194).
+    # Job level and guarded, as in claude-code-review.yml. Harmless with a
+    # single job; not what fixed #194 — see the verification step below.
     concurrency:
       group: ${{ github.workflow }}-${{ github.event.workflow_run.head_sha || github.run_id }}
       cancel-in-progress: true
@@ -45,7 +43,10 @@ jobs:
         run: |
           set -euo pipefail
           # Artefact content is attacker-controlled: quoted shell variable
-          # only, never `${{ }}` interpolation into this script.
+          # only, never an Actions expression spliced into this script. Do
+          # not write the expression delimiters in this comment either, not
+          # even empty: GitHub scans the whole `run:` text for them, and an
+          # empty pair fails compilation of the entire file (#194).
           PR_NUMBER=$(tr -d '[:space:]' < pr-context/number)
           case "$PR_NUMBER" in
             ''|*[!0-9]*)
