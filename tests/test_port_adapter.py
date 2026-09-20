@@ -1,17 +1,26 @@
+import inspect
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from functools import reduce
+from operator import or_
 from pathlib import Path
+from types import UnionType
+from typing import Final, Union, get_args, get_origin
 
 import httpx
 import pytest
 from ksef2 import Environment
+from ksef2.clients.auth import AuthClient
+from ksef2.clients.limits import LimitsClient
 from ksef2.core.exceptions import (
     KSeFAuthError,
     KSeFRateLimitError,
     KSeFSessionError,
 )
 from ksef2.domain.models.invoices import (
+    ExportHandle,
+    ExportStatusInfo,
     InvoiceExportStatusResponse,
     InvoiceMetadata,
     InvoiceMetadataBuyer,
@@ -26,6 +35,7 @@ from ksef2.domain.models.limits import (
     RateLimitValues,
     SessionLimits,
 )
+from ksef2.services.invoices import InvoicesService
 
 from ksef_mcp.diagnostics import correlated
 from ksef_mcp.ksef_port import (
@@ -60,6 +70,7 @@ from tests.support.doubles import (
     FakeAuthentication,
     FakeBuyer,
     FakeContextLimits,
+    FakeExportHandle,
     FakeExportStatusInfo,
     FakeExportStatusResponse,
     FakeInvoicePackage,
@@ -163,26 +174,121 @@ def session(plan: Plan, port: Ksef2Port) -> Iterator[KsefSession]:
         yield opened
 
 
-@pytest.mark.parametrize(
-    ("double", "real"),
-    [
-        (FakeMetadata, InvoiceMetadata),
-        (FakeSeller, InvoiceMetadataSeller),
-        (FakeBuyer, InvoiceMetadataBuyer),
-        (FakeMetadataPage, QueryInvoicesMetadataResponse),
-        (FakeRateValues, RateLimitValues),
-        (FakeApiRateLimits, ApiRateLimits),
-        (FakeSessionLimits, SessionLimits),
-        (FakeContextLimits, ContextLimits),
-        (FakePackagePart, PackagePart),
-        (FakeInvoicePackage, InvoicePackage),
-        (FakeExportStatusResponse, InvoiceExportStatusResponse),
-    ],
+# Which SDK model each double stands in for. One table rather than one per
+# test: it is also what lets a double's own annotation — `list[FakeMetadata]`,
+# `FakeInvoicePackage | None` — be read as the SDK type it claims to imitate.
+#
+# `FakeExportHandle` and `FakeExportStatusInfo` were absent from the earlier
+# check altogether, so `schedule_export` and the export status code were the
+# two mappings nothing guarded (GH-175).
+STAND_INS: Final[dict[type, type]] = {
+    FakeMetadata: InvoiceMetadata,
+    FakeSeller: InvoiceMetadataSeller,
+    FakeBuyer: InvoiceMetadataBuyer,
+    FakeMetadataPage: QueryInvoicesMetadataResponse,
+    FakeRateValues: RateLimitValues,
+    FakeApiRateLimits: ApiRateLimits,
+    FakeSessionLimits: SessionLimits,
+    FakeContextLimits: ContextLimits,
+    FakePackagePart: PackagePart,
+    FakeInvoicePackage: InvoicePackage,
+    FakeExportStatusResponse: InvoiceExportStatusResponse,
+    FakeExportHandle: ExportHandle,
+    FakeExportStatusInfo: ExportStatusInfo,
+}
+
+# The amounts the adapter hands to `as_amount`, which spells them through
+# `Decimal(str(value))`. A `None` here does not read as "no amount" — it
+# reaches `Decimal("None")` and raises `InvalidOperation` from inside a
+# translation that has no branch for it. So the invariant this rests on is
+# that KSeF states every one of them, and it is asserted rather than assumed.
+REQUIRED_AMOUNTS: Final[tuple[str, ...]] = ("net_amount", "gross_amount", "vat_amount")
+
+# Every SDK call the adapter makes, paired with the double that stands in for
+# it. Field names were checked before this; the call signatures were not, so a
+# renamed keyword or a newly required argument reached the taxpayer's machine
+# as a TypeError with a green suite behind it (GH-175).
+SDK_CALLS: Final[tuple[tuple[type, type, str], ...]] = (
+    (FakeInvoicesService, InvoicesService, "query_metadata"),
+    (FakeInvoicesService, InvoicesService, "schedule_export"),
+    (FakeInvoicesService, InvoicesService, "get_export_status"),
+    (FakeInvoicesService, InvoicesService, "download_invoice"),
+    (FakeLimitsClient, LimitsClient, "get_api_rate_limits"),
+    (FakeLimitsClient, LimitsClient, "get_context_limits"),
+    (FakeAuthentication, AuthClient, "with_token"),
 )
-def test_the_doubles_still_match_the_sdk_models(double: type, real: type) -> None:
+
+
+def as_sdk_annotation(annotation: object) -> object:
+    """The double's annotation with every stand-in swapped for what it imitates."""
+    arguments = get_args(annotation)
+    if not arguments:
+        return STAND_INS.get(annotation, annotation)  # type: ignore[arg-type]
+    rebuilt = tuple(as_sdk_annotation(one) for one in arguments)
+    origin = get_origin(annotation)
+    if origin in (UnionType, Union):
+        return reduce(or_, rebuilt)
+    return origin[rebuilt]  # type: ignore[index]
+
+
+def parameters_of(owner: type, name: str) -> dict[str, inspect.Parameter]:
+    return {
+        parameter_name: parameter
+        for parameter_name, parameter in inspect.signature(getattr(owner, name)).parameters.items()
+        if parameter_name != "self"
+    }
+
+
+def required_parameters_of(owner: type, name: str) -> set[str]:
+    return {
+        parameter_name
+        for parameter_name, parameter in parameters_of(owner, name).items()
+        if parameter.default is inspect.Parameter.empty
+    }
+
+
+@pytest.mark.parametrize(("double", "real"), STAND_INS.items(), ids=lambda one: one.__name__)
+def test_the_doubles_still_carry_the_field_names_the_sdk_does(double: type, real: type) -> None:
     # Without this the suite stays green when ksef2 renames a field, and the
     # rename surfaces as an AttributeError on the user's machine instead.
-    assert set(double.__annotations__) <= set(real.model_fields)
+    assert set(inspect.get_annotations(double)) <= set(real.model_fields)
+
+
+@pytest.mark.parametrize(("double", "real"), STAND_INS.items(), ids=lambda one: one.__name__)
+def test_the_doubles_still_carry_the_field_types_the_sdk_does(double: type, real: type) -> None:
+    # The name surviving is not the same as the meaning surviving. `float`
+    # turning into `Decimal`, or a required field turning optional, leaves
+    # every name in place and changes what the adapter must do with the value.
+    assert {
+        name: as_sdk_annotation(annotation)
+        for name, annotation in inspect.get_annotations(double).items()
+    } == {name: real.model_fields[name].annotation for name in inspect.get_annotations(double)}
+
+
+@pytest.mark.parametrize("name", REQUIRED_AMOUNTS)
+def test_ksef_states_every_amount_the_adapter_spells_through_decimal(name: str) -> None:
+    field = InvoiceMetadata.model_fields[name]
+
+    assert (field.is_required(), type(None) in get_args(field.annotation)) == (True, False)
+
+
+@pytest.mark.parametrize(
+    ("double", "real", "name"),
+    SDK_CALLS,
+    ids=[f"{real.__name__}.{name}" for _, real, name in SDK_CALLS],
+)
+def test_the_doubles_still_answer_the_call_the_sdk_answers(
+    double: type,
+    real: type,
+    name: str,
+) -> None:
+    # Both directions, and they catch different drifts. A keyword the double
+    # knows and the SDK does not means the adapter is calling something that
+    # no longer exists; a keyword the SDK now requires and the double does not
+    # know means the adapter is about to be refused for an argument it never
+    # learned to pass.
+    assert set(parameters_of(double, name)) <= set(parameters_of(real, name))
+    assert required_parameters_of(real, name) <= set(parameters_of(double, name))
 
 
 @pytest.mark.parametrize(
