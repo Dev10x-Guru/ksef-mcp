@@ -88,6 +88,15 @@ udokumentowane.
 
 ### Poprawione
 
+- Uszkodzony plik konfiguracyjny jest nazywany po imieniu, zamiast
+  kończyć się śladem wyjątku. Przerwany zapis zostawia plik, który
+  istnieje, więc nic nie uznaje serwera za nieskonfigurowany — a
+  komendy `ksef-mcp` wywracały się wtedy na gołym błędzie parsera, z
+  którego nie wynikało, że wystarczy przepisać jeden plik. Teraz każda
+  komenda kończy się kodem wyjścia 9, podaje ścieżkę i przypomina o
+  `ksef-mcp onboarding`. Serwer MCP mówił to już wcześniej; od tej
+  poprawki oba wejścia mówią to samo (GH-119).
+
 - Synchronizacja sesji z dużą liczbą faktur nie przepisuje już całej
   historii archiwum przy każdej pojedynczej fakturze. Indeks rośnie przez
   całe życie archiwum i celowo nie jest przycinany, więc przy suficie
