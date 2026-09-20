@@ -78,7 +78,10 @@ interfejsie PR-a.
 Treść powinna być **zwięzła**, aby nie zaśmiecać podglądów na Slacku.
 
 **Wymagane elementy** (w tej kolejności):
-1. Job Story JTBD jako **pierwszy akapit** (1-3 linie, patrz `git-jtbd.md`)
+1. Job Story JTBD jako **pierwszy akapit** (1-3 linie, patrz
+   `git-jtbd.md`) — **bez żadnego nagłówka nad nim**. Nagłówki sekcji
+   (np. `## Podsumowanie`) wolno stawiać dopiero **pod** Job Story,
+   nigdy nad nią.
 2. Link `Fixes:` — musi być **bezwzględnie ostatnią linią** treści:
    - `Fixes: https://github.com/Dev10x-Guru/ksef-mcp/issues/NUMBER`
      (dla pracy powiązanej ze zgłoszeniem)
