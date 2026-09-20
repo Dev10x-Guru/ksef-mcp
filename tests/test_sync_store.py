@@ -15,12 +15,12 @@ from pathlib import Path
 import pytest
 
 from ksef_mcp import storage
-from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port import (
     ContinuationPoint,
     ExportEncryption,
     ExportPart,
     ExportState,
+    KsefEnvironment,
     SubjectRole,
 )
 from ksef_mcp.storage import WriteExclusivityUnavailable

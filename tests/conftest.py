@@ -7,8 +7,8 @@ import pytest
 
 from ksef_mcp import paths, preflight
 from ksef_mcp.allowance import Allowance, now_utc
-from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.diagnostics import LOG_FILE, configure_diagnostics, technical_log
+from ksef_mcp.ksef_port.types import KsefEnvironment
 
 
 def raiser(error: Exception) -> Callable[..., object]:

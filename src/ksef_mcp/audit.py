@@ -58,8 +58,8 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Final
 
-from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.errors import KsefMcpError
+from ksef_mcp.ksef_port.types import KsefEnvironment
 from ksef_mcp.paths import SubjectScope
 from ksef_mcp.storage import exclusive_write, require_schema
 

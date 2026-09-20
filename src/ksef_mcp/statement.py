@@ -58,7 +58,6 @@ from ksef_mcp.archive import (
 )
 from ksef_mcp.config import (
     INVOICE_DIRECTORY_MODE,
-    KsefEnvironment,
     cloud_sync_marker,
     prepare_invoice_directory,
 )
@@ -69,6 +68,7 @@ from ksef_mcp.ksef_port.types import (
     DateType,
     DocumentType,
     InvoiceMetadata,
+    KsefEnvironment,
     Period,
     SubjectRole,
 )

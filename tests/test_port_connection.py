@@ -19,10 +19,10 @@ from typing import Final
 
 import pytest
 
-from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port import (
     ConnectionCheck,
     InvoiceMetadata,
+    KsefEnvironment,
     KsefLimits,
     KsefRequestRejected,
     MetadataPage,

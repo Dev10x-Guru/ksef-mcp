@@ -36,13 +36,13 @@ from typing import Final
 from platformdirs import user_cache_path
 
 from ksef_mcp.allowance import Allowance
-from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port.budget import QueryBudget
 from ksef_mcp.ksef_port.protocol import KsefSession
 from ksef_mcp.ksef_port.types import (
     DateType,
     DocumentType,
     InvoiceMetadata,
+    KsefEnvironment,
     KsefNumber,
     MetadataPage,
     Operation,

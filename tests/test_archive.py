@@ -34,8 +34,8 @@ from ksef_mcp.archive import (
     digest_of,
     identities,
 )
-from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.diagnostics import short_reference
+from ksef_mcp.ksef_port.types import KsefEnvironment
 from ksef_mcp.metadata import SERVER_NAME
 from ksef_mcp.package import ExportPackage, PackageDocument
 from ksef_mcp.storage import WriteExclusivityUnavailable, exclusive_write

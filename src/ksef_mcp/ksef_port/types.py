@@ -36,6 +36,23 @@ MAX_QUERY_WINDOW: Final[timedelta] = timedelta(days=89)
 PAGE_SIZE: Final[int] = 250
 
 
+class KsefEnvironment(StrEnum):
+    """Which KSeF instance an operation speaks to.
+
+    It lives here rather than in `config` because the port is the layer that
+    cannot work without it: `KsefPort.environment` names it, and the adapter
+    maps it onto the SDK's own enum. Read from `config` it made the bottom
+    layer depend on a module that reads files and knows about the user's
+    installation, so the port could neither be extracted nor exercised on its
+    own (GH-122). The direction is reversed: `config` reads the environment
+    from the port, and stores the choice.
+    """
+
+    TEST = "test"
+    DEMO = "demo"
+    PRODUCTION = "production"
+
+
 @runtime_checkable
 class Credential(Protocol):
     """A KSeF token that has not been unwrapped yet.

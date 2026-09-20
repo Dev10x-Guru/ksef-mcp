@@ -23,10 +23,10 @@ import pytest
 
 from ksef_mcp import paths
 from ksef_mcp.allowance import Allowance
-from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port import (
     DateType,
     InvoiceMetadata,
+    KsefEnvironment,
     KsefLimits,
     KsefNumber,
     KsefRateLimited,

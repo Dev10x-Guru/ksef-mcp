@@ -18,10 +18,10 @@ from platformdirs import user_cache_path
 
 from ksef_mcp import paths
 from ksef_mcp import period_cache as period_cache_module
-from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port import (
     DateType,
     DocumentType,
+    KsefEnvironment,
     MetadataPage,
     OperationLimit,
     Period,

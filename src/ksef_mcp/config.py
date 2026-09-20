@@ -1,13 +1,13 @@
 import json
 import stat
 from dataclasses import dataclass
-from enum import StrEnum
 from pathlib import Path
 from typing import Final
 
 from platformdirs import user_data_path
 
 from ksef_mcp.errors import KsefMcpError
+from ksef_mcp.ksef_port.types import KsefEnvironment
 from ksef_mcp.metadata import SERVER_NAME
 from ksef_mcp.storage import json_written_atomically, require_schema
 
@@ -39,12 +39,6 @@ CLOUD_SYNC_MARKERS: Final[tuple[str, ...]] = (
     "mega",
     "yandex.disk",
 )
-
-
-class KsefEnvironment(StrEnum):
-    TEST = "test"
-    DEMO = "demo"
-    PRODUCTION = "production"
 
 
 # Never PRODUCTION: a default that reaches the live registry would make an

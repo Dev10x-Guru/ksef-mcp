@@ -2,12 +2,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Final, Protocol
 
-from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port.protocol import KsefPort, KsefSession
 from ksef_mcp.ksef_port.types import (
     Credential,
     DateType,
     InvoiceMetadata,
+    KsefEnvironment,
     MetadataPage,
     Period,
     SubjectRole,

@@ -17,7 +17,7 @@ from ksef_mcp.audit import (
     Disclosure,
     now_utc,
 )
-from ksef_mcp.config import KsefEnvironment
+from ksef_mcp.ksef_port.types import KsefEnvironment
 from ksef_mcp.token_store import TokenSource
 from tests.conftest import in_another_thread
 

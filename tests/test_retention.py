@@ -21,7 +21,7 @@ import pytest
 
 from ksef_mcp.archive import InvoiceArchive
 from ksef_mcp.audit import AuditedOperation, Authorisation, AuthorisationBasis, Disclosure
-from ksef_mcp.config import KsefEnvironment
+from ksef_mcp.ksef_port.types import KsefEnvironment
 from ksef_mcp.package import ExportPackage, PackageDocument
 from ksef_mcp.retention import (
     ArchivePurge,

@@ -23,13 +23,13 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Final, Self
 
-from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.diagnostics import technical_log
 from ksef_mcp.ksef_port.budget import HOUR, QueryBudget
 from ksef_mcp.ksef_port.errors import KsefRequestRejected
 from ksef_mcp.ksef_port.guard import GuardedSession
 from ksef_mcp.ksef_port.protocol import KsefSession
 from ksef_mcp.ksef_port.types import (
+    KsefEnvironment,
     KsefLimits,
     Operation,
     OperationLimit,

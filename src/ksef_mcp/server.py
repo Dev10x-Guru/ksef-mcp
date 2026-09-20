@@ -34,7 +34,7 @@ from ksef_mcp.diagnostics import (
 )
 from ksef_mcp.errors import KsefMcpError
 from ksef_mcp.ksef_port.errors import KsefPortError
-from ksef_mcp.ksef_port.types import InvoiceMetadata, Period
+from ksef_mcp.ksef_port.types import InvoiceMetadata, KsefEnvironment, Period
 from ksef_mcp.listing import InvoiceLister, InvoiceListing, SubjectRoleListing
 from ksef_mcp.metadata import SERVER_NAME, VERSION
 from ksef_mcp.paths import Nip
@@ -172,7 +172,7 @@ def server_info() -> ServerInfo:
 
 
 def describe(
-    report: SynchronisationReport, *, environment: config.KsefEnvironment
+    report: SynchronisationReport, *, environment: KsefEnvironment
 ) -> SynchronisationResult:
     return SynchronisationResult(
         environment=str(environment),
@@ -256,7 +256,7 @@ class SubjectDependencies:
         return self.configuration.nip
 
     @property
-    def environment(self) -> config.KsefEnvironment:
+    def environment(self) -> KsefEnvironment:
         return self.configuration.environment
 
     @property
@@ -909,7 +909,7 @@ def describe_rendered(
     rendered: RenderedInvoice,
     *,
     nip: str,
-    environment: config.KsefEnvironment,
+    environment: KsefEnvironment,
     warnings: tuple[str, ...],
 ) -> RenderedInvoiceResult:
     return RenderedInvoiceResult(

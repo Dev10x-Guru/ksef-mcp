@@ -25,12 +25,12 @@ import pytest
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.padding import PKCS7
 
-from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port import (
     ExportEncryption,
     ExportHandle,
     ExportPart,
     ExportState,
+    KsefEnvironment,
     KsefLimits,
     KsefNumber,
     KsefUnreachable,
