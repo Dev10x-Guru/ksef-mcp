@@ -10,6 +10,18 @@ udokumentowane.
 
 ## Bez wydania
 
+### Dodane
+
+- Nieudana synchronizacja zostawia po sobie ślad techniczny, więc nie
+  trzeba już prosić o jej powtórzenie, żeby dowiedzieć się, co poszło
+  nie tak. Dotąd jedyną odpowiedzią na „nie pobrało mi się" było
+  uruchomienie wszystkiego jeszcze raz — czyli wydanie kolejnej porcji
+  z dwudziestu eksportów na godzinę, które KSeF przyznaje. Dziennik
+  idzie na standardowe wyjście błędów, a kto chce mieć go w pliku,
+  ustawia `KSEF_DIAGNOSTIC_DIRECTORY`: plik powstaje wtedy w trybie
+  `0600`, z rotacją, i nie niesie ani treści faktury, ani tokenu
+  (GH-116).
+
 ### Zmienione
 
 - Obietnica, że przerwany zapis nigdy nie zostawia połowy pliku, jest
