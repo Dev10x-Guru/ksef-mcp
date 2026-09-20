@@ -56,6 +56,7 @@ from ksef_mcp.config import (
     prepare_invoice_directory,
 )
 from ksef_mcp.errors import KsefMcpError, KsefMcpInputRejected
+from ksef_mcp.invoices.listing import CurrencyTotal, gross_totals, invoices_phrase
 from ksef_mcp.ksef_port.protocol import KsefPort
 from ksef_mcp.ksef_port.types import (
     Credential,
@@ -66,7 +67,6 @@ from ksef_mcp.ksef_port.types import (
     Period,
     SubjectRole,
 )
-from ksef_mcp.listing import CurrencyTotal, gross_totals, invoices_phrase
 from ksef_mcp.metadata import SERVER_NAME
 from ksef_mcp.storage.archive import (
     INVOICE_SUFFIX,

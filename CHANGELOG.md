@@ -53,6 +53,22 @@ niż jedna zmiana łamiąca.
     należy teraz do pakietu, a nazwa `durability` mówi, co ten moduł
     naprawdę trzyma — wyłączność zapisu i trwałość podmiany.
 
+- Moduły kontekstu faktur zebrano w pakiecie `ksef_mcp.invoices`.
+  Podział jest po kontekstach, nie warstwowy: przy około sześciu i pół
+  tysiącach linii warstwy rozdzieliłyby pliki, które zmieniają się
+  razem. Zmieniają się wyłącznie ścieżki importu (GH-130):
+
+  - moduł `package` przeniesiony z `ksef_mcp.package` do
+    `ksef_mcp.invoices.package`,
+  - moduł `synchronisation` przeniesiony z `ksef_mcp.synchronisation`
+    do `ksef_mcp.invoices.synchronisation`,
+  - moduł `listing` przeniesiony z `ksef_mcp.listing` do
+    `ksef_mcp.invoices.listing`,
+  - moduł `review` przeniesiony z `ksef_mcp.review` do
+    `ksef_mcp.invoices.review`,
+  - moduł `statement` przeniesiony z `ksef_mcp.statement` do
+    `ksef_mcp.invoices.statement`.
+
 ### Dodane
 
 - Zestawienie okresu ostrzega, gdy w okresie jest faktura korygująca.
