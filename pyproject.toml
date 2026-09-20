@@ -75,6 +75,10 @@ dev = [
     # and a stale advisory database is the one failure this job cannot report.
     # Here Dependabot bumps it along with the rest of the dev group (#109).
     "pip-audit==2.9.0",
+    # Reads the text back out of a rendered PDF. Only the test suite needs it:
+    # a build that renders empty boxes or drops the line items passes a
+    # `startswith(b"%PDF")` check without a murmur (#82, GH-174).
+    "pypdf==6.19.0",
     "pytest==9.1.1",
     "pytest-cov==7.1.0",
     "ruff==0.16.7",
