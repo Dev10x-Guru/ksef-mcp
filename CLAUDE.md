@@ -128,12 +128,23 @@ gorszym niż zastane.
 ## Zasady bezpieczeństwa KSeF (nienegocjowalne)
 
 - **Nigdy nie wołaj produkcyjnego KSeF** z testów, przykładów ani
-  domyślnej konfiguracji. `KSEF_ENV` musi domyślnie wskazywać
-  środowisko testowe lub demonstracyjne.
-- **Poświadczenia są sekretami.** `KSEF_TOKEN`, `KSEF_NIP` i
-  `KSEF_ENV` nie mogą trafić do kodu na sztywno, do logów ani do
-  żadnego pliku wersjonowanego w repozytorium lub wytwarzanego przez
-  CI.
+  domyślnej konfiguracji. Środowisko domyślne jest wiązane w kodzie,
+  nie zmienną środowiskową: `DEFAULT_ENVIRONMENT` (`config.py`)
+  wskazuje TEST, a każde wywołanie SDK w `ksef_port/adapter.py`
+  przekazuje środowisko jawnym argumentem — nigdy nie polega na
+  domyślnym `PRODUCTION` samego SDK. Nie dodawaj zmiennej środowiskowej
+  `KSEF_ENV` „dla spójności" — takiej zmiennej dziś nie ma, a jej
+  dodanie ominęłoby ten jedyny bezpiecznik. Jeśli wybór środowiska
+  przez zmienną środowiskową kiedyś powstanie, to jako świadomie
+  zaplanowana zmiana z osobnym ADR-em, nie cichym dopiskiem.
+- **Poświadczenia są sekretami.** Jedyną wspieraną zmienną
+  środowiskową jest `KSEF_TOKEN` — ścieżka awaryjna z D-004 dla maszyn
+  bez magazynu kluczy (headless, WSL, kontener); ma pierwszeństwo przed
+  keyringiem, gdy jest ustawiona. `KSEF_NIP` nie istnieje w kodzie —
+  podmiot pochodzi z pliku konfiguracyjnego zapisanego przez
+  `onboarding`. Żaden z tych sekretów nie może trafić do kodu na
+  sztywno, do logów ani do żadnego pliku wersjonowanego w repozytorium
+  lub wytwarzanego przez CI.
 - **Nigdy nie loguj ani nie zapisuj XML-a faktury.** Dokumenty
   FA(2)/FA(3) zawierają dane osobowe podatnika. W testach używaj
   danych syntetycznych; treść faktury usuwaj z logów i komunikatów
