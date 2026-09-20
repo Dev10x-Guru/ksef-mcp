@@ -18,7 +18,6 @@ from pathlib import Path
 
 import pytest
 
-from conftest import an_allowance
 from ksef_mcp.allowance import LEDGER_FILE
 from ksef_mcp.archive import INDEX_FILE, InvoiceArchive
 from ksef_mcp.config import KsefEnvironment
@@ -63,7 +62,8 @@ from ksef_mcp.synchronisation import (
     now_utc,
     rolled_back_to,
 )
-from synthetic import (
+from tests.conftest import an_allowance
+from tests.support.synthetic import (
     aes_encrypted,
     base64_digest,
     synthetic_number,

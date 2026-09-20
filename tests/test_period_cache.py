@@ -42,7 +42,7 @@ from ksef_mcp.period_cache import (
     now_utc,
 )
 from ksef_mcp.sync_store import SubjectRoleState, SyncState, SyncStore
-from synthetic import synthetic_metadata
+from tests.support.synthetic import synthetic_metadata
 
 NIP = "1234567890"
 

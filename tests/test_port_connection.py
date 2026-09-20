@@ -19,7 +19,6 @@ from typing import Final
 
 import pytest
 
-from conftest import an_allowance
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port import (
     ConnectionCheck,
@@ -37,7 +36,8 @@ from ksef_mcp.ksef_port import (
 )
 from ksef_mcp.ksef_port.connection import DEFAULT_LIMIT, check_period
 from ksef_mcp.period_cache import MeteredPeriods, PeriodCache
-from synthetic import BUYER_NAME, synthetic_credential, synthetic_metadata
+from tests.conftest import an_allowance
+from tests.support.synthetic import BUYER_NAME, synthetic_credential, synthetic_metadata
 
 NIP = "1234567890"
 

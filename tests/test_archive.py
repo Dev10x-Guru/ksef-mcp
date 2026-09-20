@@ -19,7 +19,6 @@ from pathlib import Path
 
 import pytest
 
-from conftest import in_another_thread
 from ksef_mcp import paths
 from ksef_mcp.archive import (
     ArchiveIndexUnreadable,
@@ -40,7 +39,8 @@ from ksef_mcp.diagnostics import short_reference
 from ksef_mcp.metadata import SERVER_NAME
 from ksef_mcp.package import ExportPackage, PackageDocument
 from ksef_mcp.storage import WriteExclusivityUnavailable, exclusive_write
-from synthetic import base64_digest, synthetic_number
+from tests.conftest import in_another_thread
+from tests.support.synthetic import base64_digest, synthetic_number
 
 NIP = "1234567890"
 

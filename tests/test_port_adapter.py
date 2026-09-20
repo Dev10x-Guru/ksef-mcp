@@ -27,30 +27,6 @@ from ksef2.domain.models.limits import (
     SessionLimits,
 )
 
-from doubles import (
-    HWM,
-    FakeApiRateLimits,
-    FakeAuthenticated,
-    FakeAuthentication,
-    FakeBuyer,
-    FakeContextLimits,
-    FakeExportStatusInfo,
-    FakeExportStatusResponse,
-    FakeInvoicePackage,
-    FakeInvoicesService,
-    FakeLimitsClient,
-    FakeMetadata,
-    FakeMetadataPage,
-    FakePackagePart,
-    FakeRateValues,
-    FakeSdkClient,
-    FakeSeller,
-    FakeSessionLimits,
-    FakeUnparsableLimitsClient,
-    RefusingLimitsClient,
-    sdk_metadata,
-    sdk_part,
-)
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.diagnostics import correlated
 from ksef_mcp.ksef_port import (
@@ -76,7 +52,31 @@ from ksef_mcp.ksef_port.adapter import (
     Ksef2Port,
 )
 from ksef_mcp.ksef_port.types import PAGE_SIZE
-from synthetic import synthetic_credential
+from tests.support.doubles import (
+    HWM,
+    FakeApiRateLimits,
+    FakeAuthenticated,
+    FakeAuthentication,
+    FakeBuyer,
+    FakeContextLimits,
+    FakeExportStatusInfo,
+    FakeExportStatusResponse,
+    FakeInvoicePackage,
+    FakeInvoicesService,
+    FakeLimitsClient,
+    FakeMetadata,
+    FakeMetadataPage,
+    FakePackagePart,
+    FakeRateValues,
+    FakeSdkClient,
+    FakeSeller,
+    FakeSessionLimits,
+    FakeUnparsableLimitsClient,
+    RefusingLimitsClient,
+    sdk_metadata,
+    sdk_part,
+)
+from tests.support.synthetic import synthetic_credential
 
 NIP = "1234567890"
 

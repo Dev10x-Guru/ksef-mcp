@@ -41,7 +41,7 @@ from ksef_mcp.diagnostics import (
     technical_log,
 )
 from ksef_mcp.metadata import SERVER_NAME
-from synthetic import synthetic_number
+from tests.support.synthetic import synthetic_number
 
 
 @pytest.fixture(autouse=True)
