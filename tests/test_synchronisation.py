@@ -437,7 +437,7 @@ def test_a_second_call_reports_the_numbers_as_already_held(
 def test_the_invoice_body_never_reaches_the_report(first_pass: SynchronisationReport) -> None:
     # FA(2)/FA(3) XML carries the counterparty's personal data, so the pass
     # answers with paths and numbers and nothing else (D-011).
-    assert "Faktura" not in "".join(one.detail for one in first_pass.subject_roles)
+    assert "Faktura" not in "".join(one.message for one in first_pass.subject_roles)
 
 
 @pytest.mark.parametrize(
@@ -1147,7 +1147,7 @@ def test_a_lost_export_is_reported_as_what_was_undone_and_what_followed(
 ) -> None:
     _, report = a_pass_over_a_dead_package(store, naps, statuses=[ready(), failed(), ready()])
 
-    assert "EXP-DEAD" in reported(report, SubjectRole.BUYER).detail
+    assert "EXP-DEAD" in reported(report, SubjectRole.BUYER).message
 
 
 def test_a_lost_export_is_reported_alongside_what_replaced_it(
@@ -1155,7 +1155,7 @@ def test_a_lost_export_is_reported_alongside_what_replaced_it(
 ) -> None:
     _, report = a_pass_over_a_dead_package(store, naps, statuses=[ready(), failed(), ready()])
 
-    assert "archiwum" in reported(report, SubjectRole.BUYER).detail
+    assert "archiwum" in reported(report, SubjectRole.BUYER).message
 
 
 def test_a_record_from_before_the_window_start_was_kept_reaches_a_whole_window_back(
@@ -1310,7 +1310,7 @@ def test_an_export_still_being_built_says_since_when_rather_than_merely_that_it_
         store, naps, statuses=[still_running()], started_at=NOON - timedelta(hours=13)
     )
 
-    assert (NOON - timedelta(hours=13)).isoformat() in reported(report, SubjectRole.BUYER).detail
+    assert (NOON - timedelta(hours=13)).isoformat() in reported(report, SubjectRole.BUYER).message
 
 
 def test_an_export_still_inside_the_ceiling_is_left_for_the_next_pass(
@@ -1366,7 +1366,7 @@ def test_an_abandoned_export_says_how_long_it_had_been_building(
         started_at=NOON - ABANDONED_AFTER,
     )
 
-    assert "porzucony" in reported(report, SubjectRole.BUYER).detail
+    assert "porzucony" in reported(report, SubjectRole.BUYER).message
 
 
 def test_an_empty_window_ksef_has_closed_stops_being_waited_on(

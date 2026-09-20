@@ -49,6 +49,7 @@ from ksef_mcp.server import (
     RenderedInvoiceResult,
     StatementResult,
     SynchronisationResult,
+    ToolResult,
     describe,
     describe_listing,
     export_statement,
@@ -124,7 +125,7 @@ class StubSynchroniser:
                 SubjectRoleReport(
                     subject_role=SubjectRole.BUYER,
                     outcome=SyncOutcome.ARCHIVED,
-                    detail="Paczka EXP-1 trafiła do archiwum.",
+                    message="Paczka EXP-1 trafiła do archiwum.",
                     invoice_count=7,
                     part_count=1,
                     reached=REACHED,
@@ -135,7 +136,7 @@ class StubSynchroniser:
                 SubjectRoleReport(
                     subject_role=SubjectRole.THIRD_SUBJECT,
                     outcome=SyncOutcome.NOT_DUE,
-                    detail="Za wcześnie na kolejny eksport dla tego typu podmiotu.",
+                    message="Za wcześnie na kolejny eksport dla tego typu podmiotu.",
                 ),
             ),
             pending_exports=("EXP-1",),
@@ -498,6 +499,7 @@ def test_the_answer_says_in_as_many_words_that_a_ceiling_was_only_assumed() -> N
             state_path="/dane/x.json",
             ceilings=ASSUMED_CEILINGS,
         ),
+        nip=NIP,
         environment=KsefEnvironment.DEMO,
     )
 
@@ -538,10 +540,59 @@ def test_the_description_survives_an_empty_pass() -> None:
             state_path="/dane/x.json",
             ceilings=GRANTED_CEILINGS,
         ),
+        nip=NIP,
         environment=KsefEnvironment.DEMO,
     )
 
     assert described.subject_roles == []
+
+
+# The client of these tools is a language model, so a status field spelled
+# `detail` in one answer and `message` in the next is a contract it cannot read
+# (GH-171). The parametrisation is the guard: a sixth tool added later either
+# inherits the shape or fails here.
+TOOL_RESULTS: tuple[type[ToolResult], ...] = (
+    SynchronisationResult,
+    InvoiceListingResult,
+    StatementResult,
+    InvoiceReviewResult,
+    RenderedInvoiceResult,
+)
+
+
+@pytest.mark.parametrize("result", TOOL_RESULTS)
+def test_every_tool_answer_carries_the_same_four_fields(result: type[ToolResult]) -> None:
+    assert {"nip", "environment", "message", "warnings"} <= set(result.model_fields)
+
+
+def test_the_synchronisation_answer_names_the_subject_it_acted_for(
+    synchronised: SynchronisationResult,
+) -> None:
+    # It was the one answer of the five that left the subject to be inferred
+    # from a directory path.
+    assert synchronised.nip == NIP
+
+
+def test_the_synchronisation_answer_sums_the_whole_pass_in_one_sentence(
+    synchronised: SynchronisationResult,
+) -> None:
+    assert synchronised.message == (
+        "Zarchiwizowane faktury: 1. Już na dysku: 1. "
+        "Co zrobiła każda rola podmiotu z osobna — w `subject_roles`."
+    )
+
+
+def test_a_pass_with_nothing_to_caution_about_still_answers_with_the_field(
+    synchronised: SynchronisationResult,
+) -> None:
+    # An empty list is a statement; a missing field is a guess.
+    assert synchronised.warnings == []
+
+
+def test_one_subject_role_explains_itself_under_the_same_name_as_the_whole_pass(
+    synchronised: SynchronisationResult,
+) -> None:
+    assert synchronised.subject_roles[0].message == "Paczka EXP-1 trafiła do archiwum."
 
 
 @pytest.mark.anyio
@@ -653,6 +704,14 @@ def test_the_listing_states_the_window_once(listing: InvoiceListingResult) -> No
 
 def test_the_listing_states_the_threshold_it_applied(listing: InvoiceListingResult) -> None:
     assert listing.threshold == 50
+
+
+def test_the_listing_sums_every_subject_role_in_one_sentence(
+    listing: InvoiceListingResult,
+) -> None:
+    assert listing.message == (
+        "Faktury w oknie: 1. Co widać dla każdej roli podmiotu z osobna — w `subject_roles`."
+    )
 
 
 def test_the_listing_reports_every_subject_role_it_asked_about(
@@ -987,6 +1046,14 @@ def test_the_review_points_at_the_ledger_that_survives_the_session(
     assert review.ledger_file == LEDGER_PATH
 
 
+def test_the_review_sums_every_subject_role_in_one_sentence(review: InvoiceReviewResult) -> None:
+    assert review.message == (
+        "Nowe faktury od ostatniego przeglądu: 1. "
+        "W tym z numerem sprzed bieżącego miesiąca: 1. "
+        "Co widać dla każdej roli podmiotu z osobna — w `subject_roles`."
+    )
+
+
 def test_a_new_invoice_carries_the_day_ksef_gave_it_its_number(
     review: InvoiceReviewResult,
 ) -> None:
@@ -1290,6 +1357,15 @@ def test_the_answer_names_the_invoice_it_opened(rendered: RenderedInvoiceResult)
 
 def test_the_answer_names_the_generator_build(rendered: RenderedInvoiceResult) -> None:
     assert rendered.generator_version == "1.1.39"
+
+
+def test_the_render_explains_itself_under_the_same_name_as_every_other_tool(
+    rendered: RenderedInvoiceResult,
+) -> None:
+    # The one answer of the five that carried no status sentence at all (GH-171).
+    assert rendered.message == (
+        f"Dokument zapisany w {rendered.path}. Rozmiar: {rendered.byte_count} B. Generator: 1.1.39."
+    )
 
 
 def test_a_test_environment_document_carries_no_verification_link(

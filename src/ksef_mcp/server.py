@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Final
 
 from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ksef_mcp import config, messages, token_store
 from ksef_mcp.allowance import Allowance
@@ -63,12 +63,37 @@ class ServerInfo(BaseModel):
     version: str
 
 
+class ToolResult(BaseModel):
+    """The four fields every tool answers with, whichever tool was called.
+
+    The client of an MCP tool is a language model, and it has no way to guess
+    that the status sentence is `detail` in one answer, `message` in three and
+    absent from the fifth — which is what it was before (GH-171). Declaring the
+    shared shape once makes the guess unnecessary, and makes a tool that forgets
+    a field a type error rather than a surprise in somebody's prompt.
+
+    `nip` and `environment` say whose books were read and against which
+    registry. They were on four of the five answers; the synchronisation one
+    left the reader to infer the subject from a directory path.
+
+    `warnings` is a caveat about the answer, not a failure — a failure leaves
+    through `reported()` and never reaches a result at all. A tool with nothing
+    to caution about answers with an empty list, which is a different statement
+    from having no such field.
+    """
+
+    nip: str
+    environment: str
+    message: str
+    warnings: list[str] = Field(default_factory=list)
+
+
 class SubjectRoleResult(BaseModel):
     """Paths and KSeF numbers for one subject type. Never an invoice body (D-011)."""
 
     subject_role: str
     outcome: str
-    detail: str
+    message: str
     invoice_count: int
     part_count: int
     synchronised_up_to: str | None
@@ -87,8 +112,7 @@ class SessionCeilingsResult(BaseModel):
     max_invoices_per_session: int
 
 
-class SynchronisationResult(BaseModel):
-    environment: str
+class SynchronisationResult(ToolResult):
     subject_roles: list[SubjectRoleResult]
     pending_exports: list[str]
     state_file: str
@@ -172,16 +196,36 @@ def server_info() -> ServerInfo:
     return ServerInfo(name=SERVER_NAME, version=VERSION)
 
 
+def describe_synchronisation(report: SynchronisationReport) -> str:
+    """One sentence over all subject types, so the whole pass reads at a glance.
+
+    Counts only — the numbers themselves are already per subject type below, and
+    repeating them here would put a counterparty's NIP in the answer twice
+    (D-011, D-038).
+    """
+    archived = sum(len(reported.archived) for reported in report.subject_roles)
+    already_held = sum(len(reported.already_held) for reported in report.subject_roles)
+    return (
+        f"Zarchiwizowane faktury: {archived}. Już na dysku: {already_held}. "
+        f"Co zrobiła każda rola podmiotu z osobna — w `subject_roles`."
+    )
+
+
 def describe(
-    report: SynchronisationReport, *, environment: KsefEnvironment
+    report: SynchronisationReport,
+    *,
+    nip: str,
+    environment: KsefEnvironment,
 ) -> SynchronisationResult:
     return SynchronisationResult(
+        nip=nip,
         environment=str(environment),
+        message=describe_synchronisation(report),
         subject_roles=[
             SubjectRoleResult(
                 subject_role=str(reported.subject_role),
                 outcome=str(reported.outcome),
-                detail=reported.detail,
+                message=reported.message,
                 invoice_count=reported.invoice_count,
                 part_count=reported.part_count,
                 synchronised_up_to=(
@@ -393,7 +437,7 @@ def synchronise() -> SynchronisationResult:
             moment=trail.clock(),
         )
     )
-    return describe(report, environment=subject.environment)
+    return describe(report, nip=subject.nip, environment=subject.environment)
 
 
 @server.tool()
@@ -460,9 +504,7 @@ class SubjectRoleListingResult(BaseModel):
     from_cache: bool
 
 
-class InvoiceListingResult(BaseModel):
-    nip: str
-    environment: str
+class InvoiceListingResult(ToolResult):
     threshold: int
     period_from: str
     period_to: str
@@ -499,6 +541,14 @@ def describe_subject_role(listing: SubjectRoleListing) -> SubjectRoleListingResu
     )
 
 
+def describe_listed_total(listing: InvoiceListing) -> str:
+    counted = sum(one.invoice_count for one in listing.subject_roles)
+    return (
+        f"Faktury w oknie: {counted}. "
+        f"Co widać dla każdej roli podmiotu z osobna — w `subject_roles`."
+    )
+
+
 def describe_listing(listing: InvoiceListing) -> InvoiceListingResult:
     # Every subject type asked the same window, so the window is stated once at
     # the top rather than repeated four times.
@@ -506,6 +556,7 @@ def describe_listing(listing: InvoiceListing) -> InvoiceListingResult:
     return InvoiceListingResult(
         nip=listing.nip,
         environment=str(listing.environment),
+        message=describe_listed_total(listing),
         threshold=listing.threshold,
         period_from=asked.date_from.isoformat(),
         period_to=asked.date_to.isoformat(),
@@ -588,11 +639,9 @@ def list_recent_invoices() -> InvoiceListingResult:
         return list_invoices()
 
 
-class StatementResult(BaseModel):
+class StatementResult(ToolResult):
     """Where the file is and what has to be known before its sum is trusted."""
 
-    nip: str
-    environment: str
     period: str
     path: str
     row_count: int
@@ -600,8 +649,6 @@ class StatementResult(BaseModel):
     complete: bool
     from_cache: bool
     queried_at: str
-    message: str
-    warnings: list[str]
 
 
 def describe_statement(statement: Statement) -> StatementResult:
@@ -740,9 +787,7 @@ class SubjectRoleReviewResult(BaseModel):
     from_cache: bool
 
 
-class InvoiceReviewResult(BaseModel):
-    nip: str
-    environment: str
+class InvoiceReviewResult(ToolResult):
     threshold: int
     period_from: str
     period_to: str
@@ -784,11 +829,22 @@ def describe_review_subject_role(review: SubjectRoleReview) -> SubjectRoleReview
     )
 
 
+def describe_reviewed_total(review: InvoiceReview) -> str:
+    counted = sum(one.new_count for one in review.subject_roles)
+    earlier = sum(len(one.earlier_months) for one in review.subject_roles)
+    return (
+        f"Nowe faktury od ostatniego przeglądu: {counted}. "
+        f"W tym z numerem sprzed bieżącego miesiąca: {earlier}. "
+        f"Co widać dla każdej roli podmiotu z osobna — w `subject_roles`."
+    )
+
+
 def describe_review(review: InvoiceReview) -> InvoiceReviewResult:
     asked = review.period
     return InvoiceReviewResult(
         nip=review.nip,
         environment=str(review.environment),
+        message=describe_reviewed_total(review),
         threshold=review.threshold,
         period_from=asked.date_from.isoformat(),
         # Both ends are closed by construction (`review_period`), which is what
@@ -886,19 +942,27 @@ def review_new_invoices() -> InvoiceReviewResult:
         return review_invoices()
 
 
-class RenderedInvoiceResult(BaseModel):
-    """Where the document is and what it was made with. Never its content."""
+class RenderedInvoiceResult(ToolResult):
+    """Where the document is and what it was made with. Never its content.
 
-    nip: str
-    environment: str
+    A PDF carries the same counterparty personal data the CSV statement does, so
+    the working-directory caveats inherited in `warnings` travel with it too
+    (#172).
+    """
+
     ksef_number: str
     path: str
     byte_count: int
     generator_version: str
     verification_url: str | None
-    # A PDF carries the same counterparty personal data the CSV statement does,
-    # so the working-directory caveats travel with it too (#172).
-    warnings: list[str]
+
+
+def describe_rendering(rendered: RenderedInvoice) -> str:
+    """Names the file and the build that wrote it, and nothing not already here."""
+    return (
+        f"Dokument zapisany w {rendered.path}. Rozmiar: {rendered.byte_count} B. "
+        f"Generator: {rendered.generator_version}."
+    )
 
 
 def describe_rendered(
@@ -911,6 +975,7 @@ def describe_rendered(
     return RenderedInvoiceResult(
         nip=nip,
         environment=str(environment),
+        message=describe_rendering(rendered),
         ksef_number=rendered.ksef_number,
         path=str(rendered.path),
         byte_count=rendered.byte_count,

@@ -10,6 +10,27 @@ udokumentowane.
 
 ## Bez wydania
 
+### Zmiany łamiące
+
+Powierzchnia (2) decyzji D-040 — pola modeli odpowiedzi. Wydanie
+zawierające tę sekcję musi podnieść wersję major, nawet jeśli żadne
+narzędzie MCP nie zmieniło nazwy ani sygnatury. Precedensem jest
+GH-144, gdzie `subject_types`/`subject_type` ujednolicono bez okresu
+przejściowego z tego samego powodu: trwały dualizm nazw byłby gorszy
+niż jedna zmiana łamiąca.
+
+- Wszystkie pięć narzędzi odpowiada tym samym czterem polom na
+  szczycie: `nip`, `environment`, `message` i `warnings`. Dotąd pole
+  ze zdaniem o statusie miało trzy odpowiedzi — `detail` przy roli
+  podmiotu w synchronizacji, `message` w zestawieniu, przeglądzie i
+  liście, a w odpowiedzi renderu nie było go wcale. Klientem tych
+  narzędzi jest model językowy, który nie ma jak się domyślić, która
+  nazwa akurat obowiązuje. Zmienia się nazwa `detail` na `message`,
+  a odpowiedź `synchronise_invoices` — jedyna, która kazała
+  wnioskować podmiot ze ścieżki katalogu — niesie teraz `nip`.
+  Integrator czytający odpowiedzi po polu `detail` musi przestawić
+  się na `message`; nic innego w kształcie pól nie ubyło (GH-171).
+
 ### Dodane
 
 - Zestawienie okresu ostrzega, gdy w okresie jest faktura korygująca.
