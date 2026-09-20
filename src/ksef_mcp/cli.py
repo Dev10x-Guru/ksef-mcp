@@ -7,12 +7,13 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from datetime import date
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from ksef_mcp import (
     client,
     config,
     keyring_preflight,
+    ksef_port,
     messages,
     node_preflight,
     skill,
@@ -23,6 +24,7 @@ from ksef_mcp.archive import InvoiceArchive
 from ksef_mcp.audit import AuditTrail, Authorisation, AuthorisationBasis
 from ksef_mcp.config import Configuration
 from ksef_mcp.diagnostics import technical_log
+from ksef_mcp.ksef_port.lazy import load_adapter
 from ksef_mcp.ksef_port.types import KsefEnvironment
 from ksef_mcp.metadata import SERVER_NAME, VERSION
 from ksef_mcp.paths import Nip, NipRejected, SubjectScope
@@ -35,9 +37,6 @@ from ksef_mcp.retention import (
 )
 from ksef_mcp.server import main as run_mcp_server
 from ksef_mcp.skill import SkillScope
-
-if TYPE_CHECKING:
-    from ksef_mcp import ksef_port
 
 TOKEN_PORTAL_URL: Final[str] = "https://ap.ksef.mf.gov.pl/web/tokens/generate-token"
 
@@ -351,12 +350,6 @@ def metered_periods(configuration: config.Configuration) -> MeteredPeriods:
 
 
 def run_verify(console: Console, *, configuration_file: Path | None) -> int:
-    # Imported here, not at module scope: ksef2 pulls lxml, signxml and xsdata,
-    # which costs about half a second. Only this command talks to KSeF, and
-    # `token status` can run in a loop from a script.
-    from ksef_mcp import ksef_port
-    from ksef_mcp.ksef_port.adapter import Ksef2Port
-
     loaded = config.load_configuration(path=configuration_file)
     if loaded is None:
         console.write(messages.describe_not_configured())
@@ -382,7 +375,7 @@ def run_verify(console: Console, *, configuration_file: Path | None) -> int:
             f"  Zmienna nie jest przypisana do NIP-u, więc nie gwarantuję, że "
             f"należy do {configuration.nip}."
         )
-    port = Ksef2Port(environment=configuration.environment)
+    port = load_adapter()(environment=configuration.environment)
     try:
         checked = ksef_port.check_connection(
             port=port,
