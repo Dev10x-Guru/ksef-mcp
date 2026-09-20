@@ -113,6 +113,11 @@ class FakeExportStatusInfo:
 class FakeExportStatusResponse:
     status: FakeExportStatusInfo
     package: FakeInvoicePackage | None
+    # Defaulted because most scripts here are about the package, and because
+    # `None` is what KSeF sends while an export is still being built. The
+    # adapter reads it to tell a closed empty window from one still building
+    # (GH-190), so a double without the field would let that mapping rot.
+    completed_date: datetime | None = None
 
 
 def sdk_metadata(

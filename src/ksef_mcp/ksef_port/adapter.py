@@ -196,15 +196,31 @@ def as_part(part: object) -> ExportPart:
     )
 
 
+def as_unbuilt_state(response: object) -> ExportState:
+    """What an export with no parts is, once KSeF has been asked about it.
+
+    `completedDate` is the only field in the SDK's response model that states
+    KSeF is done with an export — `ExportStatusInfo` carries a bare `int` and a
+    description, and the SDK enumerates no export states at all. Reading it is
+    what tells a closed empty window apart from a package still being built
+    (GH-190), and both arrive here looking identical: no package, or a package
+    whose part list is empty, which the model permits in either state.
+
+    The date and not a threshold on the code. A code above two hundred is the
+    convention the SDK follows for batches, but for exports it is inference,
+    and calling a live export finished skips the invoices it was still
+    gathering — which nothing asks for again.
+    """
+    if response.status.code >= FAILED_EXPORT_CODE:
+        return ExportState.FAILED
+    return ExportState.RUNNING if response.completed_date is None else ExportState.EMPTY
+
+
 def as_export_status(response: object) -> ExportStatus:
     package = response.package
     if package is None or not package.parts:
         return ExportStatus(
-            state=(
-                ExportState.FAILED
-                if response.status.code >= FAILED_EXPORT_CODE
-                else ExportState.RUNNING
-            ),
+            state=as_unbuilt_state(response),
             parts=(),
             truncated=False,
             hwm_date=None,

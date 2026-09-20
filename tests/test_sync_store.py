@@ -323,6 +323,34 @@ def test_an_export_without_a_key_survives_the_round_trip(
     assert store.load().settled[0].encryption is None
 
 
+def test_an_empty_window_ends_the_export_without_calling_it_a_failure(
+    queued: PendingExport,
+) -> None:
+    # Nothing went wrong — KSeF simply had no invoice to put in the package
+    # (GH-190). Recording it as `FAILED` would tell the next reader the opposite.
+    assert queued.emptied().state is ExportState.EMPTY
+
+
+def test_an_empty_window_lets_go_of_the_key_it_will_never_open_anything_with(
+    queued: PendingExport,
+) -> None:
+    assert queued.emptied().encryption is None
+
+
+def test_an_empty_window_is_journalled_rather_than_queued(
+    store: SyncStore, queued: PendingExport
+) -> None:
+    # The queue is what blocks a subject type. An export KSeF has closed must
+    # leave it, whichever of the two endings it reached.
+    store.save(SyncState(pending=(queued.emptied(),)))
+    reloaded = store.load()
+
+    assert (reloaded.pending, [export.state for export in reloaded.settled]) == (
+        (),
+        [ExportState.EMPTY],
+    )
+
+
 def test_a_finished_export_is_journalled_rather_than_queued(queued: PendingExport) -> None:
     # The queue answers "what is this subject type still waiting on". A refused
     # export can never be waited on again, so it has no business answering it.

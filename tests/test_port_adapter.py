@@ -584,20 +584,46 @@ def test_a_truncated_export_names_the_date_the_next_window_starts_from(
     )
 
 
-@pytest.mark.parametrize(
-    ("code", "expected"),
-    [(100, ExportState.RUNNING), (415, ExportState.FAILED)],
+EMPTY_PACKAGE = FakeInvoicePackage(
+    invoice_count=0,
+    parts=[],
+    is_truncated=False,
+    last_permanent_storage_date=None,
+    permanent_storage_hwm_date=None,
 )
-def test_an_export_without_a_package_is_running_or_failed(
+
+COMPLETED = datetime(2026, 9, 12, 5, 30, tzinfo=UTC)
+
+
+@pytest.mark.parametrize(
+    ("code", "completed_date", "package", "expected"),
+    [
+        (100, None, None, ExportState.RUNNING),
+        (415, None, None, ExportState.FAILED),
+        # A refusal stays a refusal even once KSeF has stamped it finished.
+        (415, COMPLETED, None, ExportState.FAILED),
+        # The two shapes a closed empty window arrives in: no package at all,
+        # and a package whose part list KSeF left empty (GH-190).
+        (200, COMPLETED, None, ExportState.EMPTY),
+        (200, COMPLETED, EMPTY_PACKAGE, ExportState.EMPTY),
+        # The one that used to be indistinguishable from the two above, and
+        # still must be: nothing built yet, and KSeF has not said otherwise.
+        (200, None, EMPTY_PACKAGE, ExportState.RUNNING),
+    ],
+)
+def test_an_export_without_parts_is_read_off_the_date_ksef_closed_it_on(
     monkeypatch: pytest.MonkeyPatch,
     port: Ksef2Port,
     code: int,
+    completed_date: datetime | None,
+    package: FakeInvoicePackage | None,
     expected: ExportState,
 ) -> None:
     plan = Plan(
         status=FakeExportStatusResponse(
             status=FakeExportStatusInfo(code=code, description="—"),
-            package=None,
+            package=package,
+            completed_date=completed_date,
         )
     )
     plan.install(monkeypatch)

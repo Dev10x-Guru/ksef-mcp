@@ -53,6 +53,7 @@ from ksef_mcp.sync_store import (
     SyncStore,
 )
 from ksef_mcp.synchronisation import (
+    ABANDONED_AFTER,
     INITIAL_LOOKBACK,
     SubjectRoleReport,
     SynchronisationReport,
@@ -1229,6 +1230,192 @@ def test_a_rollback_never_moves_a_point_that_stands_further_back_forward(
     )
 
     assert rolled_back_to(export, stored=SubjectRoleState(reached=dormant)) == dormant
+
+
+# An export that never closes, the shape #190 was reported from: the same
+# reference sitting in `running` for hours, carrying no invoice, while the
+# exports asked for in the same hour were built, fetched and archived.
+HUNG_REFERENCE = "EXP-HUNG"
+
+# Far enough back that one window cannot reach the moment the export was asked
+# for, so the clipping `Period.for_synchronisation` does is visible.
+LONG_DORMANT = datetime(2026, 1, 1, tzinfo=UTC)
+
+HALF_AN_HOUR = timedelta(minutes=30)
+
+# Six looks that answer „still building" — three for the seller's own export and
+# three for the hung one — and then the package the re-asked window comes back
+# with. Spelled out because the scripted session serves one list to every poll.
+HUNG_THEN_REASKED: list[ExportStatus] = [*(still_running() for _ in range(6)), ready()]
+
+
+def emptied() -> ExportStatus:
+    """KSeF closed the export and the window held nothing to build a package from."""
+    return ExportStatus(
+        state=ExportState.EMPTY,
+        parts=(),
+        truncated=False,
+        hwm_date=None,
+        last_permanent_storage_date=None,
+        invoice_count=0,
+    )
+
+
+def a_hung_export(
+    store: SyncStore,
+    *,
+    started_at: datetime,
+    reached: datetime = LAST_SEEN,
+) -> None:
+    store.save(
+        SyncState(
+            subject_roles={
+                SubjectRole.BUYER: SubjectRoleState(reached=reached, attempted_at=started_at)
+            },
+            pending=(
+                PendingExport(
+                    reference=HUNG_REFERENCE,
+                    subject_role=SubjectRole.BUYER,
+                    started_at=started_at,
+                    encryption=ExportEncryption(key=KEY, initialisation_vector=IV),
+                    state=ExportState.RUNNING,
+                    covering_from=reached,
+                ),
+            ),
+        )
+    )
+
+
+def a_pass_over_a_hung_export(
+    store: SyncStore,
+    naps: list[float],
+    *,
+    statuses: list[ExportStatus],
+    started_at: datetime,
+    reached: datetime = LAST_SEEN,
+) -> tuple[ScriptedSession, SynchronisationReport]:
+    a_hung_export(store, started_at=started_at, reached=reached)
+    session = ScriptedSession(statuses=statuses, limits=allowances())
+    report = a_synchroniser(session=session, store=store, naps=naps).run(nip=NIP, token=TOKEN)
+    return session, report
+
+
+def test_an_export_still_being_built_says_since_when_rather_than_merely_that_it_is(
+    store: SyncStore, naps: list[float]
+) -> None:
+    # „Nadal buduje" read the same after one minute and after thirteen hours, so
+    # a stuck subject type looked healthy in the report and only the state file
+    # on disk said otherwise.
+    _, report = a_pass_over_a_hung_export(
+        store, naps, statuses=[still_running()], started_at=NOON - timedelta(hours=13)
+    )
+
+    assert (NOON - timedelta(hours=13)).isoformat() in reported(report, SubjectRole.BUYER).detail
+
+
+def test_an_export_still_inside_the_ceiling_is_left_for_the_next_pass(
+    store: SyncStore, naps: list[float]
+) -> None:
+    _, report = a_pass_over_a_hung_export(
+        store, naps, statuses=[still_running()], started_at=NOON - ABANDONED_AFTER + HALF_AN_HOUR
+    )
+
+    assert (outcome(report, SubjectRole.BUYER), HUNG_REFERENCE in report.pending_exports) == (
+        SyncOutcome.STILL_RUNNING,
+        True,
+    )
+
+
+def test_an_export_older_than_the_ceiling_stops_blocking_its_subject_role(
+    store: SyncStore, naps: list[float]
+) -> None:
+    # The whole of #190: the continuation point cannot move until the package
+    # closes, so a package that never closes blocks the subject type for good.
+    _, report = a_pass_over_a_hung_export(
+        store,
+        naps,
+        statuses=HUNG_THEN_REASKED,
+        started_at=NOON - ABANDONED_AFTER,
+    )
+
+    assert HUNG_REFERENCE not in report.pending_exports
+
+
+def test_an_abandoned_export_asks_for_the_very_same_window_again(
+    store: SyncStore, naps: list[float]
+) -> None:
+    # Nothing is skipped and nothing is asked for twice over: the point was
+    # never moved past this window, so re-asking costs one export and no gap.
+    session, _ = a_pass_over_a_hung_export(
+        store,
+        naps,
+        statuses=HUNG_THEN_REASKED,
+        started_at=NOON - ABANDONED_AFTER,
+    )
+
+    assert [window.date_from for window in buyer_windows(session)] == [LAST_SEEN]
+
+
+def test_an_abandoned_export_says_how_long_it_had_been_building(
+    store: SyncStore, naps: list[float]
+) -> None:
+    _, report = a_pass_over_a_hung_export(
+        store,
+        naps,
+        statuses=HUNG_THEN_REASKED,
+        started_at=NOON - ABANDONED_AFTER,
+    )
+
+    assert "porzucony" in reported(report, SubjectRole.BUYER).detail
+
+
+def test_an_empty_window_ksef_has_closed_stops_being_waited_on(
+    store: SyncStore, naps: list[float]
+) -> None:
+    # Hypothesis 2 of #190: the export is over, there is simply no package,
+    # and reading that as „still building" is what left the direction stuck.
+    _, report = a_pass_over_a_hung_export(store, naps, statuses=[emptied()], started_at=STARTED_AT)
+
+    assert (outcome(report, SubjectRole.BUYER), HUNG_REFERENCE in report.pending_exports) == (
+        SyncOutcome.EMPTY_WINDOW,
+        False,
+    )
+
+
+def test_an_empty_window_moves_the_point_to_the_end_of_the_window_it_covered(
+    store: SyncStore, naps: list[float]
+) -> None:
+    # A closed export answers for the whole window it was given, so the point
+    # may pass it although KSeF named no continuation marker.
+    _, report = a_pass_over_a_hung_export(store, naps, statuses=[emptied()], started_at=STARTED_AT)
+
+    assert reported(report, SubjectRole.BUYER).reached == STARTED_AT
+
+
+def test_an_empty_window_that_was_clipped_moves_the_point_only_as_far_as_it_reached(
+    store: SyncStore, naps: list[float]
+) -> None:
+    # A subject type far enough behind is handed a clipped window (D-031 §4);
+    # moving it to the moment of the request would skip everything between.
+    _, report = a_pass_over_a_hung_export(
+        store, naps, statuses=[emptied()], started_at=STARTED_AT, reached=LONG_DORMANT
+    )
+
+    assert reported(report, SubjectRole.BUYER).reached == LONG_DORMANT + MAX_QUERY_WINDOW
+
+
+def test_an_empty_window_is_kept_under_its_reference_rather_than_dropped(
+    store: SyncStore, naps: list[float]
+) -> None:
+    a_pass_over_a_hung_export(store, naps, statuses=[emptied()], started_at=STARTED_AT)
+
+    assert HUNG_REFERENCE in [export.reference for export in store.load().settled]
+
+
+def test_an_empty_window_does_not_keep_its_key(store: SyncStore, naps: list[float]) -> None:
+    a_pass_over_a_hung_export(store, naps, statuses=[emptied()], started_at=STARTED_AT)
+
+    assert [export.encryption for export in store.load().settled] == [None, None]
 
 
 def test_an_exhausted_export_allowance_stops_the_pass_rather_than_the_server(

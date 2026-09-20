@@ -72,6 +72,13 @@ MINIMUM_INTERVAL: Final[timedelta] = timedelta(minutes=15)
 
 OCCASIONAL_INTERVAL: Final[timedelta] = timedelta(days=1)
 
+# The states no later pass can carry any further. Named here rather than spelled
+# as a chain of comparisons in `finished`, because the queue and the journal both
+# ask this question and they must never answer it differently.
+FINISHED_EXPORT_STATES: Final[frozenset[ExportState]] = frozenset(
+    {ExportState.FAILED, ExportState.EMPTY}
+)
+
 
 def in_night_window(moment: datetime) -> bool:
     return NIGHT_WINDOW_OPENS_UTC <= moment.astimezone(UTC).hour < NIGHT_WINDOW_CLOSES_UTC
@@ -158,6 +165,22 @@ class PendingExport:
         """The same export with fresh download links, after the old ones expired."""
         return replace(self, parts=parts)
 
+    def emptied(self) -> Self:
+        """The end of an export KSeF closed over a window holding no invoice.
+
+        The key goes for the same reason it goes in `refused`: there is no
+        package for it to open, and a key outliving its export is what D-033
+        forbids. What differs is everything else — nothing failed here, the
+        window was simply empty, and the subject type may move past it (GH-190).
+        """
+        return replace(
+            self,
+            state=ExportState.EMPTY,
+            encryption=None,
+            parts=(),
+            invoice_count=0,
+        )
+
     def refused(self) -> Self:
         """The end of an export KSeF will never build.
 
@@ -179,10 +202,11 @@ class PendingExport:
         """Whether no later pass can carry this export any further.
 
         `READY` is not finished: the package exists and still has to be fetched
-        and archived, and the record is what keeps its key. Only a refusal ends
-        an export where it stands.
+        and archived, and the record is what keeps its key. A refusal ends an
+        export where it stands, and so does an empty window KSeF has closed —
+        neither leaves anything a later pass could carry further (GH-190).
         """
-        return self.state is ExportState.FAILED
+        return self.state in FINISHED_EXPORT_STATES
 
     @property
     def handle(self) -> ExportHandle:
