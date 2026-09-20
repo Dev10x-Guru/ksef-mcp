@@ -10,6 +10,7 @@ from datetime import UTC, date, datetime
 from typing import Self
 
 from ksef2.core.exceptions import KSeFException, KSeFValidationError
+from ksef2.domain.models.invoices import InvoiceType
 
 from tests.support.synthetic import BUYER_NAME, SELLER_NIP
 
@@ -41,7 +42,7 @@ class FakeMetadata:
     # Wartość SDK-owa, nie drutowa: `ksef2` tłumaczy `Kor` na `kor`, zanim
     # rekord dotrze do adaptera, więc atrapa mówiąca `Kor` sprawdzałaby napis,
     # którego port nigdy nie zobaczy.
-    invoice_type: str = "vat"
+    invoice_type: InvoiceType = "vat"
 
 
 @dataclass
@@ -128,7 +129,7 @@ def sdk_metadata(
     ordinal: int = 1,
     *,
     seller_name: str | None = "Dostawca sp. z o.o.",
-    invoice_type: str = "vat",
+    invoice_type: InvoiceType = "vat",
 ) -> FakeMetadata:
     return FakeMetadata(
         ksef_number=f"1234567890-20260901-0100AB12CD{ordinal:02d}-56",
