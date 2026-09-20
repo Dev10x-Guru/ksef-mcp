@@ -112,6 +112,13 @@ udokumentowane.
   `ksef-mcp onboarding`. Serwer MCP mówił to już wcześniej; od tej
   poprawki oba wejścia mówią to samo (GH-119).
 
+- README opisuje projekt taki, jaki jest dziś, a nie taki, jaki był na
+  starcie. Tabela stanu i opis „tylko `server_info`" pochodziły sprzed
+  pięciu wydań, które dobudowały synchronizację, listowanie, eksport
+  CSV i przegląd nowych faktur — README tego nie odnotowywało, więc
+  kto czytał tylko go, widział szkielet zamiast działającego narzędzia
+  (GH-156).
+
 - Synchronizacja sesji z dużą liczbą faktur nie przepisuje już całej
   historii archiwum przy każdej pojedynczej fakturze. Indeks rośnie przez
   całe życie archiwum i celowo nie jest przycinany, więc przy suficie
