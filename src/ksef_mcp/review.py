@@ -54,6 +54,7 @@ from ksef_mcp.errors import KsefMcpError
 from ksef_mcp.ksef_port.protocol import KsefPort
 from ksef_mcp.ksef_port.types import (
     MAX_QUERY_WINDOW,
+    SYNCHRONISED_SUBJECT_ROLES,
     Credential,
     DateType,
     InvoiceMetadata,
@@ -74,7 +75,6 @@ from ksef_mcp.listing import (
 from ksef_mcp.paths import SubjectScope
 from ksef_mcp.period_cache import PeriodCache, PeriodMetadataReader
 from ksef_mcp.storage import JsonDocumentStore, SchemaMismatch, exclusive_write
-from ksef_mcp.synchronisation import SYNCHRONISED_SUBJECT_ROLES
 
 REVIEW_FILE: Final[str] = "review.json"
 
