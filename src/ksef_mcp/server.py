@@ -34,6 +34,7 @@ from ksef_mcp.diagnostics import (
 )
 from ksef_mcp.errors import KsefMcpError
 from ksef_mcp.ksef_port.errors import KsefPortError
+from ksef_mcp.ksef_port.lazy import load_adapter
 from ksef_mcp.ksef_port.types import InvoiceMetadata, KsefEnvironment, Period
 from ksef_mcp.listing import InvoiceLister, InvoiceListing, SubjectRoleListing
 from ksef_mcp.metadata import SERVER_NAME, VERSION
@@ -261,12 +262,7 @@ class SubjectDependencies:
 
     @property
     def port(self) -> "Ksef2Port":
-        # Imported here rather than at module scope: `ksef2` pulls lxml, signxml
-        # and xsdata, and a client listing tools must not pay half a second for
-        # a dependency only the tools that reach KSeF ever touch.
-        from ksef_mcp.ksef_port.adapter import Ksef2Port
-
-        return Ksef2Port(environment=self.environment)
+        return load_adapter()(environment=self.environment)
 
     @property
     def cache(self) -> PeriodCache:

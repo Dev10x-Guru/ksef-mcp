@@ -175,6 +175,10 @@ operacja.
   wyjaśni się sam; dokumentuj *dlaczego*, nigdy *co*.
 - Wyjątki własne podnoś blisko źródła i z opisowym komunikatem; dane
   wejściowe sprawdzaj wcześnie i przerywaj głośno, z kontekstem.
+- Import wewnątrz funkcji jest dozwolony **wyłącznie** po to, by odłożyć
+  koszt uruchomienia, i mieszka w `ksef_port/lazy.py` — nigdzie indziej.
+  Import przesunięty do funkcji po to, by obejść cykl zależności, wciąż
+  jest zakazany: to usterka w deklaracjach, a nie koszt wart zapłacenia.
 
 ## Konwencje gita i PR-ów
 
