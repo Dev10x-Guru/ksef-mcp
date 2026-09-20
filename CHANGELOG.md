@@ -30,6 +30,15 @@ udokumentowane.
   przebiegi działają równolegle. Zgłaszając problem, wystarczy podać tę
   jedną wartość (GH-117).
 
+- Odpowiedź `synchronise_invoices` mówi wprost, czy sufit sesji —
+  rozmiar faktury, rozmiar z załącznikiem, liczba faktur na sesję —
+  został przyznany przez KSeF, czy tylko założony. Serwer odczytywał te
+  wartości przy każdej sesji i nie pokazywał ich nikomu, a gdy KSeF
+  odpowiadał o limitach w kształcie, którego nie dało się odczytać,
+  po cichu wchodził ostrożny zapas. Właśnie tego sygnału zabrakło przy
+  diagnozie GH-76. Pole `session_ceilings.assumed` odpowiada na to
+  pytanie jednym słowem (GH-118).
+
 ### Zmienione
 
 - Obietnica, że przerwany zapis nigdy nie zostawia połowy pliku, jest

@@ -23,7 +23,7 @@ from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Final
 
-from ksef_mcp.allowance import Allowance
+from ksef_mcp.allowance import Allowance, CeilingNotice
 from ksef_mcp.archive import (
     ArchiveIndexUnreadable,
     ArchiveMetadataUnusable,
@@ -137,6 +137,10 @@ class SynchronisationReport:
     subject_roles: tuple[SubjectRoleReport, ...]
     pending_exports: tuple[str, ...]
     state_path: str
+    # Required rather than defaulted: the only honest default would be a
+    # granted ceiling, and a pass that ran on an assumed one would then report
+    # the opposite of what happened (GH-118).
+    ceilings: CeilingNotice
 
 
 def now_utc() -> datetime:
@@ -225,7 +229,8 @@ class Synchroniser:
         reports: list[SubjectRoleReport] = []
         with self.port.session(nip=nip, token=token) as opened:
             session = self.allowance.guarded(session=opened)
-            budget = self.allowance.budget(session=session)
+            reading = self.allowance.reading(session=session)
+            budget = reading.budget
             retriever = PackageRetriever(session=session, store=self.store)
             for subject_role in SYNCHRONISED_SUBJECT_ROLES:
                 state, report = self._advance_one(
@@ -254,6 +259,7 @@ class Synchroniser:
             subject_roles=tuple(reports),
             pending_exports=tuple(export.reference for export in state.pending),
             state_path=str(self.store.path),
+            ceilings=reading.ceilings,
         )
 
     def _advance_one(

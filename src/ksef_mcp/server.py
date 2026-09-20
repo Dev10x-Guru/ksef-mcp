@@ -76,11 +76,22 @@ class SubjectRoleResult(BaseModel):
     archive_directory: str | None
 
 
+class SessionCeilingsResult(BaseModel):
+    """How much one session may carry, and whether KSeF granted it (GH-118)."""
+
+    assumed: bool
+    message: str
+    max_invoice_megabytes: int
+    max_invoice_with_attachment_megabytes: int
+    max_invoices_per_session: int
+
+
 class SynchronisationResult(BaseModel):
     environment: str
     subject_roles: list[SubjectRoleResult]
     pending_exports: list[str]
     state_file: str
+    session_ceilings: SessionCeilingsResult
     # Quote this back and the whole pass can be read out of the journal
     # (GH-117). It is the one identifier here that names nobody.
     correlation: str
@@ -183,6 +194,15 @@ def describe(
         ],
         pending_exports=list(report.pending_exports),
         state_file=report.state_path,
+        session_ceilings=SessionCeilingsResult(
+            assumed=report.ceilings.assumed,
+            message=report.ceilings.message,
+            max_invoice_megabytes=report.ceilings.max_invoice_megabytes,
+            max_invoice_with_attachment_megabytes=(
+                report.ceilings.max_invoice_with_attachment_megabytes
+            ),
+            max_invoices_per_session=report.ceilings.max_invoices_per_session,
+        ),
         correlation=correlation(),
     )
 
@@ -397,6 +417,12 @@ def synchronise_invoices() -> SynchronisationResult:
     Reports where the invoices landed and which KSeF numbers arrived. It never
     returns invoice content: an FA(2)/FA(3) document holds a counterparty's
     personal data, and reading one means opening the file this tool names.
+
+    `session_ceilings` says how much one session may carry and, in `assumed`,
+    whether KSeF granted those figures or the conservative fallback is in force
+    because the registry answered about limits in a shape that could not be
+    read. An assumed ceiling is a different event from a granted one, and the
+    message says so in as many words.
 
     `correlation` names this call in the technical journal on stderr. Quote it
     when reporting a failure: it is what lets the whole pass be reconstructed
