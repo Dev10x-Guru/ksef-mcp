@@ -41,6 +41,7 @@ from pathlib import Path
 from typing import Final
 
 from ksef_mcp.config import KsefEnvironment
+from ksef_mcp.diagnostics import short_reference, technical_log
 from ksef_mcp.errors import KsefMcpError
 from ksef_mcp.ksef_port.errors import InvalidKsefIdentifier
 from ksef_mcp.ksef_port.types import KsefNumber
@@ -100,6 +101,12 @@ class ArchiveMetadataUnusable(KsefMcpError):
     and the same package can be archived again once the manifest is understood.
     Never carries invoice content: the message is logged, and FA(2)/FA(3) XML
     holds personal data (D-011).
+
+    Nor a KSeF number in full (D-038). The number opens with the NIP of the
+    subject the invoice was issued for, which under the buyer and
+    authorised-subject roles is a counterparty. The message names the entry by
+    the opaque handle `short_reference` derives; the number itself goes to the
+    technical journal, which the MCP client never reads.
     """
 
 
@@ -183,10 +190,12 @@ class DeduplicationIndex:
         added: list[IndexEntry] = []
         for entry in entries:
             if entry.ksef_number in held:
+                technical_log().warning("Deduplication index offered %s twice.", entry.ksef_number)
                 raise IndexEntryAlreadyHeld(
-                    f"The deduplication index already holds {entry.ksef_number}. A "
-                    f"second entry for one KSeF number would make the index answer "
-                    f"two different things about the same invoice."
+                    f"The deduplication index already holds "
+                    f"{short_reference(entry.ksef_number)}. A second entry for "
+                    f"one KSeF number would make the index answer two different "
+                    f"things about the same invoice."
                 )
             held.add(entry.ksef_number)
             added.append(entry)
@@ -219,6 +228,18 @@ def stated_digest_of(content: bytes) -> str:
     this one has to match bytes MF wrote, so its encoding is theirs.
     """
     return base64.b64encode(hashlib.sha256(content).digest()).decode("ascii")
+
+
+def _unusable(message: str, *, diagnostic: str) -> ArchiveMetadataUnusable:
+    """Split one refusal in two: a handle for the client, the number for the journal.
+
+    The two halves are built in one call so they cannot drift — a refusal whose
+    diagnostic was forgotten leaves nobody able to say which invoice it was
+    about, which is the outcome D-038 exists to avoid while withholding the
+    number from the client.
+    """
+    technical_log().warning("Archive refused a manifest entry. %s", diagnostic)
+    return ArchiveMetadataUnusable(message)
 
 
 def _stated(entry: Mapping[str, object], *, keys: tuple[str, ...]) -> object | None:
@@ -255,12 +276,14 @@ def _identity(entry: object) -> InvoiceIdentity:
     file_name = _stated(entry, keys=FILE_NAME_KEYS)
     content_hash = _stated(entry, keys=INVOICE_HASH_KEYS)
     if file_name is None and content_hash is None:
-        raise ArchiveMetadataUnusable(
-            f"_metadata.json states KSeF number {number!r} but points at no "
-            f"document: no digest under any of {list(INVOICE_HASH_KEYS)} and no "
-            f"file name under any of {list(FILE_NAME_KEYS)}. The entry does "
-            f"carry {sorted(entry)}. Pairing by position would archive one "
-            f"invoice under another's number."
+        raise _unusable(
+            f"_metadata.json states the invoice {short_reference(str(number))} "
+            f"but points at no document: no digest under any of "
+            f"{list(INVOICE_HASH_KEYS)} and no file name under any of "
+            f"{list(FILE_NAME_KEYS)}. The entry does carry {sorted(entry)}. "
+            f"Pairing by position would archive one invoice under another's "
+            f"number.",
+            diagnostic=f"{number!r} points at no document in the package.",
         )
     try:
         return InvoiceIdentity(
@@ -272,8 +295,13 @@ def _identity(entry: object) -> InvoiceIdentity:
             content_hash=None if content_hash is None else str(content_hash).strip(),
         )
     except InvalidKsefIdentifier as rejection:
-        raise ArchiveMetadataUnusable(
-            f"_metadata.json offers {number!r} as a KSeF number: {rejection}"
+        # `rejection` repeats the offered value, so it goes to the journal whole
+        # and reaches the client only as the handle (D-038).
+        raise _unusable(
+            f"_metadata.json offers {short_reference(str(number))} as a KSeF "
+            f"number and it does not have the shape of one: expected "
+            f"<NIP>-<YYYYMMDD>-<identifier>-<checksum>.",
+            diagnostic=f"Rejected manifest identifier: {rejection}",
         ) from rejection
 
 
@@ -309,19 +337,28 @@ def _entry_of(
         entry = by_content.get(identity.content_hash)
         if entry is not None:
             return entry
-        raise ArchiveMetadataUnusable(
-            f"_metadata.json of export {reference} gives {identity.ksef_number} a "
-            f"digest the package does not carry: {identity.content_hash!r}. "
-            f"Refusing to fall back to the file name — a digest that does not "
-            f"match is a disagreement, and the name is the weaker half of it."
+        raise _unusable(
+            f"_metadata.json of export {reference} gives the invoice "
+            f"{short_reference(str(identity.ksef_number))} a digest the package "
+            f"does not carry: {identity.content_hash!r}. Refusing to fall back "
+            f"to the file name — a digest that does not match is a "
+            f"disagreement, and the name is the weaker half of it.",
+            diagnostic=(
+                f"Export {reference}: {identity.ksef_number} states a digest "
+                f"no entry of the package has."
+            ),
         )
     if identity.file_name is not None and identity.file_name in bodies:
         return identity.file_name
-    raise ArchiveMetadataUnusable(
-        f"_metadata.json of export {reference} points {identity.ksef_number} at "
-        f"a document the package does not carry: file name "
-        f"{identity.file_name!r}. Refusing to archive a package that does not "
-        f"match its own manifest."
+    raise _unusable(
+        f"_metadata.json of export {reference} points the invoice "
+        f"{short_reference(str(identity.ksef_number))} at a document the "
+        f"package does not carry: file name {identity.file_name!r}. Refusing to "
+        f"archive a package that does not match its own manifest.",
+        diagnostic=(
+            f"Export {reference}: {identity.ksef_number} names the absent entry "
+            f"{identity.file_name!r}."
+        ),
     )
 
 
@@ -350,10 +387,16 @@ def located(
         )
         claimed = taken.get(entry)
         if claimed is not None:
-            raise ArchiveMetadataUnusable(
-                f"_metadata.json of export {reference} points both {claimed} and "
-                f"{identity.ksef_number} at {entry!r}. One document cannot be two "
-                f"invoices, and guessing which would file one under the other."
+            raise _unusable(
+                f"_metadata.json of export {reference} points both "
+                f"{short_reference(claimed)} and "
+                f"{short_reference(str(identity.ksef_number))} at {entry!r}. One "
+                f"document cannot be two invoices, and guessing which would file "
+                f"one under the other.",
+                diagnostic=(
+                    f"Export {reference}: {claimed} and {identity.ksef_number} "
+                    f"both claim entry {entry!r}."
+                ),
             )
         taken[entry] = str(identity.ksef_number)
     unclaimed = sorted(name for name in bodies if name not in taken)
