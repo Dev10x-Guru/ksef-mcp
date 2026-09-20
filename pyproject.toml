@@ -9,7 +9,10 @@ description = "Local MCP server for KSeF, Poland's national e-invoicing system"
 readme = "README.md"
 requires-python = "==3.13.14"
 license = "AGPL-3.0-only"
-license-files = ["LICENSE"]
+# The vendored MIT-licensed artifact ships in the wheel (ADR-112), so its
+# notice must ship in `.dist-info/licenses/` too — the project's own LICENSE
+# alone does not cover it.
+license-files = ["LICENSE", "src/ksef_mcp/vendor/LICENCJA-MF.md"]
 authors = [{ name = "Dev10x.Guru" }]
 keywords = ["ksef", "mcp", "e-invoicing", "faktury", "poland"]
 classifiers = [
