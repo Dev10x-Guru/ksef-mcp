@@ -187,3 +187,34 @@ naruszenia jako REQUIRED/CRITICAL, nie jako preferencje stylistyczne:
    konfigurację CI). Test sieciowy uruchamiany bez oznaczenia w
    domyślnym zestawie to WARNING; taki, który mógłby trafić na
    produkcję, to CRITICAL.
+
+## Decyzje wynikające z audytu — nie „poprawiaj" tego
+
+Poniższe trzy zachowania audyt architektury (2026-09-19) zweryfikował
+jako świadome decyzje projektowe, nie przeoczenia. Sugestia ich
+„naprawienia" jest fałszywym trafieniem — odrzuć ją tym samym trybem,
+co pozycje w sekcji „Znane pułapki fałszywych trafień" wyżej.
+
+5. **Odrzuć sugestię dodania wykładniczego backoffu do
+   `ksef_port/retry.py`.** `NO_AUTOMATIC_RETRY` (`attempts=1`) jest
+   domyślną polityką wszędzie; jedyne oczekiwanie pochodzi z nagłówka
+   `Retry-After` odpowiedzi serwera, a jego brak podnosi odmowę do
+   wywołującego zamiast zgadywać czas oczekiwania. To decyzja D-017, i
+   to decyzja poprawna: zgadywanie czasu oczekiwania jest dokładnie
+   wzorcem, który Ministerstwo Finansów penalizuje dłuższą blokadą.
+   Wygląda na przeoczenie; jest bezpiecznikiem.
+6. **Nie proponuj wewnątrzprocesowej pamięci podręcznej dla serwera
+   MCP.** Brak stanu w pamięci to wybór, nie przeoczenie — każdy
+   magazyn to zamrożona `dataclass` odbudowywana przy każdym wywołaniu,
+   a poświadczenia są odczytywane z keyringu za każdym razem. Blokada
+   pliku pokrywa dziś współbieżność jednocześnie między procesami i
+   wątkami; pamięć podręczna w procesie pokryłaby tylko jedno z tych
+   dwóch.
+7. **100% pokrycia nie jest dowodem użycia.** Test pokrywający kod, do
+   którego żadna ścieżka produkcyjna nie prowadzi, niczego nie
+   dowodzi. Audyt znalazł dwa takie przypadki wśród eksportów portu:
+   `SubjectContext` i `RetryPolicy`. Przy `fail_under = 100` taki kod
+   jest niewidoczny dla narzędzia mierzącego pokrycie — nie traktuj
+   „100% pokryte" jako dowodu „rzeczywiście używane"; zweryfikuj
+   grepem odwołania poza plikiem definicji i testami (patrz sekcja
+   „Wykrywanie martwego kodu" wyżej).
