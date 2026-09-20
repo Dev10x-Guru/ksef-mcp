@@ -54,6 +54,35 @@ zgłaszający. Rozbieżność przerywa przebieg.
 `workflow_run.conclusion == 'success'`, żeby przerwany przebieg zbierający
 kontekst nie wyzwalał przeglądu na niekompletnych danych.
 
+## Dlaczego `concurrency` siedzi przy zadaniu, a nie przy workflow (#194)
+
+Oba uprzywilejowane pliki mają `concurrency` wewnątrz zadania, a wyrażenie
+w grupie ma zabezpieczenie `||`. To nie jest kwestia gustu.
+
+Grupa na poziomie workflow jest wyliczana, gdy GitHub kompiluje plik — a
+robi to przy **każdym** pushu na dowolną gałąź, również takim, który nie ma
+nic wspólnego z wyzwalaczem `workflow_run`. Niezabezpieczone
+`github.event.workflow_run.head_sha` nie ma się wtedy do czego odwołać,
+kompilacja się wywraca i powstaje przebieg bez ani jednego zadania,
+podpisany ścieżką pliku zamiast polem `name:`. Brak zadania oznacza brak
+`check_run`, więc awaria nie trafia do kontroli PR-a: przegląd wygląda na
+czysty, bo się w ogóle nie odbył.
+
+Dowód jest jednolinijkowy. Commit 1887587 zamienił tę grupę z
+`github.event.pull_request.number || github.ref` na postać bez
+zabezpieczenia — i od tamtej pory żaden z obu plików się nie wczytał.
+W rejestrze Actions figurowały pod swoją ścieżką, nie pod nazwą. Każdy
+workflow w tym repozytorium, który nadal działa, ma w grupie `||`.
+
+Przy zadaniu grupa jest wyliczana dopiero po jego utworzeniu, gdy kontekst
+zdarzenia już istnieje. Przy jednym zadaniu w pliku semantyka anulowania
+się nie zmienia. Nie przenoś tego z powrotem na poziom workflow i nie
+zdejmuj `||`.
+
+Osobny plik `workflow-health.yml` pilnuje tej klasy usterek na przyszłość:
+sprawdza, czy w rejestrze Actions któryś workflow nie figuruje pod swoją
+ścieżką zamiast pod nazwą — bo to znaczy, że GitHub nigdy go nie wczytał.
+
 ## Czego świadomie nie użyto
 
 `pull_request_target` rozwiązałby uwierzytelnienie jedną linią i jest

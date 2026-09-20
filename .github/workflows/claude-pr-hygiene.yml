@@ -4,10 +4,6 @@ name: PR Hygiene Review
 # before changing anything here — the verification below is load-bearing for
 # security and does not look like it (#6).
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_sha }}
-  cancel-in-progress: true
-
 on:
   workflow_run:
     workflows: ["PR Context"]
@@ -16,6 +12,15 @@ on:
 jobs:
   hygiene-review:
     if: github.event.workflow_run.conclusion == 'success'
+
+    # Job level and guarded, for the reasons set out at length in
+    # claude-code-review.yml. An unguarded workflow-level group referencing
+    # `github.event.workflow_run` is evaluated at compile time, when that
+    # context does not exist, and the whole file then fails to load (#194).
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.event.workflow_run.head_sha || github.run_id }}
+      cancel-in-progress: true
+
     runs-on: ubuntu-latest
     permissions:
       contents: read

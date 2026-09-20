@@ -9,10 +9,6 @@ name: Claude Code Review
 # work, and it is also why this file must never fetch or execute anything a
 # fork controls.
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_sha }}
-  cancel-in-progress: true
-
 on:
   workflow_run:
     workflows: ["PR Context"]
@@ -23,6 +19,30 @@ jobs:
     # A cancelled or failed context run tells us nothing trustworthy about
     # which PR is in play, so there is nothing to review.
     if: github.event.workflow_run.conclusion == 'success'
+
+    # Two deliberate details here, both of them the fix for #194: this block
+    # sits at job level rather than workflow level, and the expression has a
+    # fallback. Either alone would probably do; together they cannot fail.
+    #
+    # A workflow-level `concurrency` group is evaluated while GitHub compiles
+    # the file, which happens on every push to every branch — including
+    # pushes that have nothing to do with the `workflow_run` trigger above.
+    # An unguarded `github.event.workflow_run.head_sha` has nothing to
+    # resolve to at that moment, the file fails to load, and GitHub records a
+    # run with zero jobs named after the file path instead of `name:`. No job
+    # means no `check_run`, so the failure never reaches a PR's checks: the
+    # review looks clean because it never ran at all.
+    #
+    # The evidence is a one-line bisect. Commit 1887587 changed this group
+    # from `github.event.pull_request.number || github.ref` to the unguarded
+    # form, and the workflow has not loaded since. Every workflow in this
+    # repository that still loads keeps a `||` fallback.
+    #
+    # `github.run_id` is the fallback because it is unique per run, so the
+    # degenerate case groups nothing together and cancels nothing.
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.event.workflow_run.head_sha || github.run_id }}
+      cancel-in-progress: true
 
     runs-on: ubuntu-latest
     permissions:

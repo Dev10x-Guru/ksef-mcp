@@ -1,0 +1,94 @@
+name: Workflow Health
+
+# Catches the class of failure behind #194: a workflow file GitHub cannot
+# compile. Such a file produces a run with zero jobs, therefore no
+# `check_run`, therefore nothing in any check list — a broken review bot is
+# indistinguishable from a review bot that found nothing to say. This
+# workflow turns that silence into a red check.
+#
+# The tell is cheap and exact. GitHub stores a workflow's `name:` field in
+# the registry only if it managed to parse the file; when it did not, the
+# registry falls back to the file path. So `name == path` means "never
+# loaded", for any file, for any reason — no guessing at which expression
+# broke.
+#
+# PUSH TO THE DEFAULT BRANCH ONLY, and that is a limitation worth stating
+# rather than hiding. GitHub does not validate workflow files that live on a
+# branch: it registers and compiles them from the default branch. Probing
+# this during #194 settled it — a deliberately broken workflow file pushed
+# to a PR branch produced no run at all, and neither did a correct one.
+# A pre-merge check for this failure class is therefore impossible; on a PR
+# both checks below could only ever report the state already on main, and
+# would fail even on the PR that fixes it. Immediately after merge is the
+# earliest moment the breakage is observable, so that is when this runs.
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  workflow-health:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every workflow file must compile
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          # A workflow whose registered name equals its path was never
+          # parsed. `dynamic/*` entries (Dependabot) have no file and are
+          # named by GitHub itself, so they are excluded.
+          BROKEN=$(gh api --paginate "repos/${REPOSITORY}/actions/workflows" \
+            -q '.workflows[]
+                | select(.path | startswith(".github/workflows/"))
+                | select(.name == .path)
+                | .path')
+
+          if [ -n "$BROKEN" ]; then
+            echo "::error::Te pliki workflow nie dają się wczytać przez GitHub Actions — ich przebiegi nie tworzą żadnego zadania, więc awaria nie pojawia się wśród kontroli."
+            while IFS= read -r path; do
+              echo "::error file=${path}::GitHub nie odczytał pola name: z ${path}. Najczęstsza przyczyna: wyrażenie na poziomie workflow (concurrency, run-name, env) sięgające po kontekst zdarzenia, którego przy kompilacji pliku nie ma. Zabezpiecz je operatorem || albo przenieś blok na poziom zadania."
+            done <<< "$BROKEN"
+            exit 1
+          fi
+
+          echo "Wszystkie pliki workflow wczytują się poprawnie."
+
+      - name: No zero-job runs for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          # Belt and braces for the check above: a run reported under a file
+          # path rather than a workflow name is the same startup failure seen
+          # from the run side. Catches a file that compiled at registration
+          # and stopped compiling later. Scoped to this one commit, so it
+          # clears itself as soon as the offending file is fixed instead of
+          # staying red on history nobody can rewrite.
+          BROKEN_RUNS=$(gh api \
+            "repos/${REPOSITORY}/actions/runs?head_sha=${HEAD_SHA}&per_page=100" \
+            -q '.workflow_runs[]
+                | select(.name | startswith(".github/workflows/"))
+                | "\(.name) (run \(.id))"' \
+            | sort -u)
+
+          if [ -n "$BROKEN_RUNS" ]; then
+            echo "::error::Commit ${HEAD_SHA} ma przebiegi bez ani jednego zadania — workflow nie wystartował, a nie „nie miał uwag”."
+            printf '%s\n' "$BROKEN_RUNS"
+            exit 1
+          fi
+
+          echo "Brak przebiegów bez zadań dla ${HEAD_SHA}."
