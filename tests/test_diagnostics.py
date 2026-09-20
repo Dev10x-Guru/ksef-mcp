@@ -9,12 +9,15 @@ The second is about the journal itself (GH-116) — that it reaches stderr and
 never stdout, that the file it may also write is opt-in and readable by nobody
 else, and that configuring it twice does not leave the first configuration
 behind.
+
+The third is about correlation (GH-117): one tool call stamps all its records
+with one identifier, two calls are told apart, and a call that ended leaves
+nothing behind for the next one to inherit.
 """
 
 import logging
 import stat
 import sys
-from collections.abc import Iterator
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -29,7 +32,10 @@ from ksef_mcp.diagnostics import (
     LOGGER_NAME,
     REFERENCE_LENGTH,
     REFERENCE_PREFIX,
+    UNCORRELATED,
     configure_diagnostics,
+    correlated,
+    correlation,
     requested_log_directory,
     short_reference,
     technical_log,
@@ -39,24 +45,8 @@ from synthetic import synthetic_number
 
 
 @pytest.fixture(autouse=True)
-def journal_restored() -> Iterator[None]:
-    """The journal is a process-wide logger, so a test that points it somewhere
-    puts it back — otherwise the next test reads this one's handlers.
-    """
-    log = technical_log()
-    held = tuple(log.handlers)
-    propagated = log.propagate
-    level = log.level
-    yield
-    opened = tuple(handler for handler in log.handlers if handler not in held)
-    for handler in tuple(log.handlers):
-        log.removeHandler(handler)
-    for handler in opened:
-        handler.close()
-    for handler in held:
-        log.addHandler(handler)
-    log.propagate = propagated
-    log.setLevel(level)
+def journal_put_back(journal_restored: None) -> None:
+    """Every test here configures the journal, so every test here returns it."""
 
 
 def test_a_handle_carries_neither_the_nip_nor_the_date_of_the_number() -> None:
@@ -182,3 +172,56 @@ def test_a_failed_pass_is_recoverable_from_the_journal(tmp_path: Path) -> None:
     technical_log().warning("Export %s stayed on disk.", "EXP-1")
 
     assert "Export EXP-1 stayed on disk." in (tmp_path / LOG_FILE).read_text(encoding="utf-8")
+
+
+def test_nothing_outside_a_tool_call_claims_to_belong_to_one() -> None:
+    assert correlation() == UNCORRELATED
+
+
+def test_one_tool_call_stamps_all_its_records_with_one_identifier(tmp_path: Path) -> None:
+    # The point of GH-117: eight records sharing a timestamp cannot be told
+    # apart from another process's eight, and an identifier can.
+    configure_diagnostics(directory=tmp_path)
+
+    with correlated() as minted:
+        technical_log().info("KSeF request: first")
+        technical_log().info("KSeF request: second")
+
+    written = (tmp_path / LOG_FILE).read_text(encoding="utf-8")
+    assert written.count(f"[{minted}]") == 2
+
+
+def test_two_tool_calls_are_told_apart_by_their_identifiers() -> None:
+    with correlated() as first:
+        pass
+    with correlated() as second:
+        pass
+
+    assert first != second
+
+
+def test_a_call_that_ended_leaves_no_identifier_for_the_next_one() -> None:
+    # A leaked identifier is worse than none: it files the next call's records
+    # under the previous call's name, and that reads as evidence.
+    with correlated():
+        pass
+
+    assert correlation() == UNCORRELATED
+
+
+def test_a_record_minted_outside_a_call_is_still_written(tmp_path: Path) -> None:
+    # Configuration read at startup belongs to no tool call, and a formatter
+    # missing the field would raise inside logging rather than log.
+    configure_diagnostics(directory=tmp_path)
+
+    technical_log().info("Configuration read.")
+
+    assert f"[{UNCORRELATED}]" in (tmp_path / LOG_FILE).read_text(encoding="utf-8")
+
+
+def test_configuring_the_journal_twice_leaves_one_stamp_per_record(tmp_path: Path) -> None:
+    configure_diagnostics(directory=tmp_path)
+
+    log = configure_diagnostics(directory=tmp_path)
+
+    assert len(log.filters) == 1

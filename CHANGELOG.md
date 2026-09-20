@@ -22,6 +22,14 @@ udokumentowane.
   `0600`, z rotacją, i nie niesie ani treści faktury, ani tokenu
   (GH-116).
 
+- Odpowiedź `synchronise_invoices` niesie pole `correlation` —
+  identyfikator tego jednego wywołania. Wszystkie żądania, jakie
+  poszły przez nie do KSeF, są nim opatrzone w dzienniku, więc
+  odtworzenie „co zrobiło to wywołanie" nie polega już na dopasowywaniu
+  wpisów po znaczniku czasu — zawodnym dokładnie wtedy, gdy dwa
+  przebiegi działają równolegle. Zgłaszając problem, wystarczy podać tę
+  jedną wartość (GH-117).
+
 ### Zmienione
 
 - Obietnica, że przerwany zapis nigdy nie zostawia połowy pliku, jest
