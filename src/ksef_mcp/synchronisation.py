@@ -132,7 +132,7 @@ class SubjectRoleReport:
 
     subject_role: SubjectRole
     outcome: SyncOutcome
-    detail: str
+    message: str
     invoice_count: int = 0
     part_count: int = 0
     reached: datetime | None = None
@@ -331,7 +331,7 @@ class Synchroniser:
             state=state,
             subject_role=subject_role,
         )
-        return state, replace(resumed, detail=f"{report.detail} {resumed.detail}")
+        return state, replace(resumed, message=f"{report.message} {resumed.message}")
 
     def _attempt(
         self,
@@ -363,7 +363,7 @@ class Synchroniser:
                 state=state,
                 export=queued,
                 settled=SyncOutcome.ARCHIVED,
-                detail=f"Paczka {queued.reference} z poprzedniego przebiegu trafiła do archiwum.",
+                message=f"Paczka {queued.reference} z poprzedniego przebiegu trafiła do archiwum.",
                 reached=None if stored is None else stored.reached,
             )
         moment = self.clock()
@@ -376,7 +376,7 @@ class Synchroniser:
             return state, SubjectRoleReport(
                 subject_role=subject_role,
                 outcome=SyncOutcome.NOT_DUE,
-                detail="Za wcześnie na kolejny eksport dla tego typu podmiotu.",
+                message="Za wcześnie na kolejny eksport dla tego typu podmiotu.",
                 reached=None if stored is None else stored.reached,
             )
         return self._start(
@@ -406,7 +406,7 @@ class Synchroniser:
             return state, SubjectRoleReport(
                 subject_role=subject_role,
                 outcome=SyncOutcome.BUDGET_SPENT,
-                detail=str(refusal),
+                message=str(refusal),
                 reached=opening.reached,
             )
         handle = session.start_export(
@@ -453,7 +453,7 @@ class Synchroniser:
             return state, SubjectRoleReport(
                 subject_role=export.subject_role,
                 outcome=SyncOutcome.BUDGET_SPENT,
-                detail=(
+                message=(
                     "Godzinowy budżet odpytań o status jest wyczerpany; "
                     "eksport czeka zapisany na dysku."
                 ),
@@ -484,7 +484,7 @@ class Synchroniser:
             return state, SubjectRoleReport(
                 subject_role=export.subject_role,
                 outcome=SyncOutcome.STILL_RUNNING,
-                detail=(
+                message=(
                     f"KSeF buduje paczkę {export.reference} od "
                     f"{export.started_at.isoformat()}; dokończy ją kolejny przebieg."
                 ),
@@ -502,7 +502,7 @@ class Synchroniser:
             return state.with_settled(export.refused()), SubjectRoleReport(
                 subject_role=export.subject_role,
                 outcome=SyncOutcome.FAILED,
-                detail=f"KSeF odrzucił eksport {export.reference}.",
+                message=f"KSeF odrzucił eksport {export.reference}.",
             )
         return self._complete(
             session=session,
@@ -540,7 +540,7 @@ class Synchroniser:
         ), SubjectRoleReport(
             subject_role=export.subject_role,
             outcome=SyncOutcome.EMPTY_WINDOW,
-            detail=(
+            message=(
                 f"KSeF zamknął eksport {export.reference} bez żadnej faktury; "
                 f"okno było puste, punkt kontynuacji przesunięty na {reached.isoformat()}."
             ),
@@ -575,7 +575,7 @@ class Synchroniser:
                 state=carrying,
                 export=ready,
                 settled=SyncOutcome.INCONCLUSIVE,
-                detail=(
+                message=(
                     "Paczka jest zarchiwizowana, ale KSeF nie podał znacznika "
                     "kontynuacji; punkt zostaje tam, gdzie był."
                 ),
@@ -594,7 +594,7 @@ class Synchroniser:
             ),
             export=ready,
             settled=SyncOutcome.ARCHIVED,
-            detail=f"Paczka {export.reference} trafiła do archiwum.",
+            message=f"Paczka {export.reference} trafiła do archiwum.",
             reached=moved.reached,
         )
 
@@ -607,7 +607,7 @@ class Synchroniser:
         state: SyncState,
         export: PendingExport,
         settled: SyncOutcome,
-        detail: str,
+        message: str,
         reached: datetime | None,
         renewed: bool = False,
     ) -> tuple[SyncState, SubjectRoleReport]:
@@ -644,7 +644,7 @@ class Synchroniser:
                 export=export,
                 expiry=expiry,
                 settled=settled,
-                detail=detail,
+                message=message,
                 reached=reached,
             )
         except ARCHIVING_FAILURES as failure:
@@ -657,7 +657,7 @@ class Synchroniser:
         return self.store.load(), SubjectRoleReport(
             subject_role=export.subject_role,
             outcome=settled,
-            detail=detail,
+            message=message,
             invoice_count=export.invoice_count,
             part_count=len(export.parts),
             reached=reached,
@@ -692,7 +692,7 @@ class Synchroniser:
         return SubjectRoleReport(
             subject_role=export.subject_role,
             outcome=SyncOutcome.NOT_ARCHIVED,
-            detail=(
+            message=(
                 f"Paczka {export.reference} czeka na dysku z kluczem, "
                 f"bo archiwizacja się nie udała: {failure}"
             ),
@@ -711,7 +711,7 @@ class Synchroniser:
         export: PendingExport,
         expiry: PackageLinkExpired,
         settled: SyncOutcome,
-        detail: str,
+        message: str,
         reached: datetime | None,
     ) -> tuple[SyncState, SubjectRoleReport]:
         """Ask KSeF for the export again before concluding the package is lost.
@@ -759,7 +759,7 @@ class Synchroniser:
             state=state.with_pending(renewed),
             export=renewed,
             settled=settled,
-            detail=detail,
+            message=message,
             reached=reached,
             renewed=True,
         )
@@ -800,7 +800,9 @@ class Synchroniser:
         ), SubjectRoleReport(
             subject_role=export.subject_role,
             outcome=SyncOutcome.RECOVERED,
-            detail=(f"{reason} Wpis zdjęty, punkt kontynuacji cofnięty na {returned.isoformat()}."),
+            message=(
+                f"{reason} Wpis zdjęty, punkt kontynuacji cofnięty na {returned.isoformat()}."
+            ),
             reached=returned,
         )
 
