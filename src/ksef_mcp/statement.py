@@ -50,12 +50,6 @@ from typing import Final, Self
 from platformdirs import user_data_path
 
 from ksef_mcp.allowance import Allowance
-from ksef_mcp.archive import (
-    INVOICE_SUFFIX,
-    ArchiveIndexUnreadable,
-    InvoiceArchive,
-    digest_of,
-)
 from ksef_mcp.config import (
     INVOICE_DIRECTORY_MODE,
     cloud_sync_marker,
@@ -74,8 +68,14 @@ from ksef_mcp.ksef_port.types import (
 )
 from ksef_mcp.listing import CurrencyTotal, gross_totals, invoices_phrase
 from ksef_mcp.metadata import SERVER_NAME
-from ksef_mcp.period_cache import PeriodCache, PeriodMetadataReader, cache_root
-from ksef_mcp.storage import written_atomically
+from ksef_mcp.storage.archive import (
+    INVOICE_SUFFIX,
+    ArchiveIndexUnreadable,
+    InvoiceArchive,
+    digest_of,
+)
+from ksef_mcp.storage.durability import written_atomically
+from ksef_mcp.storage.period_cache import PeriodCache, PeriodMetadataReader, cache_root
 
 # The counterparty on every one of the eight columns is the seller, so the
 # querying subject is the buyer: this is the purchase side of the month, the one

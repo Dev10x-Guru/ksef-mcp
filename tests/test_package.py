@@ -49,7 +49,7 @@ from ksef_mcp.package import (
     escapes_package,
     unpacked,
 )
-from ksef_mcp.sync_store import ExportKeyDiscarded, PendingExport, SyncState, SyncStore
+from ksef_mcp.storage.sync_store import ExportKeyDiscarded, PendingExport, SyncState, SyncStore
 from tests.support.synthetic import synthetic_number
 
 NIP = "1234567890"

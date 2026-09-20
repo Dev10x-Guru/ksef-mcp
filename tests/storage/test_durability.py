@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 from ksef_mcp.errors import KsefMcpError
-from ksef_mcp.storage import (
+from ksef_mcp.storage.durability import (
     LOCK_FILE,
     STAGING_SUFFIX,
     JsonDocumentStore,

@@ -9,7 +9,7 @@ from platformdirs import user_data_path
 from ksef_mcp.errors import KsefMcpError
 from ksef_mcp.ksef_port.types import KsefEnvironment
 from ksef_mcp.metadata import SERVER_NAME
-from ksef_mcp.storage import json_written_atomically, require_schema
+from ksef_mcp.storage.durability import json_written_atomically, require_schema
 
 CONFIGURATION_FILE: Final[str] = "configuration.json"
 

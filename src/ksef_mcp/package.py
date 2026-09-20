@@ -31,7 +31,7 @@ from cryptography.hazmat.primitives.padding import PKCS7
 from ksef_mcp.errors import KsefMcpError
 from ksef_mcp.ksef_port.protocol import KsefSession
 from ksef_mcp.ksef_port.types import ExportEncryption, ExportHandle, ExportPart
-from ksef_mcp.sync_store import PendingExport, SyncStore
+from ksef_mcp.storage.sync_store import PendingExport, SyncStore
 
 # Always present since 27.10.2025 and the input to deduplication by KSeF number
 # — it does not replace deduplication, it feeds it (D-031 §6).

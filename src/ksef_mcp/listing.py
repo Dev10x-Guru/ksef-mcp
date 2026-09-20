@@ -41,7 +41,7 @@ from ksef_mcp.ksef_port.types import (
     Period,
     SubjectRole,
 )
-from ksef_mcp.period_cache import PeriodCache, PeriodMetadataReader
+from ksef_mcp.storage.period_cache import PeriodCache, PeriodMetadataReader
 
 # D-023, and the number is dimensioned against the need rather than against the
 # API: a month in the studied archive is about thirteen invoices and a full

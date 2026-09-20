@@ -17,7 +17,6 @@ import pytest
 from platformdirs import user_cache_path
 
 from ksef_mcp import paths
-from ksef_mcp import period_cache as period_cache_module
 from ksef_mcp.ksef_port import (
     DateType,
     DocumentType,
@@ -32,7 +31,8 @@ from ksef_mcp.ksef_port import (
 from ksef_mcp.ksef_port.errors import KsefRequestRejected, KsefUnreachable
 from ksef_mcp.ksef_port.types import Operation
 from ksef_mcp.metadata import SERVER_NAME
-from ksef_mcp.period_cache import (
+from ksef_mcp.storage import period_cache as period_cache_module
+from ksef_mcp.storage.period_cache import (
     SCHEMA_VERSION,
     CachedPeriod,
     PeriodCache,
@@ -42,7 +42,7 @@ from ksef_mcp.period_cache import (
     is_cacheable,
     now_utc,
 )
-from ksef_mcp.sync_store import SubjectRoleState, SyncState, SyncStore
+from ksef_mcp.storage.sync_store import SubjectRoleState, SyncState, SyncStore
 from tests.support.synthetic import synthetic_metadata
 
 NIP = "1234567890"

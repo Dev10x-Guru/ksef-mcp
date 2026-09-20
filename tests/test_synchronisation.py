@@ -19,7 +19,6 @@ from pathlib import Path
 import pytest
 
 from ksef_mcp.allowance import LEDGER_FILE
-from ksef_mcp.archive import INDEX_FILE, InvoiceArchive
 from ksef_mcp.ksef_port import (
     ContinuationPoint,
     ExportEncryption,
@@ -43,7 +42,8 @@ from ksef_mcp.ksef_port import (
     SubjectRole,
 )
 from ksef_mcp.ksef_port.types import MAX_QUERY_WINDOW
-from ksef_mcp.sync_store import (
+from ksef_mcp.storage.archive import INDEX_FILE, InvoiceArchive
+from ksef_mcp.storage.sync_store import (
     MINIMUM_INTERVAL,
     ContinuationPointMissing,
     PendingExport,
