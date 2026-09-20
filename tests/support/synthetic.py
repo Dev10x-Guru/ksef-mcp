@@ -18,7 +18,7 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.padding import PKCS7
 from ksef2.services.builders.fa3.root import StandardInvoiceBuilder
 
-from ksef_mcp.ksef_port import InvoiceMetadata, KsefNumber
+from ksef_mcp.ksef_port import DocumentType, InvoiceMetadata, KsefNumber
 from ksef_mcp.package import AES_BLOCK_BITS, METADATA_ENTRY
 from ksef_mcp.token_store import StoredToken, TokenSource
 
@@ -87,6 +87,7 @@ def synthetic_metadata(
     ordinal: int = 1,
     *,
     seller_name: str | None = "Dostawca sp. z o.o.",
+    document_type: DocumentType = DocumentType.VAT,
 ) -> InvoiceMetadata:
     return InvoiceMetadata(
         ksef_number=synthetic_number(ordinal),
@@ -99,6 +100,7 @@ def synthetic_metadata(
         net_amount=Decimal("1000.00"),
         vat_amount=Decimal("230.00"),
         currency="PLN",
+        document_type=document_type,
     )
 
 

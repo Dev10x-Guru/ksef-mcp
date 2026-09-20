@@ -12,6 +12,18 @@ udokumentowane.
 
 ### Dodane
 
+- Zestawienie okresu ostrzega, gdy w okresie jest faktura korygująca.
+  Korekta niesie różnicę wobec faktury korygowanej, a nie tę fakturę na
+  nowo — schemat Ministerstwa mówi to wprost przy polu `P_15` i
+  dopuszcza tam wartość ujemną — więc suma całej kolumny Brutto była
+  sumą dokumentów, nie zobowiązania, i wyglądała przy tym dokładnie tak
+  samo jak suma poprawna. Ostrzeżenie nazywa liczbę korekt i ich
+  numery, żeby nie trzeba było szukać ich wśród stu trzydziestu
+  wierszy. Dokument o rodzaju, którego ta wersja nie zna, też jest
+  zgłaszany — rodzajów KSeF-u przybywało i przybędzie, a milczenie o
+  nierozpoznanym dokumencie czytałoby się jak „korekt tu nie ma"
+  (GH-120).
+
 - Nieudana synchronizacja zostawia po sobie ślad techniczny, więc nie
   trzeba już prosić o jej powtórzenie, żeby dowiedzieć się, co poszło
   nie tak. Dotąd jedyną odpowiedzią na „nie pobrało mi się" było

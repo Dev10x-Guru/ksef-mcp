@@ -27,6 +27,7 @@ from ksef_mcp.archive import InvoiceArchive, digest_of
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port import (
     DateType,
+    DocumentType,
     KsefLimits,
     MetadataPage,
     OperationLimit,
@@ -51,6 +52,7 @@ from ksef_mcp.statement import (
     amount,
     archived_digests,
     completeness_warning,
+    correction_warning,
     currency_warning,
     internal_root_conflict,
     now_utc,
@@ -557,6 +559,105 @@ def test_kilka_walut_ostrzega_o_kolumnie_brutto(composer: StatementComposer, wor
     result = composer.run(nip=NIP, token=CREDENTIAL, period=SEPTEMBER, directory=working)
 
     assert any("kilku walutach" in one for one in result.warnings)
+
+
+def test_okres_bez_korekt_nie_wymaga_ostrzezenia(archived: InvoiceArchive) -> None:
+    rows = rows_for(invoices=(synthetic_metadata(1), synthetic_metadata(2)), archive=archived)
+
+    assert correction_warning(rows) == ()
+
+
+def test_korekta_w_okresie_ostrzega_o_sumie_brutto(archived: InvoiceArchive) -> None:
+    # Korekta niesie różnicę wobec faktury korygowanej, a nie tę fakturę na
+    # nowo (schemat MF, P_15), więc suma po wszystkich wierszach jest sumą
+    # dokumentów, nie zobowiązania.
+    rows = rows_for(
+        invoices=(
+            synthetic_metadata(1),
+            synthetic_metadata(2, document_type=DocumentType.KOR),
+        ),
+        archive=archived,
+    )
+
+    assert correction_warning(rows)[0].startswith("Okres zawiera faktury korygujące (1 z 2")
+
+
+def test_ostrzezenie_o_korekcie_wskazuje_ktora_pozycje(archived: InvoiceArchive) -> None:
+    # Bez numeru czytelnik szuka korekty wśród stu trzydziestu wierszy, a
+    # ostrzeżenie, które każe szukać, jest ostrzeżeniem pomijanym.
+    rows = rows_for(
+        invoices=(synthetic_metadata(7, document_type=DocumentType.KOR_ZAL),),
+        archive=archived,
+    )
+
+    assert "FV/2026/09/007" in correction_warning(rows)[0]
+
+
+@pytest.mark.parametrize(
+    "document_type",
+    [
+        DocumentType.KOR,
+        DocumentType.KOR_ZAL,
+        DocumentType.KOR_ROZ,
+        DocumentType.KOR_PEF,
+        DocumentType.KOR_VAT_RR,
+    ],
+)
+def test_kazdy_rodzaj_korekty_jest_rozpoznany(
+    archived: InvoiceArchive, document_type: DocumentType
+) -> None:
+    # FA, zaliczkowa, rozliczeniowa, PEF i FA_RR mają własny rodzaj korygujący.
+    # Sprawdzenie napisane pod samo `kor` przeszłoby testy i przepuściło cztery.
+    rows = rows_for(
+        invoices=(synthetic_metadata(1, document_type=document_type),), archive=archived
+    )
+
+    assert correction_warning(rows) != ()
+
+
+@pytest.mark.parametrize(
+    "document_type",
+    [DocumentType.VAT, DocumentType.ZAL, DocumentType.ROZ, DocumentType.UPR],
+)
+def test_zwykly_dokument_nie_jest_korekta(
+    archived: InvoiceArchive, document_type: DocumentType
+) -> None:
+    rows = rows_for(
+        invoices=(synthetic_metadata(1, document_type=document_type),), archive=archived
+    )
+
+    assert correction_warning(rows) == ()
+
+
+def test_nierozpoznany_rodzaj_nie_przechodzi_za_zwykla_fakture(
+    archived: InvoiceArchive,
+) -> None:
+    # Tabela rodzajów już rosła. Milczenie o dokumencie, którego ta wersja nie
+    # umie zaklasyfikować, przepuściłoby przyszły rodzaj korygujący.
+    rows = rows_for(
+        invoices=(synthetic_metadata(1, document_type=DocumentType.UNKNOWN),),
+        archive=archived,
+    )
+
+    assert correction_warning(rows)[0].startswith("Nie rozpoznaję rodzaju 1 z 1")
+
+
+def test_zestawienie_z_korekta_niesie_ostrzezenie(
+    composer: StatementComposer, working: Path
+) -> None:
+    composer.port.session_object.page = MetadataPage(
+        invoices=(
+            synthetic_metadata(1),
+            synthetic_metadata(2, document_type=DocumentType.KOR),
+        ),
+        has_more=False,
+        truncated=False,
+        hwm_date=None,
+    )
+
+    result = composer.run(nip=NIP, token=CREDENTIAL, period=SEPTEMBER, directory=working)
+
+    assert any("korygujące" in one for one in result.warnings)
 
 
 def test_pozycje_bez_pliku_sa_policzone(archived: InvoiceArchive) -> None:

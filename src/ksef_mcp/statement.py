@@ -67,6 +67,7 @@ from ksef_mcp.ksef_port.protocol import KsefPort
 from ksef_mcp.ksef_port.types import (
     Credential,
     DateType,
+    DocumentType,
     InvoiceMetadata,
     Period,
     SubjectRole,
@@ -483,6 +484,42 @@ def currency_warning(totals: tuple[CurrencyTotal, ...]) -> tuple[str, ...]:
     )
 
 
+def correction_warning(rows: tuple[StatementRow, ...]) -> tuple[str, ...]:
+    """The same caveat `currency_warning` makes, for the other way a sum misleads.
+
+    A correcting document does not restate the invoice it corrects; it carries
+    the difference. The Ministry's schema says as much at `P_15` — "w przypadku
+    faktur korygujących: korekta kwoty wynikającej z faktury korygowanej" — and
+    its `TKwotowy` pattern admits a leading minus, so the difference may be
+    negative. Either way a sum over every row answers "how much was invoiced in
+    documents", which is not the obligation the accountant is reconciling.
+
+    Naming the count and the numbers, rather than the fact alone: the reader has
+    to find the rows to do anything about it, and a warning that sends them
+    through a hundred and thirty of them is a warning that gets ignored.
+    """
+    corrections = tuple(row for row in rows if row.invoice.document_type.corrective)
+    if corrections:
+        numbers = ", ".join(row.invoice.seller_invoice_number for row in corrections)
+        return (
+            f"Okres zawiera faktury korygujące ({len(corrections)} z {len(rows)}: "
+            f"{numbers}). Korekta niesie różnicę wobec faktury korygowanej, nie tę "
+            f"fakturę na nowo, więc suma całej kolumny Brutto to suma dokumentów, "
+            f"a nie zobowiązanie — rozlicz korekty z fakturami pierwotnymi.",
+        )
+    # Unrecognised is not the same as ordinary. The type table has grown before,
+    # and reporting silence for a document nobody here can classify would let a
+    # future correcting type pass as a plain invoice.
+    unrecognised = sum(1 for row in rows if row.invoice.document_type is DocumentType.UNKNOWN)
+    if unrecognised == 0:
+        return ()
+    return (
+        f"Nie rozpoznaję rodzaju {unrecognised} z {len(rows)} dokumentów — KSeF "
+        f"podał wartość, której ta wersja nie zna. Nie mogę wykluczyć, że w "
+        f"okresie jest korekta; sprawdź te pozycje przed zsumowaniem kolumny Brutto.",
+    )
+
+
 def unverifiable_warning(rows: tuple[StatementRow, ...]) -> tuple[str, ...]:
     missing = sum(1 for row in rows if row.code is None)
     if missing == 0:
@@ -552,6 +589,7 @@ class StatementComposer:
                 *working.warnings,
                 *completeness_warning(complete=complete, budget_bound=budget_bound),
                 *currency_warning(totals),
+                *correction_warning(rows),
                 *unverifiable_warning(rows),
             ),
             ksef_numbers=tuple(str(row.invoice.ksef_number) for row in rows),

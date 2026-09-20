@@ -41,6 +41,7 @@ from ksef_mcp.ksef_port.budget import QueryBudget
 from ksef_mcp.ksef_port.protocol import KsefSession
 from ksef_mcp.ksef_port.types import (
     DateType,
+    DocumentType,
     InvoiceMetadata,
     KsefNumber,
     MetadataPage,
@@ -56,12 +57,14 @@ PERIOD_DIRECTORY: Final[str] = "periods"
 
 CACHE_FILE_SUFFIX: Final[str] = ".json"
 
-# Raised to 2 when a window's end stopped being nullable (GH-84), and to 3 when
-# a page started carrying the offset it came from (GH-182). The version check is
-# the searchable mechanism for "this entry predates a format change"; leaning on
-# the decoder's exception instead would make a format change indistinguishable
-# from a truncated file.
-SCHEMA_VERSION: Final[int] = 3
+# Raised to 2 when a window's end stopped being nullable (GH-84), to 3 when a
+# page started carrying the offset it came from (GH-182), and to 4 when a row
+# started carrying the document type (GH-120) — without the bump a remembered
+# month would answer the correction question with silence, which reads exactly
+# like "no corrections here". The version check is the searchable mechanism for
+# "this entry predates a format change"; leaning on the decoder's exception
+# instead would make a format change indistinguishable from a truncated file.
+SCHEMA_VERSION: Final[int] = 4
 
 # The completing loop stops while this many metadata queries are still unspent.
 # One question covers four subject types (D-031 §5) out of one hourly allowance,
@@ -158,6 +161,7 @@ def _encode_invoice(invoice: InvoiceMetadata) -> dict[str, object]:
         "net_amount": str(invoice.net_amount),
         "vat_amount": str(invoice.vat_amount),
         "currency": invoice.currency,
+        "document_type": str(invoice.document_type),
     }
 
 
@@ -173,6 +177,7 @@ def _decode_invoice(stored: dict[str, object]) -> InvoiceMetadata:
         net_amount=Decimal(str(stored["net_amount"])),
         vat_amount=Decimal(str(stored["vat_amount"])),
         currency=str(stored["currency"]),
+        document_type=DocumentType(str(stored["document_type"])),
     )
 
 

@@ -96,6 +96,56 @@ WIRE_SUBJECT_TYPES: Final[dict[SubjectRole, str]] = {
 }
 
 
+class DocumentType(StrEnum):
+    """What KSeF says the document is, taken from the metadata rather than guessed.
+
+    The values are the SDK's, not the wire's. The API answers `Kor` and the SDK
+    translates it to `kor` before the adapter ever sees it
+    (`ksef2.infra.mappers.invoices.responses._map_invoice_type`), so keying on
+    the wire spelling here would key on a string this code never receives.
+
+    `UNKNOWN` is ours and not the Ministry's. The table has grown before and
+    will grow again, and a month's statement that raises rather than reports
+    because a new letter arrived is worse than one that says it met a document
+    it cannot classify.
+    """
+
+    VAT = "vat"
+    ZAL = "zal"
+    KOR = "kor"
+    ROZ = "roz"
+    UPR = "upr"
+    KOR_ZAL = "kor_zal"
+    KOR_ROZ = "kor_roz"
+    VAT_PEF = "vat_pef"
+    VAT_PEF_SP = "vat_pef_sp"
+    KOR_PEF = "kor_pef"
+    VAT_RR = "vat_rr"
+    KOR_VAT_RR = "kor_vat_rr"
+    UNKNOWN = "unknown"
+
+    @property
+    def corrective(self) -> bool:
+        """Whether the document corrects another one, across all five spellings.
+
+        Five and not one: FA, the advance and settlement variants, PEF and
+        FA_RR each have their own correcting type, and a check written against
+        `KOR` alone would pass every test and still miss four of them.
+        """
+        return self in CORRECTIVE_DOCUMENT_TYPES
+
+
+CORRECTIVE_DOCUMENT_TYPES: Final[frozenset[DocumentType]] = frozenset(
+    {
+        DocumentType.KOR,
+        DocumentType.KOR_ZAL,
+        DocumentType.KOR_ROZ,
+        DocumentType.KOR_PEF,
+        DocumentType.KOR_VAT_RR,
+    }
+)
+
+
 @dataclass(frozen=True)
 class KsefNumber:
     value: str
@@ -208,6 +258,13 @@ class InvoiceMetadata:
 
     Never the invoice body: FA(3) XML carries the counterparty's personal data
     and does not cross this boundary (D-011).
+
+    `document_type` is not a column and is not meant to become one. It answers a
+    question the columns cannot: whether the Brutto column may be summed whole.
+    On a correcting document the amount is the difference against the invoice
+    being corrected, not that invoice restated — the Ministry's own schema says
+    so at `P_15` and permits it to be negative — so a sum over every row is a
+    sum of documents rather than of the obligation (GH-120).
     """
 
     ksef_number: KsefNumber
@@ -220,6 +277,7 @@ class InvoiceMetadata:
     net_amount: Decimal
     vat_amount: Decimal
     currency: str
+    document_type: DocumentType
 
 
 @dataclass(frozen=True)

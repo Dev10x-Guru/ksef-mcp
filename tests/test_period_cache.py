@@ -21,6 +21,7 @@ from ksef_mcp import period_cache as period_cache_module
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port import (
     DateType,
+    DocumentType,
     MetadataPage,
     OperationLimit,
     Period,
@@ -174,6 +175,25 @@ def test_a_remembered_period_comes_back_with_its_invoices(
 ) -> None:
     assert remembered is not None
     assert remembered.page == page
+
+
+def test_a_remembered_correction_is_still_a_correction_when_it_comes_back(
+    cache: PeriodCache,
+) -> None:
+    # Bez tego zapamiętany miesiąc odpowiadałby na pytanie o korekty milczeniem,
+    # a milczenie czyta się dokładnie jak „korekt tu nie ma" (GH-120).
+    corrected = MetadataPage(
+        invoices=(synthetic_metadata(1, document_type=DocumentType.KOR),),
+        has_more=False,
+        truncated=False,
+        hwm_date=None,
+    )
+    cache.remember(period=SEPTEMBER, subject_role=SubjectRole.BUYER, page=corrected)
+
+    kept = cache.remembered(period=SEPTEMBER, subject_role=SubjectRole.BUYER)
+
+    assert kept is not None
+    assert kept.page.invoices[0].document_type is DocumentType.KOR
 
 
 def test_a_remembered_period_comes_back_with_the_window_it_answered(
