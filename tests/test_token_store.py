@@ -3,7 +3,7 @@ from collections.abc import Callable
 import pytest
 from keyring.errors import KeyringError, PasswordDeleteError
 
-from ksef_mcp import preflight, token_store
+from ksef_mcp import keyring_preflight, token_store
 from ksef_mcp.metadata import SERVER_NAME
 
 NIP = "1234567890"
@@ -76,9 +76,9 @@ def lying_keyring(monkeypatch: pytest.MonkeyPatch) -> LyingKeyring:
 @pytest.fixture
 def locked_collection(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        preflight,
+        keyring_preflight,
         "inspect_collection_lock",
-        lambda: preflight.CollectionLock.LOCKED,
+        lambda: keyring_preflight.CollectionLock.LOCKED,
     )
 
 
@@ -182,9 +182,9 @@ def test_an_exported_token_is_read_without_consulting_the_collection(
     # depend on that same store would close the escape hatch.
     monkeypatch.setenv(token_store.FALLBACK_ENVIRONMENT_VARIABLE, TOKEN)
     monkeypatch.setattr(
-        preflight,
+        keyring_preflight,
         "inspect_collection_lock",
-        lambda: preflight.CollectionLock.LOCKED,
+        lambda: keyring_preflight.CollectionLock.LOCKED,
     )
 
     assert token_store.read_token(nip=NIP).value == TOKEN

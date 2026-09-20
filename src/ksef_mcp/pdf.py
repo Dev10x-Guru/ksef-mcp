@@ -24,7 +24,7 @@ from typing import Final
 from ksef_mcp.errors import KsefMcpError
 from ksef_mcp.ksef_port.errors import InvalidKsefIdentifier
 from ksef_mcp.ksef_port.types import KsefEnvironment, KsefNumber
-from ksef_mcp.preflight import NodeReport, inspect_node
+from ksef_mcp.node_preflight import NodeReport, inspect_node
 from ksef_mcp.storage import replaced_durably, reserved_staging
 
 PACKAGE_NAME: Final[str] = "ksef_mcp"

@@ -6,7 +6,7 @@ from typing import Final
 import keyring
 from keyring.errors import KeyringError, PasswordDeleteError
 
-from ksef_mcp import preflight
+from ksef_mcp import keyring_preflight
 from ksef_mcp.errors import KsefMcpError
 from ksef_mcp.metadata import SERVER_NAME
 
@@ -41,7 +41,7 @@ def refuse_a_locked_collection() -> None:
     # Called before every single touch of the secret, not once at startup: a
     # collection locks itself again when the machine suspends or the store's
     # own timeout expires, and the second touch would be the one that hangs.
-    if preflight.inspect_collection_lock() is preflight.CollectionLock.LOCKED:
+    if keyring_preflight.inspect_collection_lock() is keyring_preflight.CollectionLock.LOCKED:
         raise TokenStoreLocked(LOCKED_MESSAGE)
 
 

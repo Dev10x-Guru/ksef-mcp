@@ -10,9 +10,10 @@ from ksef_mcp import (
     cli,
     client,
     config,
+    keyring_preflight,
     ksef_port,
     messages,
-    preflight,
+    node_preflight,
     skill,
     token_store,
 )
@@ -65,23 +66,23 @@ class Recorder:
         return "\n".join(self.lines)
 
 
-def keyring_report(*modules_with_priority: tuple[str, float]) -> preflight.KeyringReport:
+def keyring_report(*modules_with_priority: tuple[str, float]) -> keyring_preflight.KeyringReport:
     backends = tuple(
-        preflight.KeyringBackendReport(module=module, priority=priority)
+        keyring_preflight.KeyringBackendReport(module=module, priority=priority)
         for module, priority in modules_with_priority
     )
     preferred = max(backends, key=lambda item: item.priority).module if backends else None
-    return preflight.KeyringReport(backends=backends, preferred=preferred)
+    return keyring_preflight.KeyringReport(backends=backends, preferred=preferred)
 
 
 def node_report(
     *,
     version: tuple[int, int, int] | None,
-    required: tuple[int, int, int] = preflight.MINIMUM_NODE_VERSION,
+    required: tuple[int, int, int] = node_preflight.MINIMUM_NODE_VERSION,
     pinned: tuple[int, int, int] | None = None,
     pinned_by: Path | None = None,
-) -> preflight.NodeReport:
-    return preflight.NodeReport(
+) -> node_preflight.NodeReport:
+    return node_preflight.NodeReport(
         executable=None if version is None else "/usr/bin/node",
         version=version,
         required=required,
@@ -91,26 +92,26 @@ def node_report(
 
 
 @pytest.fixture
-def usable_keyring(monkeypatch: pytest.MonkeyPatch) -> preflight.KeyringReport:
+def usable_keyring(monkeypatch: pytest.MonkeyPatch) -> keyring_preflight.KeyringReport:
     report = keyring_report(
         ("keyring.backends.SecretService", 5),
         ("keyring.backends.kwallet", 4.9),
     )
-    monkeypatch.setattr(preflight, "inspect_keyring", lambda: report)
+    monkeypatch.setattr(keyring_preflight, "inspect_keyring", lambda: report)
     return report
 
 
 @pytest.fixture
-def unusable_keyring(monkeypatch: pytest.MonkeyPatch) -> preflight.KeyringReport:
+def unusable_keyring(monkeypatch: pytest.MonkeyPatch) -> keyring_preflight.KeyringReport:
     report = keyring_report()
-    monkeypatch.setattr(preflight, "inspect_keyring", lambda: report)
+    monkeypatch.setattr(keyring_preflight, "inspect_keyring", lambda: report)
     return report
 
 
 @pytest.fixture
 def healthy_node(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        preflight,
+        node_preflight,
         "inspect_node",
         lambda **kwargs: node_report(version=(22, 17, 0)),
     )
@@ -141,7 +142,7 @@ def invoice_directory(tmp_path: Path) -> Path:
 @pytest.fixture
 def completed_onboarding(
     healthy_node: None,
-    usable_keyring: preflight.KeyringReport,
+    usable_keyring: keyring_preflight.KeyringReport,
     accepting_token_store: list[tuple[str, str]],
     configuration_file: Path,
     invoice_directory: Path,
@@ -209,7 +210,7 @@ def test_missing_node_warns_about_the_shell_profile() -> None:
 
 
 def test_current_node_is_described_as_satisfying(tmp_path: Path) -> None:
-    pin_file = tmp_path / preflight.NODE_VERSION_FILE
+    pin_file = tmp_path / node_preflight.NODE_VERSION_FILE
     described = "\n".join(
         messages.describe_node(
             node_report(
@@ -230,9 +231,9 @@ def pin_below_the_generator(tmp_path: Path) -> str:
         messages.describe_node(
             node_report(
                 version=(20, 11, 0),
-                required=preflight.MINIMUM_NODE_VERSION,
+                required=node_preflight.MINIMUM_NODE_VERSION,
                 pinned=(20, 11, 0),
-                pinned_by=tmp_path / preflight.NODE_VERSION_FILE,
+                pinned_by=tmp_path / node_preflight.NODE_VERSION_FILE,
             )
         )
     )
@@ -414,7 +415,7 @@ def test_invoice_directory_in_a_synced_folder_is_flagged(tmp_path: Path) -> None
 
 def test_onboarding_stops_when_no_keyring_is_available(
     healthy_node: None,
-    unusable_keyring: preflight.KeyringReport,
+    unusable_keyring: keyring_preflight.KeyringReport,
     configuration_file: Path,
 ) -> None:
     recorder = Recorder()
@@ -431,7 +432,7 @@ def test_onboarding_stops_when_no_keyring_is_available(
 
 def test_onboarding_never_prompts_without_a_keyring(
     healthy_node: None,
-    unusable_keyring: preflight.KeyringReport,
+    unusable_keyring: keyring_preflight.KeyringReport,
     configuration_file: Path,
 ) -> None:
     recorder = Recorder()
@@ -449,7 +450,7 @@ def test_onboarding_never_prompts_without_a_keyring(
 @pytest.fixture
 def onboarding_with(
     healthy_node: None,
-    usable_keyring: preflight.KeyringReport,
+    usable_keyring: keyring_preflight.KeyringReport,
     accepting_token_store: list[tuple[str, str]],
     configuration_file: Path,
     invoice_directory: Path,
@@ -632,7 +633,7 @@ def test_onboarding_says_why_it_does_not_call_ksef(
 @pytest.fixture
 def doctored(
     healthy_node: None,
-    usable_keyring: preflight.KeyringReport,
+    usable_keyring: keyring_preflight.KeyringReport,
     tmp_path: Path,
     configuration_file: Path,
 ) -> tuple[int, Recorder]:
@@ -700,7 +701,7 @@ def stale_subject_directory(subject_data_root: Path) -> Path:
 
 def test_doctor_points_at_an_archive_left_under_the_old_spelling(
     healthy_node: None,
-    usable_keyring: preflight.KeyringReport,
+    usable_keyring: keyring_preflight.KeyringReport,
     tmp_path: Path,
     configured: Path,
     stale_subject_directory: Path,
@@ -719,7 +720,7 @@ def test_doctor_points_at_an_archive_left_under_the_old_spelling(
 
 def test_doctor_leaves_the_old_archive_exactly_where_it_is(
     healthy_node: None,
-    usable_keyring: preflight.KeyringReport,
+    usable_keyring: keyring_preflight.KeyringReport,
     tmp_path: Path,
     configured: Path,
     stale_subject_directory: Path,
@@ -738,7 +739,7 @@ def test_doctor_leaves_the_old_archive_exactly_where_it_is(
 
 def test_doctor_does_not_crash_on_a_configuration_whose_nip_is_not_one(
     healthy_node: None,
-    usable_keyring: preflight.KeyringReport,
+    usable_keyring: keyring_preflight.KeyringReport,
     tmp_path: Path,
     invoice_directory: Path,
 ) -> None:
@@ -768,7 +769,7 @@ def test_doctor_does_not_crash_on_a_configuration_whose_nip_is_not_one(
 
 def test_doctor_names_the_environment_without_calling_ksef(
     healthy_node: None,
-    usable_keyring: preflight.KeyringReport,
+    usable_keyring: keyring_preflight.KeyringReport,
     tmp_path: Path,
     configured: Path,
 ) -> None:
@@ -1166,9 +1167,9 @@ def test_verify_refuses_before_touching_a_locked_keyring(
     # The token is never read and KSeF is never called: reaching the keyring
     # would open an unlock prompt and hang the transport (D-004, ST-3).
     monkeypatch.setattr(
-        preflight,
+        keyring_preflight,
         "inspect_collection_lock",
-        lambda: preflight.CollectionLock.LOCKED,
+        lambda: keyring_preflight.CollectionLock.LOCKED,
     )
     monkeypatch.setattr(ksef_port, "check_connection", raiser(AssertionError("sięgnięto do KSeF")))
     recorder = Recorder()
@@ -1180,14 +1181,14 @@ def test_verify_refuses_before_touching_a_locked_keyring(
 
 def test_doctor_reports_a_locked_collection(
     monkeypatch: pytest.MonkeyPatch,
-    usable_keyring: preflight.KeyringReport,
+    usable_keyring: keyring_preflight.KeyringReport,
     healthy_node: None,
     configuration_file: Path,
 ) -> None:
     monkeypatch.setattr(
-        preflight,
+        keyring_preflight,
         "inspect_collection_lock",
-        lambda: preflight.CollectionLock.LOCKED,
+        lambda: keyring_preflight.CollectionLock.LOCKED,
     )
     recorder = Recorder()
 
@@ -1203,14 +1204,14 @@ def test_doctor_reports_a_locked_collection(
 
 def test_doctor_reports_an_unlocked_collection(
     monkeypatch: pytest.MonkeyPatch,
-    usable_keyring: preflight.KeyringReport,
+    usable_keyring: keyring_preflight.KeyringReport,
     healthy_node: None,
     configuration_file: Path,
 ) -> None:
     monkeypatch.setattr(
-        preflight,
+        keyring_preflight,
         "inspect_collection_lock",
-        lambda: preflight.CollectionLock.UNLOCKED,
+        lambda: keyring_preflight.CollectionLock.UNLOCKED,
     )
     recorder = Recorder()
 
@@ -1225,7 +1226,7 @@ def test_doctor_reports_an_unlocked_collection(
 
 
 def test_doctor_says_nothing_about_a_platform_without_a_collection(
-    usable_keyring: preflight.KeyringReport,
+    usable_keyring: keyring_preflight.KeyringReport,
     healthy_node: None,
     configuration_file: Path,
 ) -> None:
@@ -1494,7 +1495,7 @@ def test_verify_refuses_a_configuration_whose_nip_is_not_one(
 
 def test_onboarding_asks_again_when_the_nip_is_not_one(
     healthy_node: None,
-    usable_keyring: preflight.KeyringReport,
+    usable_keyring: keyring_preflight.KeyringReport,
     accepting_token_store: list[tuple[str, str]],
     configuration_file: Path,
     invoice_directory: Path,
@@ -1517,7 +1518,7 @@ def test_onboarding_asks_again_when_the_nip_is_not_one(
 
 def test_onboarding_stores_one_spelling_however_the_nip_was_typed(
     healthy_node: None,
-    usable_keyring: preflight.KeyringReport,
+    usable_keyring: keyring_preflight.KeyringReport,
     accepting_token_store: list[tuple[str, str]],
     configuration_file: Path,
     invoice_directory: Path,

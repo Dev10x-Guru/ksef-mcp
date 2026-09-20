@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from ksef_mcp import paths, preflight
+from ksef_mcp import keyring_preflight, paths
 from ksef_mcp.allowance import Allowance, now_utc
 from ksef_mcp.diagnostics import LOG_FILE, configure_diagnostics, technical_log
 from ksef_mcp.ksef_port.types import KsefEnvironment
@@ -128,4 +128,4 @@ def without_a_secret_service(monkeypatch: pytest.MonkeyPatch) -> None:
     # The suite has to say the same thing on a laptop with a live D-Bus session
     # and in CI without one, so the probe is answered here rather than by
     # whichever machine happens to run it. Tests about the lock state say so.
-    monkeypatch.setattr(preflight, "load_secret_service", lambda: None)
+    monkeypatch.setattr(keyring_preflight, "load_secret_service", lambda: None)
