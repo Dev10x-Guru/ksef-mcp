@@ -18,13 +18,23 @@ access, append-only and complete by design; this one records failures and how
 far a pass got, so that a synchronisation that did not finish can be
 reconstructed without asking for it again out of twenty exports an hour
 (GH-116).
+
+Correlation travels in a `ContextVar` rather than as a parameter (GH-117). One
+`synchronise_invoices` call reaches the port through a dozen frames that have
+no business knowing about diagnostics, and threading an identifier through
+every one of them would put the concern in the signature of code that does not
+use it. The variable is set once, where the tool call begins, and read only by
+the filter that stamps it onto records.
 """
 
 from __future__ import annotations
 
 import hashlib
 import logging
-from collections.abc import Mapping
+import uuid
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Final
@@ -62,7 +72,15 @@ LOG_FILE_KEPT: Final[int] = 3
 # leaves KSeF numbers on a disk whose backup policy nobody considered.
 LOG_DIRECTORY_VARIABLE: Final[str] = "KSEF_DIAGNOSTIC_DIRECTORY"
 
-LOG_FORMAT: Final[str] = "%(asctime)s %(levelname)s %(message)s"
+LOG_FORMAT: Final[str] = "%(asctime)s %(levelname)s [%(correlation)s] %(message)s"
+
+# What a record shows when nothing minted an identifier — a call that did not
+# come through a tool, such as configuration read at startup.
+UNCORRELATED: Final[str] = "-"
+
+CORRELATION_LENGTH: Final[int] = 16
+
+_correlation: ContextVar[str] = ContextVar("ksef_mcp_correlation", default=UNCORRELATED)
 
 
 def short_reference(ksef_number: str) -> str:
@@ -74,6 +92,35 @@ def short_reference(ksef_number: str) -> str:
     """
     digest = hashlib.sha256(ksef_number.encode("utf-8")).hexdigest()
     return f"{REFERENCE_PREFIX}{digest[:REFERENCE_LENGTH]}"
+
+
+def correlation() -> str:
+    """Which tool call the current frame belongs to, or `UNCORRELATED`."""
+    return _correlation.get()
+
+
+@contextmanager
+def correlated() -> Iterator[str]:
+    """Mint an identifier for one tool call and hand it to everything below.
+
+    Reset on the way out rather than left set: the server is long-lived, and a
+    leaked identifier would file the next call's records under the previous
+    call's name — which is worse than having none, because it reads as evidence.
+    """
+    minted = uuid.uuid4().hex[:CORRELATION_LENGTH]
+    token = _correlation.set(minted)
+    try:
+        yield minted
+    finally:
+        _correlation.reset(token)
+
+
+class CorrelationFilter(logging.Filter):
+    """Stamps every record with the tool call it belongs to."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.correlation = correlation()
+        return True
 
 
 def technical_log() -> logging.Logger:
@@ -126,11 +173,13 @@ def configure_diagnostics(*, directory: Path | None = None) -> logging.Logger:
     log = technical_log()
     for stale in tuple(log.handlers):
         log.removeHandler(stale)
+    log.filters.clear()
     log.setLevel(logging.INFO)
     # Never up to the root logger: a client application embedding this package
     # configures its own root, and the journal would then reach handlers that
     # may well write to stdout.
     log.propagate = False
+    log.addFilter(CorrelationFilter())
     log.addHandler(_stream_handler())
     if directory is not None:
         log.addHandler(_file_handler(directory))

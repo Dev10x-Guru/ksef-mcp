@@ -1,6 +1,7 @@
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 
 import httpx
 import pytest
@@ -51,6 +52,7 @@ from doubles import (
     sdk_part,
 )
 from ksef_mcp.config import KsefEnvironment
+from ksef_mcp.diagnostics import correlated
 from ksef_mcp.ksef_port import (
     DateType,
     ExportPart,
@@ -216,6 +218,27 @@ def test_the_token_reaches_authentication(session: KsefSession, plan: Plan) -> N
     # The SDK is handed the bare string, and only here: the value is unwrapped
     # one line before it is spent, never earlier (GH-115).
     assert plan.built[0].authentication.credentials == [(NIP, TOKEN_VALUE)]
+
+
+def test_a_request_to_ksef_is_journalled_under_the_call_that_made_it(
+    session: KsefSession, journal: Path
+) -> None:
+    # GH-117: the whole point is being able to read back which requests one
+    # tool call made, without matching eight rows by timestamp.
+    with correlated() as minted:
+        session.query_metadata(period=WINDOW, subject_role=SubjectRole.BUYER)
+
+    assert f"[{minted}]" in journal.read_text(encoding="utf-8")
+
+
+def test_a_journalled_request_names_neither_the_subject_nor_the_token(
+    session: KsefSession, journal: Path
+) -> None:
+    session.query_metadata(period=WINDOW, subject_role=SubjectRole.BUYER)
+
+    written = journal.read_text(encoding="utf-8")
+    assert NIP not in written
+    assert TOKEN_VALUE not in written
 
 
 def test_metadata_is_requested_newest_first(session: KsefSession, plan: Plan) -> None:

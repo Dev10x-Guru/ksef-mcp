@@ -13,7 +13,7 @@ from mcp.types import CallToolResult, ListToolsResult
 from ksef_mcp import config, token_store
 from ksef_mcp.audit import PDF_FORMAT, AuditEntry, AuditTrail, AuthorisationBasis, Disclosure
 from ksef_mcp.config import Configuration, KsefEnvironment
-from ksef_mcp.diagnostics import technical_log
+from ksef_mcp.diagnostics import UNCORRELATED, technical_log
 from ksef_mcp.errors import KsefMcpError
 from ksef_mcp.ksef_port import (
     DateType,
@@ -432,6 +432,25 @@ async def test_the_tool_hands_back_the_pass_it_ran(with_a_token: None) -> None:
         called = await client.call_tool("synchronise_invoices")
 
     assert called.structured_content["pending_exports"] == ["EXP-1"]
+
+
+@pytest.mark.anyio
+async def test_the_answer_names_the_call_in_the_journal(with_a_token: None) -> None:
+    # GH-117: without this the only way to tie the answer to its journal lines
+    # is the timestamp, which stops working as soon as two passes overlap.
+    async with Client(server, raise_exceptions=True) as client:
+        called = await client.call_tool("synchronise_invoices")
+
+    assert called.structured_content["correlation"] != UNCORRELATED
+
+
+@pytest.mark.anyio
+async def test_two_passes_are_named_differently(with_a_token: None) -> None:
+    async with Client(server, raise_exceptions=True) as client:
+        first = await client.call_tool("synchronise_invoices")
+        second = await client.call_tool("synchronise_invoices")
+
+    assert first.structured_content["correlation"] != second.structured_content["correlation"]
 
 
 def test_the_description_survives_an_empty_pass() -> None:

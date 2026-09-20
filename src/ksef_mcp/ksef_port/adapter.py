@@ -17,6 +17,7 @@ from ksef2.domain.models.invoices import InvoicesFilter
 from ksef2.domain.models.pagination import InvoiceMetadataParams
 
 from ksef_mcp.config import KsefEnvironment
+from ksef_mcp.diagnostics import technical_log
 from ksef_mcp.ksef_port.errors import (
     KsefAuthenticationFailed,
     KsefRateLimited,
@@ -288,6 +289,17 @@ class Ksef2Session:
         params = InvoiceMetadataParams(page_size=PAGE_SIZE, sort_order="desc").with_page_offset(
             page_offset
         )
+        # Every KSeF request this port makes leaves a line carrying the
+        # correlation identifier the tool call minted, so one call's requests
+        # can be read back as a sequence rather than matched by timestamp
+        # (GH-117). The window and the role, never the NIP and never the token.
+        technical_log().info(
+            "KSeF request: metadata page %d, role %s, window %s..%s",
+            page_offset,
+            subject_role,
+            period.date_from.isoformat(),
+            period.date_to.isoformat(),
+        )
         with translated():
             page = self.authenticated.invoices.query_metadata(
                 filters=as_filters(period=period, subject_role=subject_role),
@@ -307,6 +319,12 @@ class Ksef2Session:
         period: Period,
         subject_role: SubjectRole,
     ) -> ExportHandle:
+        technical_log().info(
+            "KSeF request: export for role %s, window %s..%s",
+            subject_role,
+            period.date_from.isoformat(),
+            period.date_to.isoformat(),
+        )
         with translated():
             scheduled = self.authenticated.invoices.schedule_export(
                 filters=as_filters(period=period, subject_role=subject_role),
@@ -322,6 +340,7 @@ class Ksef2Session:
         )
 
     def check_export(self, *, handle: ExportHandle) -> ExportStatus:
+        technical_log().info("KSeF request: status of export %s", handle.reference)
         with translated():
             response = self.authenticated.invoices.get_export_status(
                 reference_number=handle.reference,
@@ -337,6 +356,14 @@ class Ksef2Session:
         # from presigned external storage, carries no KSeF credential, and the
         # SDK exposes that transport only behind a private attribute. Borrowing
         # a private is the kind of coupling this port exists to avoid.
+        #
+        # The part's ordinal and its export, never the presigned URL: that one
+        # is a bearer credential for the package for as long as it lives.
+        technical_log().info(
+            "KSeF request: part %d of export %s",
+            part.ordinal,
+            handle.reference,
+        )
         try:
             response = self.transport.request(part.method, part.url)
             response.raise_for_status()
@@ -352,6 +379,7 @@ class Ksef2Session:
         return response.content
 
     def download_invoice(self, *, ksef_number: KsefNumber) -> bytes:
+        technical_log().info("KSeF request: invoice %s", ksef_number)
         with translated():
             return self.authenticated.invoices.download_invoice(
                 ksef_number=ksef_number.value,

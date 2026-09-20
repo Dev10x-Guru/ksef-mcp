@@ -1,5 +1,5 @@
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from datetime import datetime
 from pathlib import Path
 
@@ -8,6 +8,7 @@ import pytest
 from ksef_mcp import paths, preflight
 from ksef_mcp.allowance import Allowance, now_utc
 from ksef_mcp.config import KsefEnvironment
+from ksef_mcp.diagnostics import LOG_FILE, configure_diagnostics, technical_log
 
 
 def raiser(error: Exception) -> Callable[..., object]:
@@ -86,6 +87,40 @@ def subject_data_root(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     monkeypatch.setattr(paths, "user_data_path", lambda *, appname: data)
     monkeypatch.setattr(paths, "user_cache_path", lambda *, appname: tmp_path / "cache")
     return data
+
+
+@pytest.fixture
+def journal_restored() -> Iterator[None]:
+    """Put the journal back the way it was found.
+
+    It is a process-wide logger, so a test that points it somewhere has to
+    return it — otherwise the next test reads this one's handlers and a suite
+    passes or fails by the order it happened to run in.
+    """
+    log = technical_log()
+    held = tuple(log.handlers)
+    stamps = tuple(log.filters)
+    propagated = log.propagate
+    level = log.level
+    yield
+    opened = tuple(handler for handler in log.handlers if handler not in held)
+    for handler in tuple(log.handlers):
+        log.removeHandler(handler)
+    for handler in opened:
+        handler.close()
+    for handler in held:
+        log.addHandler(handler)
+    log.filters = list(stamps)
+    log.propagate = propagated
+    log.setLevel(level)
+
+
+@pytest.fixture
+def journal(journal_restored: None, tmp_path: Path) -> Path:
+    """The journal writing into the test's own directory, and the file it writes."""
+    directory = tmp_path / "dziennik"
+    configure_diagnostics(directory=directory)
+    return directory / LOG_FILE
 
 
 @pytest.fixture(autouse=True)
