@@ -119,6 +119,12 @@ udokumentowane.
   kto czytał tylko go, widział szkielet zamiast działającego narzędzia
   (GH-156).
 
+- Generowanie PDF-a uruchamia dokładnie ten binarny plik Node, którego
+  wersję sprawdziło uruchomienie wstępne, zamiast pozwalać systemowi
+  rozwiązać literał `"node"` drugi raz. Pod `fnm` te dwie ścieżki mogły
+  się rozjechać — sprawdzona wersja i uruchomiona wersja to bywały dwa
+  różne pliki (GH-160).
+
 - Synchronizacja sesji z dużą liczbą faktur nie przepisuje już całej
   historii archiwum przy każdej pojedynczej fakturze. Indeks rośnie przez
   całe życie archiwum i celowo nie jest przycinany, więc przy suficie

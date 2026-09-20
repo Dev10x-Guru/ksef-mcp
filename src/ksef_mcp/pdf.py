@@ -328,7 +328,7 @@ class InvoiceRenderer:
                 f"Faktury {ksef_number} nie ma w archiwum. Uruchom najpierw "
                 f"synchronizację — renderuję wyłącznie to, co już leży na dysku."
             )
-        self.readable_node()
+        node_executable = self.readable_node().executable
         target = self.working_directory / f"{ksef_number}{PDF_SUFFIX}"
         # Written under a staging name and renamed, like every other file this
         # package produces: Node writes into a file it did not create, so a PDF
@@ -349,7 +349,12 @@ class InvoiceRenderer:
         )
         completed = self.runner(
             [
-                "node",
+                # The version check above resolved this exact path via
+                # `shutil.which`; handing Node's own resolution of the bare
+                # `"node"` the final say would let the checked and the run
+                # binary diverge under `fnm`, where PATH depends on shell
+                # state (GH-160).
+                node_executable,
                 str(shim_path()),
                 str(bundle_path()),
                 str(source),

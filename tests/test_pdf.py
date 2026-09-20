@@ -234,6 +234,27 @@ def test_absent_node_stops_the_render_before_it_starts(archive: Path, working: P
         render(KSEF_NUMBER)
 
 
+def test_the_checked_node_binary_is_the_one_that_runs(archive: Path, working: Path) -> None:
+    """The path `inspect_node` resolved is what runs — not a second, unchecked
+    resolution of the literal `"node"`. Under `fnm`, PATH can name a different
+    binary than the one the version check already vetted (GH-160)."""
+    captured: list[str] = []
+
+    def capturing_runner(command: list[str]) -> subprocess.CompletedProcess[str]:
+        captured.extend(command)
+        return writing_runner(command)
+
+    render = renderer(
+        archive=archive,
+        working=working,
+        runner=capturing_runner,
+        report=node_report(executable="/opt/fnm/node-versions/v22.17.0/bin/node"),
+    )
+    render(KSEF_NUMBER)
+
+    assert captured[0] == "/opt/fnm/node-versions/v22.17.0/bin/node"
+
+
 def test_a_refusing_generator_is_reported_with_its_reason(archive: Path, working: Path) -> None:
     render = renderer(
         archive=archive,
