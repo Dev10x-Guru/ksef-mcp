@@ -3,8 +3,8 @@ from subprocess import CompletedProcess, TimeoutExpired
 
 import pytest
 
-from conftest import raiser
 from ksef_mcp import preflight
+from tests.conftest import raiser
 
 # Captured before the suite-wide fixture stands in for the machine: this one
 # file is where the probe itself is under test, not something it answers for.

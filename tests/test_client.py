@@ -2,9 +2,9 @@ from subprocess import CompletedProcess, TimeoutExpired
 
 import pytest
 
-from conftest import raiser
 from ksef_mcp import client
 from ksef_mcp.metadata import SERVER_NAME
+from tests.conftest import raiser
 
 
 def completed(returncode: int) -> CompletedProcess[str]:

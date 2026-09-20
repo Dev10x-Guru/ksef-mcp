@@ -29,7 +29,7 @@ from ksef_mcp.retention import (
     PurgeWindowInverted,
     purge_entry,
 )
-from test_archive import a_manifest
+from tests.test_archive import a_manifest
 
 NIP = "1234567890"
 

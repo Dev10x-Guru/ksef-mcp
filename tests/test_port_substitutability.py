@@ -17,8 +17,6 @@ import httpx
 import pytest
 
 import ksef_mcp
-from conftest import an_allowance
-from doubles import HWM
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port import (
     Credential,
@@ -42,8 +40,10 @@ from ksef_mcp.ksef_port import (
 )
 from ksef_mcp.ksef_port.adapter import Ksef2Port
 from ksef_mcp.period_cache import MeteredPeriods, PeriodCache
-from synthetic import synthetic_metadata
-from test_port_adapter import NIP, TOKEN, Plan
+from tests.conftest import an_allowance
+from tests.support.doubles import HWM
+from tests.support.synthetic import synthetic_metadata
+from tests.test_port_adapter import NIP, TOKEN, Plan
 
 PORT_PACKAGE = Path(ksef_mcp.__file__).parent / "ksef_port"
 

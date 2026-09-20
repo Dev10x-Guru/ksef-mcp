@@ -61,7 +61,7 @@ from ksef_mcp.server import (
 )
 from ksef_mcp.statement import AccountingPeriod, Statement, WorkingDirectoryRefused
 from ksef_mcp.synchronisation import SubjectRoleReport, SynchronisationReport, SyncOutcome
-from synthetic import synthetic_fa3_invoice, synthetic_metadata
+from tests.support.synthetic import synthetic_fa3_invoice, synthetic_metadata
 
 
 @pytest.fixture

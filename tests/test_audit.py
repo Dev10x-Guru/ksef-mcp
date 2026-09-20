@@ -5,7 +5,6 @@ from pathlib import Path
 
 import pytest
 
-from conftest import in_another_thread
 from ksef_mcp.audit import (
     AUDIT_FILE,
     XML_FORMAT,
@@ -20,6 +19,7 @@ from ksef_mcp.audit import (
 )
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.token_store import TokenSource
+from tests.conftest import in_another_thread
 
 NIP = "1234567890"
 

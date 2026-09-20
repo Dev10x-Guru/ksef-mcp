@@ -22,7 +22,6 @@ from typing import Final
 
 import pytest
 
-from conftest import an_allowance
 from ksef_mcp.allowance import Allowance
 from ksef_mcp.archive import InvoiceArchive, digest_of
 from ksef_mcp.config import KsefEnvironment
@@ -63,7 +62,8 @@ from ksef_mcp.statement import (
     verification_code,
     write_statement,
 )
-from synthetic import (
+from tests.conftest import an_allowance
+from tests.support.synthetic import (
     SELLER_NIP,
     synthetic_body,
     synthetic_credential,

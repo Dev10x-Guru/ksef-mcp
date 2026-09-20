@@ -21,7 +21,6 @@ from typing import Final
 
 import pytest
 
-from conftest import an_allowance
 from ksef_mcp import paths
 from ksef_mcp.allowance import Allowance
 from ksef_mcp.config import KsefEnvironment
@@ -56,7 +55,8 @@ from ksef_mcp.review import (
     now_utc,
     review_period,
 )
-from synthetic import synthetic_credential, synthetic_metadata
+from tests.conftest import an_allowance
+from tests.support.synthetic import synthetic_credential, synthetic_metadata
 
 NIP = "1234567890"
 

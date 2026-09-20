@@ -17,7 +17,7 @@ from ksef_mcp.ksef_port import (
 )
 from ksef_mcp.ksef_port.types import MAX_QUERY_WINDOW, WIRE_SUBJECT_TYPES
 from ksef_mcp.synchronisation import INITIAL_LOOKBACK
-from synthetic import synthetic_metadata
+from tests.support.synthetic import synthetic_metadata
 
 VALID_NUMBER = "1234567890-20260901-0100AB12CD34-56"
 

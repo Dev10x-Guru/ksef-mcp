@@ -11,7 +11,7 @@ from typing import Self
 
 from ksef2.core.exceptions import KSeFException, KSeFValidationError
 
-from synthetic import BUYER_NAME, SELLER_NIP
+from tests.support.synthetic import BUYER_NAME, SELLER_NIP
 
 HWM = datetime(2026, 9, 10, tzinfo=UTC)
 

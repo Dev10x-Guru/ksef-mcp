@@ -14,7 +14,6 @@ from pathlib import Path
 
 import pytest
 
-from conftest import in_another_thread
 from ksef_mcp import storage
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.ksef_port import (
@@ -37,6 +36,7 @@ from ksef_mcp.sync_store import (
     SyncStore,
     in_night_window,
 )
+from tests.conftest import in_another_thread
 
 NIP = "1234567890"
 

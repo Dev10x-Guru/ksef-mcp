@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 
-from conftest import raiser
 from ksef_mcp import (
     cli,
     client,
@@ -21,9 +20,10 @@ from ksef_mcp.archive import InvoiceArchive
 from ksef_mcp.audit import AuditTrail, AuthorisationBasis, Disclosure
 from ksef_mcp.config import Configuration, KsefEnvironment
 from ksef_mcp.metadata import SERVER_NAME
-from synthetic import synthetic_metadata
-from test_retention import a_number as a_ksef_number
-from test_retention import a_package as retention_package
+from tests.conftest import raiser
+from tests.support.synthetic import synthetic_metadata
+from tests.test_retention import a_number as a_ksef_number
+from tests.test_retention import a_package as retention_package
 
 NIP = "1234567890"
 

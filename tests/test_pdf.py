@@ -11,7 +11,7 @@ import pytest
 from ksef_mcp import pdf, storage
 from ksef_mcp.config import KsefEnvironment
 from ksef_mcp.preflight import NodeReport
-from synthetic import BUYER_NAME, SELLER_NIP, synthetic_fa3_invoice
+from tests.support.synthetic import BUYER_NAME, SELLER_NIP, synthetic_fa3_invoice
 
 KSEF_NUMBER = "1234567890-20260817-0100AB12CD01-56"
 
