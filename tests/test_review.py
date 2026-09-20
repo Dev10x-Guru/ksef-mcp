@@ -293,7 +293,7 @@ def test_a_ledger_from_a_newer_build_is_refused_rather_than_guessed_at(
     store.save(ReviewLedger())
     store.path.write_text('{"schema_version": 99, "entries": []}', encoding="utf-8")
 
-    with pytest.raises(ReviewLedgerUnreadable, match="schema 99"):
+    with pytest.raises(ReviewLedgerUnreadable, match="schemat 99"):
         store.load()
 
 

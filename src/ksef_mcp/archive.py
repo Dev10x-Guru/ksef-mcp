@@ -450,10 +450,13 @@ def _encode_index(
 INDEX_DOCUMENT: Final = JsonDocumentStore(
     schema_version=SCHEMA_VERSION,
     file_mode=ARCHIVE_FILE_MODE,
-    named="The deduplication index",
+    named="Indeks deduplikacji",
     on_mismatch=SchemaMismatch.REFUSE,
     refused_as=ArchiveIndexUnreadable,
-    consequence="a misread index fetches invoices already held, or hides ones never fetched.",
+    consequence=(
+        "źle odczytany indeks albo pobiera faktury już posiadane, albo ukrywa "
+        "takie, których jeszcze nie pobrano."
+    ),
 )
 
 

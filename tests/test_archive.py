@@ -377,7 +377,7 @@ def test_an_index_from_a_newer_build_is_refused_rather_than_guessed_at(
     document["schema_version"] = SCHEMA_AHEAD
     archive.index_path.write_text(json.dumps(document), encoding="utf-8")
 
-    with pytest.raises(ArchiveIndexUnreadable, match="Refusing to guess"):
+    with pytest.raises(ArchiveIndexUnreadable, match="Nie zgaduję"):
         archive.load_index()
 
 

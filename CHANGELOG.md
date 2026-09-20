@@ -125,6 +125,14 @@ udokumentowane.
   się rozjechać — sprawdzona wersja i uruchomiona wersja to bywały dwa
   różne pliki (GH-160).
 
+- Komunikaty, które trafiają do klienta MCP albo do terminala, mówią
+  teraz jednym językiem. Odmowa braku konfiguracji istniała w czterech
+  różnie brzmiących kopiach, a dwa wyjątki odmawiające odczytu pliku,
+  którego dana wersja nie rozumie (stan synchronizacji, rejestr
+  przeglądu, indeks archiwum, dziennik audytu, konfiguracja),
+  przemawiały po angielsku, mimo że trafiają do tego samego odbiorcy
+  co ich polskojęzyczne odpowiedniki (GH-163, ADR-108).
+
 - Synchronizacja sesji z dużą liczbą faktur nie przepisuje już całej
   historii archiwum przy każdej pojedynczej fakturze. Indeks rośnie przez
   całe życie archiwum i celowo nie jest przycinany, więc przy suficie

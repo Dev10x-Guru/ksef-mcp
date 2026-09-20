@@ -346,7 +346,7 @@ def run_verify(console: Console, *, configuration_file: Path | None) -> int:
 
     loaded = config.load_configuration(path=configuration_file)
     if loaded is None:
-        console.write("Brak konfiguracji. Uruchom najpierw: ksef-mcp onboarding")
+        console.write(messages.describe_not_configured())
         return EXIT_NOT_CONFIGURED
     # The same spelling the MCP tools resolve to, so `verify` reads the cache
     # and spends the allowance of the subject those tools work as (GH-98).
@@ -541,7 +541,7 @@ def run_purge(
 ) -> int:
     configuration = config.load_configuration(path=configuration_file)
     if configuration is None:
-        console.write("Brak konfiguracji. Uruchom najpierw: ksef-mcp onboarding")
+        console.write(messages.describe_not_configured())
         return EXIT_NOT_CONFIGURED
     # Before the window and before anything is planned: this value becomes a
     # path segment and this command deletes files, so `--nip ../../..` has to

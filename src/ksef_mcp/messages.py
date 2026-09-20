@@ -108,6 +108,19 @@ def describe_identity(executable: str | None) -> tuple[str, ...]:
     )
 
 
+def describe_not_configured() -> str:
+    """The refusal every entry point gives before `onboarding` has run.
+
+    Consolidated here after the same sentence drifted into three
+    independent literal copies across `server.py` and `cli.py` — one
+    source, so a future reword of the instruction lands everywhere at
+    once (GH-163). `describe_subject` below stays separate on purpose:
+    it renders one line of a status table (`doctor`), not a refusal
+    that stops a command, so it earns its own wording.
+    """
+    return "Brak konfiguracji. Uruchom najpierw: ksef-mcp onboarding"
+
+
 def describe_subject(configuration: Configuration | None) -> tuple[str, ...]:
     if configuration is None:
         return ("  Podmiot: brak konfiguracji — uruchom `ksef-mcp onboarding`.",)

@@ -89,7 +89,7 @@ def require_schema(
     if found == expected:
         return
     raise refused_as(
-        f"{named} is schema {found}, this build reads {expected}. Refusing to guess: {consequence}"
+        f"{named} ma schemat {found}, ta wersja czyta {expected}. Nie zgaduję: {consequence}"
     )
 
 

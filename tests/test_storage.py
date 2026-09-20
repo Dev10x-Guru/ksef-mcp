@@ -297,7 +297,7 @@ def test_a_store_answers_an_absent_file_with_nothing(
 def test_a_refusing_store_says_which_document_it_will_not_guess_at(target: Path) -> None:
     REFUSING.save(target, document={"schema_version": 1})
 
-    with pytest.raises(DocumentRefused, match="The test document is schema 1"):
+    with pytest.raises(DocumentRefused, match="The test document ma schemat 1"):
         REFUSING.load(target)
 
 
@@ -315,7 +315,7 @@ def test_a_refusing_store_will_not_guess_at_a_document_that_names_no_schema(
     """A file truncated before its version key is refused by name, not by KeyError."""
     REFUSING.save(target, document={"kept": "yes"})
 
-    with pytest.raises(DocumentRefused, match="is schema None"):
+    with pytest.raises(DocumentRefused, match="ma schemat None"):
         REFUSING.load(target)
 
 
