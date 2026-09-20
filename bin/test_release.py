@@ -14,7 +14,9 @@ import hashlib
 import importlib.util
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
+from typing import Protocol
 
 import pytest
 
@@ -658,3 +660,189 @@ def test_the_script_rejects_an_unknown_bump_kind() -> None:
     )
 
     assert completed.returncode != 0
+
+
+# Poniżej: arytmetyka wersji i `resolve_plan`, sprawdzane bezpośrednio —
+# bez drzewa git ani PyPI. Skonsolidowane tu z dawnego `tests/test_release.py`
+# (GH-128), które dublowało scenariusze wyżej na poziomie `release.release()`;
+# trzy testy pokrywające się z odpowiednikami wyżej (przerwane wydanie, tag
+# tylko lokalny, drzewo bez sufiksu) zostały przy przenosinach usunięte jako
+# zbędne — silniejsza wersja integracyjna zostaje, słabsza jednostkowa odpada.
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("0.2.0", (0, 2, 0, False)),
+        ("0.2.1.dev0", (0, 2, 1, True)),
+        ("10.0.3", (10, 0, 3, False)),
+    ],
+)
+def test_a_version_is_read_with_its_development_marker(
+    text: str, expected: tuple[int, int, int, bool]
+) -> None:
+    parsed = release.parse_version(text)
+
+    assert (parsed.major, parsed.minor, parsed.patch, parsed.development) == expected
+
+
+@pytest.mark.parametrize("text", ["0.2", "0.2.0.post1", "v0.2.0", "0.2.0dev0", ""])
+def test_a_number_we_cannot_read_stops_the_release(text: str) -> None:
+    # Guessing here would publish a number nobody chose.
+    with pytest.raises(release.ReleaseRefused):
+        release.parse_version(text)
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [("0.2.0", "0.2.0"), ("0.2.1.dev0", "0.2.1.dev0")],
+)
+def test_a_version_round_trips_through_its_text(text: str, expected: str) -> None:
+    assert str(release.parse_version(text)) == expected
+
+
+def test_the_released_number_never_carries_the_suffix() -> None:
+    assert release.parse_version("0.2.1.dev0").released == "0.2.1"
+
+
+@pytest.mark.parametrize(
+    ("current", "kind", "expected"),
+    [
+        # A `.dev0` already claims the next patch, so fixes drops the suffix
+        # rather than counting higher — otherwise every release skips a number.
+        ("0.2.1.dev0", "patch", "0.2.1"),
+        ("0.2.1.dev0", "minor", "0.3.0"),
+        ("0.2.1.dev0", "major", "1.0.0"),
+        # The transitional state: a tree still on a clean number, from before
+        # the suffix was introduced.
+        ("0.2.0", "patch", "0.2.1"),
+        ("0.2.0", "minor", "0.3.0"),
+        ("0.2.0", "major", "1.0.0"),
+    ],
+)
+def test_the_release_number_follows_from_the_tree_and_the_kind(
+    current: str, kind: str, expected: str
+) -> None:
+    assert release.version_to_release(release.parse_version(current), kind=kind) == expected
+
+
+@pytest.mark.parametrize(
+    ("released", "expected"),
+    [("0.2.1", "0.2.2.dev0"), ("1.0.0", "1.0.1.dev0"), ("0.3.0", "0.3.1.dev0")],
+)
+def test_work_reopens_on_the_next_patch(released: str, expected: str) -> None:
+    assert release.next_development_version(released) == expected
+
+
+@pytest.fixture
+def outstanding(monkeypatch: pytest.MonkeyPatch) -> Callable[[str, bool, bool], str | None]:
+    """The reconciliation decision, without git or gh in the way."""
+
+    def decide(version: str, *, tagged: bool, released: bool) -> str | None:
+        monkeypatch.setattr(
+            release, "remote_tag_commit", lambda project, *, tag: "abc123" if tagged else None
+        )
+        monkeypatch.setattr(release, "github_release_exists", lambda project, *, tag: released)
+        project = release.Project(root=Path("/nonexistent"), name="ksef-mcp", version=version)
+        return release.outstanding_development_bump(project)
+
+    return decide
+
+
+def test_a_tree_already_reopened_needs_no_reconciliation(
+    outstanding: Callable[..., str | None],
+) -> None:
+    assert outstanding("0.2.2.dev0", tagged=True, released=True) is None
+
+
+def test_a_number_that_never_reached_the_remote_is_not_reconciled(
+    outstanding: Callable[..., str | None],
+) -> None:
+    assert outstanding("0.2.1", tagged=False, released=False) is None
+
+
+def test_a_half_finished_release_is_left_to_the_resume_path(
+    outstanding: Callable[..., str | None],
+) -> None:
+    # Tag pushed but no GitHub release: that is a release to finish, not a
+    # reopening to reconcile.
+    assert outstanding("0.2.1", tagged=True, released=False) is None
+
+
+def test_a_finished_release_on_a_clean_number_reopens_the_next_one(
+    outstanding: Callable[..., str | None],
+) -> None:
+    # The state that used to start a brand-new release and silently skip the
+    # reopening for good — every later wheel then matched the published one.
+    assert outstanding("0.2.1", tagged=True, released=True) == "0.2.2.dev0"
+
+
+class PlanLike(Protocol):
+    """The shape of `release.Plan`, which a path-loaded module cannot export."""
+
+    version: str
+    tag: str
+    resuming: bool
+
+
+@pytest.fixture
+def plan_for(monkeypatch: pytest.MonkeyPatch) -> Callable[..., PlanLike]:
+    """The plan a tree resolves to, without git in the way."""
+
+    def resolve(
+        version: str,
+        *,
+        tagged_remotely: bool,
+        tagged_locally: bool,
+        released: bool,
+    ) -> PlanLike:
+        monkeypatch.setattr(
+            release,
+            "remote_tag_commit",
+            lambda project, *, tag: "abc123" if tagged_remotely else None,
+        )
+        monkeypatch.setattr(
+            release,
+            "local_tag_commit",
+            lambda project, *, tag: "abc123" if tagged_locally else None,
+        )
+        monkeypatch.setattr(release, "github_release_exists", lambda project, *, tag: released)
+        project = release.Project(root=Path("/nonexistent"), name="ksef-mcp", version=version)
+        return release.resolve_plan(project, kind="fixes")
+
+    return resolve
+
+
+def test_the_refusal_names_both_ways_back_to_the_invariant(
+    plan_for: Callable[..., PlanLike],
+) -> None:
+    with pytest.raises(release.ReleaseRefused) as refusal:
+        plan_for("0.2.1", tagged_remotely=False, tagged_locally=False, released=False)
+
+    assert "0.2.1.dev0" in str(refusal.value) and "0.2.2.dev0" in str(refusal.value)
+
+
+def test_a_reopened_tree_plans_a_fresh_release(plan_for: Callable[..., PlanLike]) -> None:
+    plan = plan_for("0.2.1.dev0", tagged_remotely=False, tagged_locally=False, released=False)
+
+    assert (plan.version, plan.tag, plan.resuming) == ("0.2.1", "v0.2.1", False)
+
+
+def test_a_finished_release_plans_the_number_after_it(plan_for: Callable[..., PlanLike]) -> None:
+    # Reached only when the reconciliation in `release()` was bypassed — the
+    # plan still has to read a finished release as "start the next one" rather
+    # than as drift, or the refusal would swallow a legitimate state.
+    plan = plan_for("0.2.1", tagged_remotely=True, tagged_locally=True, released=True)
+
+    assert (plan.version, plan.tag, plan.resuming) == ("0.2.2", "v0.2.2", False)
+
+
+def test_releasing_twice_in_a_row_never_reuses_a_number() -> None:
+    # The invariant the suffix exists to protect: whatever a release produces,
+    # the tree reopens above it, so the next release cannot land on it again.
+    released = release.version_to_release(release.parse_version("0.2.1.dev0"), kind="patch")
+    reopened = release.next_development_version(released)
+
+    following = release.version_to_release(release.parse_version(reopened), kind="patch")
+
+    assert following != released
