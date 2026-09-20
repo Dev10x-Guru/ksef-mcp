@@ -34,13 +34,13 @@ from ksef_mcp.listing import (
     summarise,
 )
 from ksef_mcp.metadata import SERVER_NAME, VERSION
+from ksef_mcp.node_preflight import NodeReport
 from ksef_mcp.pdf import (
     GeneratorFailed,
     InvoiceNotArchived,
     InvoiceRenderer,
     NodeUnavailable,
 )
-from ksef_mcp.preflight import NodeReport
 from ksef_mcp.review import REVIEW_WINDOW, InvoiceReview, assess
 from ksef_mcp.server import (
     InvoiceListingResult,

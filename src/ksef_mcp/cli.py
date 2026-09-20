@@ -9,7 +9,15 @@ from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
-from ksef_mcp import client, config, messages, preflight, skill, token_store
+from ksef_mcp import (
+    client,
+    config,
+    keyring_preflight,
+    messages,
+    node_preflight,
+    skill,
+    token_store,
+)
 from ksef_mcp.allowance import Allowance
 from ksef_mcp.archive import InvoiceArchive
 from ksef_mcp.audit import AuditTrail, Authorisation, AuthorisationBasis
@@ -102,7 +110,7 @@ def ask_nip(console: Console) -> Nip:
             console.write(messages.describe_rejected_nip())
 
 
-def preferred_backend_index(report: preflight.KeyringReport) -> int:
+def preferred_backend_index(report: keyring_preflight.KeyringReport) -> int:
     return next(
         index
         for index, backend in enumerate(report.backends, start=1)
@@ -110,7 +118,7 @@ def preferred_backend_index(report: preflight.KeyringReport) -> int:
     )
 
 
-def choose_keyring_backend(console: Console, report: preflight.KeyringReport) -> str:
+def choose_keyring_backend(console: Console, report: keyring_preflight.KeyringReport) -> str:
     # Deliberate choice rather than the library's priority order: an unrelated
     # package installing its own backend would otherwise change the winner, and
     # a token written earlier would stop being visible while still existing.
@@ -193,15 +201,19 @@ def choose_invoice_directory(console: Console, *, nip: str) -> Path:
     return prepared.path
 
 
-def report_preflight(console: Console, *, working_directory: Path) -> preflight.KeyringReport:
+def report_preflight(
+    console: Console,
+    *,
+    working_directory: Path,
+) -> keyring_preflight.KeyringReport:
     console.write("Warunki wstępne:")
-    node = preflight.inspect_node(working_directory=working_directory)
+    node = node_preflight.inspect_node(working_directory=working_directory)
     for line in messages.describe_node(node):
         console.write(line)
-    keyring_report = preflight.inspect_keyring()
+    keyring_report = keyring_preflight.inspect_keyring()
     for line in messages.describe_keyring(keyring_report):
         console.write(line)
-    for line in messages.describe_collection_lock(preflight.inspect_collection_lock()):
+    for line in messages.describe_collection_lock(keyring_preflight.inspect_collection_lock()):
         console.write(line)
     return keyring_report
 

@@ -132,7 +132,7 @@ KSeF [D-011].
 
 Przyjęty kompromis jest jeden i warto go nazwać: `fcntl` nie istnieje na
 Windowsie. Dzisiaj nie jest to problem — `secretstorage` jest już
-zależnością linuksową, a `preflight.py` bada stan kolekcji przez D-Bus —
+zależnością linuksową, a `keyring_preflight.py` bada stan kolekcji przez D-Bus —
 ale to jest miejsce, w którym port na Windows zatrzyma się jako
 pierwsze, i lepiej, żeby był zapisany tutaj niż odkryty wtedy.
 

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ksef_mcp import config, preflight, token_store
+from ksef_mcp import config, keyring_preflight, node_preflight, token_store
 from ksef_mcp.config import Configuration
 from ksef_mcp.metadata import DISTRIBUTION_NAME, SERVER_NAME, VERSION
 from ksef_mcp.retention import PurgePlan, PurgeWindow
@@ -26,7 +26,7 @@ def format_version(version: tuple[int, int, int]) -> str:
     return ".".join(str(part) for part in version)
 
 
-def describe_requirement_source(report: preflight.NodeReport) -> str:
+def describe_requirement_source(report: node_preflight.NodeReport) -> str:
     if report.pinned_by is None:
         return "minimum generatora MF"
     # Naming both numbers: otherwise the reader sees a requirement that appears
@@ -39,7 +39,7 @@ def describe_requirement_source(report: preflight.NodeReport) -> str:
     return f"z {report.pinned_by}"
 
 
-def describe_node(report: preflight.NodeReport) -> tuple[str, ...]:
+def describe_node(report: node_preflight.NodeReport) -> tuple[str, ...]:
     required = format_version(report.required)
     source = describe_requirement_source(report)
     if report.version is None:
@@ -62,7 +62,7 @@ def describe_node(report: preflight.NodeReport) -> tuple[str, ...]:
     )
 
 
-def describe_keyring(report: preflight.KeyringReport) -> tuple[str, ...]:
+def describe_keyring(report: keyring_preflight.KeyringReport) -> tuple[str, ...]:
     if not report.usable:
         return (
             "  Keyring: brak dostępnego magazynu (headless, WSL, kontener).",
@@ -75,14 +75,14 @@ def describe_keyring(report: preflight.KeyringReport) -> tuple[str, ...]:
     return tuple(lines)
 
 
-def describe_collection_lock(state: preflight.CollectionLock) -> tuple[str, ...]:
-    if state is preflight.CollectionLock.LOCKED:
+def describe_collection_lock(state: keyring_preflight.CollectionLock) -> tuple[str, ...]:
+    if state is keyring_preflight.CollectionLock.LOCKED:
         return (
             "  Kolekcja: zablokowana — odblokuj ją w sesji graficznej.",
             "  O hasło nie pytam: prompt zawiesiłby transport MCP, więc do",
             f"  tokenu nie sięgam wcale. Awaryjnie: {token_store.FALLBACK_ENVIRONMENT_VARIABLE}.",
         )
-    if state is preflight.CollectionLock.UNLOCKED:
+    if state is keyring_preflight.CollectionLock.UNLOCKED:
         return ("  Kolekcja: odblokowana.",)
     # ABSENT says nothing about health — macOS and Windows have no Secret
     # Service at all — and a line about it would read like a fault.
