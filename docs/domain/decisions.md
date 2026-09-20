@@ -867,6 +867,12 @@ nie ma mechanizmu, który powiedziałby „czegoś brakuje".
   czerwonymi testami, które ktoś odczyta jako regresję renderowania**,
   a nie jako rutynową synchronizację stałych. Test sumy SHA-256 ma paść
   przy podmianie — to jego zadanie, nie awaria.
+- **Konsekwencje licencyjne i pakietowe artefaktu MIT w projekcie
+  AGPL-3.0-only** — pole `license-files`, wykluczenia w pre-commicie,
+  strażnik SHA-256 i kompletna lista miejsc do przestawienia przy
+  aktualizacji — opisane w
+  [ADR-112](../adr/112-zwendorowany-generator-pdf-ministerstwa.md), nie
+  tutaj: to decyzja o strukturze kodu, nie produktowa ([D-036]).
 
 ## D-028 — Odbiorcą etapu 1 jest użytkownik techniczny; księgowa to etap późniejszy
 
