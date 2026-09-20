@@ -7,6 +7,7 @@ from datetime import date
 from pathlib import Path
 
 import pytest
+from pypdf import PdfReader
 
 from ksef_mcp import pdf, storage
 from ksef_mcp.ksef_port.types import KsefEnvironment
@@ -96,6 +97,16 @@ def renderer(
         runner=runner if runner is not None else (lambda command: completed()),
         node_report=lambda *, working_directory: report or node_report(),
     )
+
+
+def render_once(*, archive: Path, working: Path) -> pdf.RenderedInvoice:
+    """The real Node binary and the real vendored bundle — no runner substituted."""
+    render = pdf.InvoiceRenderer(
+        environment=KsefEnvironment.PRODUCTION,
+        archive_directory=archive,
+        working_directory=working,
+    )
+    return render(KSEF_NUMBER)
 
 
 def test_generator_version_comes_from_the_bundle_file_name() -> None:
@@ -447,23 +458,65 @@ def test_the_ministrys_generator_renders_an_archived_invoice(
     archive: Path,
     working: Path,
 ) -> None:
-    render = pdf.InvoiceRenderer(
-        environment=KsefEnvironment.PRODUCTION,
-        archive_directory=archive,
-        working_directory=working,
-    )
-    rendered = render(KSEF_NUMBER)
-    assert rendered.path.read_bytes().startswith(b"%PDF")
+    assert render_once(archive=archive, working=working).path.read_bytes().startswith(b"%PDF")
 
 
 @without_node
 def test_the_rendered_document_is_not_empty(archive: Path, working: Path) -> None:
-    render = pdf.InvoiceRenderer(
-        environment=KsefEnvironment.PRODUCTION,
-        archive_directory=archive,
-        working_directory=working,
-    )
-    assert render(KSEF_NUMBER).byte_count > 10_000
+    assert render_once(archive=archive, working=working).byte_count > 10_000
+
+
+@pytest.fixture(scope="module")
+def rendered_text(tmp_path_factory: pytest.TempPathFactory) -> str:
+    """The words the Ministry's own build actually put on the page.
+
+    Rendered once for the whole module: the run drives Node and the vendored
+    bundle, and every assertion below only reads the result.
+    """
+    root = tmp_path_factory.mktemp("renderowanie")
+    archived = root / "archiwum"
+    archived.mkdir()
+    (archived / f"{KSEF_NUMBER}.xml").write_bytes(synthetic_fa3_invoice())
+    working = root / "robocze"
+    working.mkdir()
+    rendered = render_once(archive=archived, working=working)
+    return "\n".join(page.extract_text() for page in PdfReader(rendered.path).pages)
+
+
+# Every value below is one `synthetic_fa3_invoice` puts in the document, read
+# back from the page rather than from the bytes that went in. `%PDF` and a
+# byte count are true of a build that lays out empty boxes, drops the line
+# items or mangles the Polish letters — which is what #82 describes, and what
+# those two assertions alone would have let through (GH-174).
+@without_node
+@pytest.mark.parametrize(
+    "expected",
+    [
+        BUYER_NAME,
+        SELLER_NIP,
+        "Przykładowa Hurtownia sp. z o.o.",
+        "FV/2026/09/0001",
+        "Olej napędowy",
+        "520,00",
+        "639,60",
+        KSEF_NUMBER,
+    ],
+    ids=[
+        "nabywca",
+        "nip-sprzedawcy",
+        "nazwa-sprzedawcy",
+        "numer-faktury",
+        "pozycja",
+        "netto",
+        "brutto",
+        "numer-ksef",
+    ],
+)
+def test_the_rendered_document_shows_what_the_invoice_says(
+    rendered_text: str,
+    expected: str,
+) -> None:
+    assert expected in rendered_text
 
 
 @pytest.fixture
