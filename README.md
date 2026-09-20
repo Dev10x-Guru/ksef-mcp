@@ -19,8 +19,10 @@ przechodzą przez żadną usługę pośredniczącą.
 
 ## Stan projektu
 
-**Wczesny etap.** Repozytorium zawiera dziś wyłącznie szkielet pakietu i jedno
-narzędzie diagnostyczne (`server_info`). Wszystko, co poniżej oznaczono jako
+Serwer MCP wystawia dziś sześć narzędzi: `server_info`,
+`synchronise_invoices`, `list_recent_invoices`, `export_period_statement`,
+`review_new_invoices` i `render_invoice_pdf` — patrz sekcja
+[Narzędzia MCP](#narzędzia-mcp) niżej. Wszystko, co poniżej oznaczono jako
 🚧 **planowane**, jeszcze nie istnieje w kodzie — opisujemy to, żeby kierunek był
 jawny, nie żeby sugerować gotowość.
 
@@ -29,8 +31,24 @@ jawny, nie żeby sugerować gotowość.
 | Pakiet, uruchamianie przez `uvx`, testy | ✅ działa |
 | Konfiguracja: `onboarding`, `doctor`, `token` | ✅ działa |
 | Potwierdzenie połączenia: `verify` | ✅ działa |
-| Wyszukiwanie i pobieranie faktur | 🚧 planowane |
+| Synchronizacja i przegląd faktur zakupowych | ✅ działa |
+| Wyszukiwanie i pobieranie faktur sprzedażowych | 🚧 planowane |
 | Wizualizacja PDF | ✅ działa, wymaga Node |
+
+## Narzędzia MCP
+
+| Narzędzie | Co robi | Sięga do KSeF |
+|---|---|---|
+| `server_info` | zwraca nazwę i wersję działającego serwera | nie |
+| `synchronise_invoices` | pobiera, odszyfrowuje i archiwizuje paczki faktur zakończone przez KSeF od ostatniego uruchomienia | **tak** |
+| `list_recent_invoices` | listuje metadane faktur z ostatnich trzydziestu dni, wg typu podmiotu | nie |
+| `export_period_statement` | zapisuje faktury zakupowe za wybrany miesiąc jako CSV do przekazania księgowej | nie |
+| `review_new_invoices` | pokazuje faktury, które przyszły od ostatniego przeglądu — czego nie potrafi darmowa aplikacja Ministerstwa | nie |
+| `render_invoice_pdf` | zapisuje już zarchiwizowaną fakturę jako PDF, bez sięgania do sieci | nie |
+
+`synchronise_invoices` jest jedynym narzędziem z tej listy, które wydaje
+godzinowy budżet zapytań do KSeF. Pozostałe pracują na danych już
+zarchiwizowanych lokalnie.
 
 ## Co ten projekt robi
 
