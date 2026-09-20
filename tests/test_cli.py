@@ -24,10 +24,10 @@ from ksef_mcp.storage import token_store
 from ksef_mcp.storage.archive import InvoiceArchive
 from ksef_mcp.storage.audit import AuditTrail, AuthorisationBasis, Disclosure
 from tests.conftest import raiser
+from tests.invoices.test_statement import RecordingPort, RecordingSession, page_of
 from tests.support.synthetic import BUYER_NAME, synthetic_metadata
 from tests.test_retention import a_number as a_ksef_number
 from tests.test_retention import a_package as retention_package
-from tests.test_statement import RecordingPort, RecordingSession, page_of
 
 NIP = "1234567890"
 

@@ -23,20 +23,7 @@ from typing import Final
 import pytest
 
 from ksef_mcp.allowance import Allowance
-from ksef_mcp.ksef_port import (
-    DateType,
-    DocumentType,
-    KsefEnvironment,
-    KsefLimits,
-    MetadataPage,
-    OperationLimit,
-    Period,
-    RateLimits,
-    SessionCeilings,
-    SubjectRole,
-)
-from ksef_mcp.paths import SUBJECT_DIRECTORY
-from ksef_mcp.statement import (
+from ksef_mcp.invoices.statement import (
     COLUMNS,
     NO_ARCHIVED_BODY,
     AccountingPeriod,
@@ -62,6 +49,19 @@ from ksef_mcp.statement import (
     verification_code,
     write_statement,
 )
+from ksef_mcp.ksef_port import (
+    DateType,
+    DocumentType,
+    KsefEnvironment,
+    KsefLimits,
+    MetadataPage,
+    OperationLimit,
+    Period,
+    RateLimits,
+    SessionCeilings,
+    SubjectRole,
+)
+from ksef_mcp.paths import SUBJECT_DIRECTORY
 from ksef_mcp.storage.archive import InvoiceArchive, digest_of
 from ksef_mcp.storage.period_cache import PeriodCache
 from tests.conftest import an_allowance

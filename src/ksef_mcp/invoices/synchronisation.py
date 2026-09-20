@@ -25,6 +25,7 @@ from typing import Final
 
 from ksef_mcp.allowance import Allowance, CeilingNotice
 from ksef_mcp.diagnostics import technical_log
+from ksef_mcp.invoices.package import PackageRetriever, PackageUnreadable
 from ksef_mcp.ksef_port.budget import QueryBudget
 from ksef_mcp.ksef_port.errors import (
     KsefPortError,
@@ -44,7 +45,6 @@ from ksef_mcp.ksef_port.types import (
     Period,
     SubjectRole,
 )
-from ksef_mcp.package import PackageRetriever, PackageUnreadable
 from ksef_mcp.storage.archive import (
     ArchiveIndexUnreadable,
     ArchiveMetadataUnusable,

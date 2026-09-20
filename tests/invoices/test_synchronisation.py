@@ -19,6 +19,17 @@ from pathlib import Path
 import pytest
 
 from ksef_mcp.allowance import LEDGER_FILE
+from ksef_mcp.invoices.synchronisation import (
+    ABANDONED_AFTER,
+    INITIAL_LOOKBACK,
+    SubjectRoleReport,
+    SynchronisationReport,
+    Synchroniser,
+    SyncOutcome,
+    advance,
+    now_utc,
+    rolled_back_to,
+)
 from ksef_mcp.ksef_port import (
     ContinuationPoint,
     ExportEncryption,
@@ -50,17 +61,6 @@ from ksef_mcp.storage.sync_store import (
     SubjectRoleState,
     SyncState,
     SyncStore,
-)
-from ksef_mcp.synchronisation import (
-    ABANDONED_AFTER,
-    INITIAL_LOOKBACK,
-    SubjectRoleReport,
-    SynchronisationReport,
-    Synchroniser,
-    SyncOutcome,
-    advance,
-    now_utc,
-    rolled_back_to,
 )
 from tests.conftest import an_allowance
 from tests.support.synthetic import (
