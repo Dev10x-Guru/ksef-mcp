@@ -395,6 +395,33 @@ class ExportPart:
     encrypted_content_hash: str
 
 
+@dataclass(frozen=True)
+class PackageDocument:
+    """One file out of the package. `content` is invoice XML — never logged."""
+
+    name: str
+    content: bytes
+
+
+@dataclass(frozen=True)
+class ExportPackage:
+    """What the parts add up to once they are joined, decrypted and unpacked.
+
+    The last member of the export vocabulary, beside the handle, the key and the
+    parts. It lives here rather than where it is assembled because two contexts
+    read it from opposite sides — `invoices` produces it out of the parts,
+    `storage` writes what it carries — and whichever of them owned the type, the
+    other one would have to read upwards to name it (GH-233).
+
+    Reading the package is still `invoices.package`'s job (ADR-104 §1); only the
+    shape of the result is stated down here.
+    """
+
+    reference: str
+    documents: tuple[PackageDocument, ...]
+    metadata: bytes | None
+
+
 class ExportState(StrEnum):
     """How far KSeF has got with one export, in the four shapes a pass can act on.
 

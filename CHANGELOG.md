@@ -96,6 +96,22 @@ niż jedna zmiana łamiąca.
   Uzasadnienie całego podziału na pakiety opisuje
   [ADR-110](docs/adr/110-podzial-pakietu-po-kontekstach.md).
 
+- Typy opisujące odczytaną paczkę eksportu zeszły do słownika portu,
+  bo czytają je dwa konteksty z przeciwnych stron: `invoices` składa
+  paczkę z części, a `storage` zapisuje to, co ona niesie. Dopóki typ
+  mieszkał w jednym z nich, drugi musiał sięgać w górę (GH-233):
+
+  - klasa `ExportPackage` przeniesiona z `ksef_mcp.invoices.package`
+    do `ksef_mcp.ksef_port.types`,
+  - klasa `PackageDocument` przeniesiona z `ksef_mcp.invoices.package`
+    do `ksef_mcp.ksef_port.types`.
+
+  Obie są też re-eksportowane jako `ksef_mcp.ksef_port.ExportPackage`
+  i `ksef_mcp.ksef_port.PackageDocument`, jak reszta słownika portu.
+  Sam odczyt paczki zostaje w `ksef_mcp.invoices.package`
+  ([ADR-104](docs/adr/104-odczyt-paczki-eksportu-i-cykl-zycia-klucza.md)
+  §1) — na dół schodzi kształt wyniku, nie logika.
+
 - Import samego pakietu `ksef_mcp` nie buduje już serwera MCP. Ta
   pozycja różni się od czterech powyżej: nic się nie przeniosło,
   ubyła natomiast fasada. `ksef_mcp/__init__.py` re-eksportował
