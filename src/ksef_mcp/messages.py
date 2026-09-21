@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ksef_mcp import ksef_port
+    from ksef_mcp.paths import UnnormalisedSubject
 
 
 def format_version(version: tuple[int, int, int]) -> str:
@@ -148,24 +149,39 @@ def describe_refused_nip() -> str:
     )
 
 
-def describe_unnormalised_twins(directories: tuple[Path, ...]) -> tuple[str, ...]:
-    """Name the old directory and the command, and move nothing.
+def describe_unnormalised_subject(subject: UnnormalisedSubject) -> tuple[str, ...]:
+    if subject.normalised_exists:
+        return (
+            f"    {subject.directory}",
+            f"      → {subject.normalised} (ten katalog już istnieje)",
+        )
+    return (
+        f"    {subject.directory}",
+        f"      → {subject.normalised}",
+    )
+
+
+def describe_unnormalised_subjects(subjects: tuple[UnnormalisedSubject, ...]) -> tuple[str, ...]:
+    """Name every old directory and its new name, and move nothing.
 
     A taxpayer who onboarded with a grouped NIP has files under a spelling this
     version no longer writes. Moving them automatically would relocate invoices
     carrying a counterparty's personal data without being asked, so `doctor`
-    points at them and lets the person decide (GH-111).
+    points at them and lets the person decide (GH-111). Since GH-210 it points
+    at all of them, not only at the one the configuration happens to name — an
+    accounting office reaches its other clients by editing that configuration,
+    so the client at risk is precisely the one not configured right now.
     """
-    if not directories:
+    if not subjects:
         return ()
     return (
         "",
-        "  Uwaga: znalazłem katalogi tego samego podmiotu zapisane inaczej.",
+        "  Uwaga: znalazłem katalogi podmiotów zapisane starym sposobem.",
         "  Od tej wersji NIP zapisuję jednym sposobem — samymi cyframi —",
         "  więc pliki spod starego zapisu nie są już widoczne.",
-        *(f"    {directory}" for directory in directories),
+        *(line for subject in subjects for line in describe_unnormalised_subject(subject)),
         "  Nie przenoszę ich sam: są w nich faktury z danymi kontrahentów.",
-        "  Przenieś zawartość ręcznie do katalogu obok, nazwanego cyframi.",
+        "  Przenieś zawartość ręcznie do katalogu nazwanego cyframi.",
     )
 
 
