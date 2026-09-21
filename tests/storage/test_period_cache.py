@@ -40,7 +40,6 @@ from ksef_mcp.storage.period_cache import (
     cache_key,
     cache_root,
     is_cacheable,
-    now_utc,
 )
 from ksef_mcp.storage.sync_store import SubjectRoleState, SyncState, SyncStore
 from tests.support.synthetic import synthetic_metadata
@@ -340,10 +339,6 @@ def test_the_default_clock_stamps_a_moment_with_a_timezone(
     stamped = unclocked.remember(period=SEPTEMBER, subject_role=SubjectRole.BUYER, page=page)
 
     assert stamped.queried_at.tzinfo is not None
-
-
-def test_the_module_clock_reads_utc() -> None:
-    assert now_utc().tzinfo is UTC
 
 
 def test_the_cache_lives_in_the_cache_root() -> None:

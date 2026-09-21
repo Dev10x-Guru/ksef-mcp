@@ -6,7 +6,8 @@ from pathlib import Path
 import pytest
 
 from ksef_mcp import keyring_preflight, paths
-from ksef_mcp.allowance import Allowance, now_utc
+from ksef_mcp.allowance import Allowance
+from ksef_mcp.clock import now_utc
 from ksef_mcp.diagnostics import LOG_FILE, configure_diagnostics, technical_log
 from ksef_mcp.ksef_port.types import KsefEnvironment
 

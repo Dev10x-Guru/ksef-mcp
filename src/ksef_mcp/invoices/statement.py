@@ -50,6 +50,7 @@ from typing import Final, Self
 from platformdirs import user_data_path
 
 from ksef_mcp.allowance import Allowance
+from ksef_mcp.clock import now_utc
 from ksef_mcp.config import (
     INVOICE_DIRECTORY_MODE,
     cloud_sync_marker,
@@ -144,10 +145,6 @@ class UnreadablePeriod(KsefMcpInputRejected):
 
 class WorkingDirectoryRefused(KsefMcpError):
     """The declared working directory is internal storage, not a product directory."""
-
-
-def now_utc() -> datetime:
-    return datetime.now(tz=UTC)
 
 
 def amount(value: Decimal) -> str:

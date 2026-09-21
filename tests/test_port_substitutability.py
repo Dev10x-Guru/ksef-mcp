@@ -49,12 +49,13 @@ PORT_PACKAGE = Path(ksef_mcp.__file__).parent / "ksef_port"
 
 ALLOWED_TO_SEE_THE_SDK = "adapter.py"
 
-# The only two modules above the port it may read. `errors` holds the project's
-# exception root and `diagnostics` the logger; neither opens a file, asks the
+# The only three modules above the port it may read. `errors` holds the
+# project's exception root, `diagnostics` the logger and `clock` the single
+# reading of the wall clock (GH-213); none of them opens a file, asks the
 # operating system anything, or knows what this installation was configured to
 # be. Anything else read from above is the edge GH-122 cut: the port stops
 # being extractable and stops being testable on its own.
-ALLOWED_ABOVE_THE_PORT = frozenset({"ksef_mcp.errors", "ksef_mcp.diagnostics"})
+ALLOWED_ABOVE_THE_PORT = frozenset({"ksef_mcp.clock", "ksef_mcp.diagnostics", "ksef_mcp.errors"})
 
 
 @dataclass

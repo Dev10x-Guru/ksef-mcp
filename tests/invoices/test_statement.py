@@ -40,7 +40,6 @@ from ksef_mcp.invoices.statement import (
     correction_warning,
     currency_warning,
     internal_root_conflict,
-    now_utc,
     prepare_working_directory,
     rendered,
     rows_for,
@@ -275,10 +274,6 @@ def test_the_window_ends_on_the_last_day_of_the_month() -> None:
     # przez typ — więc test pilnuje tego, co nadal może się zepsuć: którego dnia
     # okno się kończy.
     assert SEPTEMBER.queried.date_to.date() == date(2026, 9, 30)
-
-
-def test_the_default_clock_reads_utc() -> None:
-    assert now_utc().tzinfo is UTC
 
 
 def test_a_verification_code_is_made_of_three_parts() -> None:

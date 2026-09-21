@@ -29,6 +29,7 @@ from enum import StrEnum
 from typing import Final
 
 from ksef_mcp.allowance import Allowance
+from ksef_mcp.clock import now_utc
 from ksef_mcp.ksef_port.errors import KsefPortError, KsefRateLimited, KsefRequestRejected
 from ksef_mcp.ksef_port.protocol import KsefPort
 from ksef_mcp.ksef_port.types import (
@@ -96,10 +97,6 @@ class ListingOutcome(StrEnum):
     SUMMARISED = "summarised"
     EMPTY = "empty"
     BUDGET_SPENT = "budget_spent"
-
-
-def now_utc() -> datetime:
-    return datetime.now(tz=UTC)
 
 
 def listing_period(*, moment: datetime) -> Period:

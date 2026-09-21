@@ -157,6 +157,13 @@ niż jedna zmiana łamiąca.
 
 ### Zmienione
 
+- Bieżący czas pochodzi odtąd z jednej funkcji `now_utc()` w module
+  `ksef_mcp.clock`, a nie z dziewięciu identycznych kopii rozsianych
+  po modułach. Zachowanie się nie zmienia — to wciąż ten sam
+  `datetime.now(UTC)`. Zmienia się to, że test zamrażający czas ma
+  jedno miejsce do podmiany, więc podmiana niewłaściwej kopii nie
+  może już przejść niezauważona (GH-213).
+
 - Adaptery wejścia — serwer MCP i wiersz poleceń — są odtąd pakietami
   `ksef_mcp.server` i `ksef_mcp.cli` zamiast dwóch plików po kilkaset
   linii. **To nie jest zmiana łamiąca i tym różni się od przeprowadzek

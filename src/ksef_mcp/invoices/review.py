@@ -50,6 +50,7 @@ from pathlib import Path
 from typing import Final
 
 from ksef_mcp.allowance import Allowance
+from ksef_mcp.clock import now_utc
 from ksef_mcp.errors import KsefMcpError
 from ksef_mcp.invoices.listing import (
     ALLOWANCE_REFUSALS,
@@ -153,10 +154,6 @@ class ReviewLedger:
             held.add(entry.ksef_number)
             added.append(entry)
         return replace(self, entries=(*self.entries, *added))
-
-
-def now_utc() -> datetime:
-    return datetime.now(tz=UTC)
 
 
 def _encode(ledger: ReviewLedger, *, nip: str, environment: KsefEnvironment) -> dict[str, object]:

@@ -19,11 +19,12 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from enum import StrEnum
 from typing import Final
 
 from ksef_mcp.allowance import Allowance, CeilingNotice
+from ksef_mcp.clock import now_utc
 from ksef_mcp.diagnostics import technical_log
 from ksef_mcp.invoices.package import PackageRetriever, PackageUnreadable
 from ksef_mcp.ksef_port.budget import QueryBudget
@@ -225,10 +226,6 @@ def synchronisation_entries(
             moment=moment,
         )
     )
-
-
-def now_utc() -> datetime:
-    return datetime.now(tz=UTC)
 
 
 def advance(point: ContinuationPoint, *, status: ExportStatus) -> ContinuationPoint | None:
