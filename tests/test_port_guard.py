@@ -29,11 +29,11 @@ from ksef_mcp.ksef_port import (
     KsefNumber,
     KsefRateLimited,
     KsefRefused,
-    KsefRequestRejected,
     KsefSession,
     KsefUnreachable,
     MetadataPage,
     Period,
+    RefusalBreakerEngaged,
     RetryPolicy,
     SubjectRole,
 )
@@ -55,7 +55,7 @@ class RecordingBreaker:
 
     def refuse_early(self) -> None:
         if self.blocked:
-            raise KsefRequestRejected("Odmawiam lokalnie.")
+            raise RefusalBreakerEngaged("Odmawiam lokalnie.")
 
     def note_refusal(self, *, retry_after: int | None) -> None:
         self.refusals.append(retry_after)
@@ -227,7 +227,7 @@ def test_a_blocked_breaker_stops_the_call_before_it_is_sent(
     breaker.blocked = True
     guarded = GuardedSession(inner=inner, breaker=breaker)
 
-    with pytest.raises(KsefRequestRejected):
+    with pytest.raises(RefusalBreakerEngaged):
         guarded.query_metadata(period=WINDOW, subject_role=SubjectRole.BUYER)
 
     assert inner.calls == []
@@ -280,7 +280,7 @@ def test_the_limits_read_passes_the_fuse_too(breaker: RecordingBreaker) -> None:
     inner = ScriptedSession()
     guarded = GuardedSession(inner=inner, breaker=breaker)
 
-    with pytest.raises(KsefRequestRejected):
+    with pytest.raises(RefusalBreakerEngaged):
         guarded.read_limits()
 
     assert inner.calls == []

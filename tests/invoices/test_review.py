@@ -48,6 +48,7 @@ from ksef_mcp.ksef_port import (
     OperationLimit,
     Period,
     RateLimits,
+    RefusalBreakerEngaged,
     SessionCeilings,
     SubjectRole,
 )
@@ -574,6 +575,27 @@ def test_a_rate_limit_on_one_subject_role_keeps_the_rest_of_the_review(
     # what the ledger was about to be told about the types already read.
     reviewer = a_reviewer_meeting(
         KsefRateLimited("KSeF odmówił: 429.", retry_after=None),
+        cache=cache,
+        store=store,
+        protection=protection,
+    )
+
+    assert [one.outcome for one in reviewer.run(nip=NIP, token=CREDENTIAL).subject_roles] == [
+        ReviewOutcome.REPORTED,
+        ReviewOutcome.BUDGET_SPENT,
+        ReviewOutcome.REPORTED,
+        ReviewOutcome.REPORTED,
+    ]
+
+
+def test_a_blown_local_fuse_on_one_subject_role_keeps_the_rest_of_the_review(
+    cache: PeriodCache, store: ReviewStore, protection: Allowance
+) -> None:
+    # GH-234, strona przeglądu. Bezpiecznik zapala się w `_guarded`, więc wypada
+    # z każdego wywołania sesji; poza `KsefPortError` trafia do tego `except`
+    # wyłącznie dlatego, że został w nim nazwany.
+    reviewer = a_reviewer_meeting(
+        RefusalBreakerEngaged("Odmawiam lokalnie; nic nie wyślę przed 2026-09-01T13:00:00+00:00."),
         cache=cache,
         store=store,
         protection=protection,

@@ -10,6 +10,22 @@ udokumentowane.
 
 ## Bez wydania
 
+### Zmienione
+
+- Druga odmowa lokalna — zapalony bezpiecznik po serii odmów KSeF-u —
+  ma własny wyjątek `RefusalBreakerEngaged` spod korzenia
+  `KsefMcpError`, tak jak licznik godzinowy z GH-211. Dotąd podnosiła
+  `KsefRequestRejected`, czyli podklasę `KsefPortError`, choć nic nie
+  zostało wysłane. Integrator rozpoznający odmowy po typie wyjątku
+  odróżnia odtąd „to serwer nie zapytał" od „to KSeF odmówił" i od
+  „połączenie padło". Komunikat nadal podaje moment, do którego nic nie
+  zostanie wysłane. Wyjątek wypada z każdego wywołania sesji, więc
+  przechwycenia w liście, przeglądzie, synchronizacji i w `ksef-mcp
+  verify` nazywają go wprost — żadne z nich nie zostało rozszerzone do
+  `KsefPortError`, bo to połykałoby `KsefUnreachable` i
+  `KsefAuthenticationFailed`, zamieniając awarię sieci w ciche „nie
+  pytałem o ten typ podmiotu" (GH-234).
+
 ## 0.4.0 — 2026-09-21
 
 

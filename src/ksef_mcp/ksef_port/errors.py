@@ -35,6 +35,20 @@ class BudgetExhausted(KsefMcpError):
     """
 
 
+class RefusalBreakerEngaged(KsefMcpError):
+    """This server's own refusal fuse is blown. Nothing was sent to KSeF.
+
+    The second local refusal, and outside `KsefPortError` for exactly the reason
+    `BudgetExhausted` is: the run of refusals is counted here, the threshold is
+    this project's own, and the moment the message names is arithmetic on a
+    local file rather than anything KSeF said (GH-234). Under the port root it
+    read as "the registry refused", so every caller matching on that root
+    reported a healthy connection as a failing one — and could not tell this
+    refusal from `KsefUnreachable` or `KsefAuthenticationFailed` without
+    reaching for `isinstance`.
+    """
+
+
 class KsefAuthenticationFailed(KsefPortError):
     """KSeF answered, and the answer was: not you, or not for this subject."""
 

@@ -33,6 +33,7 @@ from ksef_mcp.ksef_port.errors import (
     KsefPortError,
     KsefRefused,
     PackageLinkExpired,
+    RefusalBreakerEngaged,
 )
 from ksef_mcp.ksef_port.protocol import KsefPort, KsefSession
 from ksef_mcp.ksef_port.types import (
@@ -790,10 +791,15 @@ class Synchroniser:
                 export=export,
                 reason=self._expired(export=export, answer=str(refusal)),
             )
-        except KsefPortError:
-            # Everything else the port can raise says nothing about whether the
-            # export still exists — no answer at all, a rate limit, a session
-            # that expired. Reading any of them as "KSeF no longer serves it"
+        except (RefusalBreakerEngaged, KsefPortError):
+            # Everything else says nothing about whether the export still
+            # exists — no answer at all, a rate limit, a session that expired,
+            # or this server's own fuse declining to ask at all (GH-234). That
+            # last one used to arrive under the port root and is now named here
+            # on its own; leaving it out would let a local refusal escape the
+            # whole pass, and answering it by widening the clause back to the
+            # root would once again read an outage as a lost export. Reading
+            # any of them as "KSeF no longer serves it"
             # would drop a live package with its key and roll the point back
             # for a network blip. It would also turn a 429 into a fresh export
             # request on the very next line, which is the retry pattern the

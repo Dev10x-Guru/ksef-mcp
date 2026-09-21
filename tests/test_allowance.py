@@ -28,6 +28,7 @@ from ksef_mcp.allowance import (
     LimitsCache,
     RefusalRun,
 )
+from ksef_mcp.errors import KsefMcpError
 from ksef_mcp.ksef_port import (
     NO_AUTOMATIC_RETRY,
     BudgetExhausted,
@@ -37,12 +38,13 @@ from ksef_mcp.ksef_port import (
     KsefEnvironment,
     KsefLimits,
     KsefNumber,
-    KsefRequestRejected,
+    KsefPortError,
     MetadataPage,
     Operation,
     OperationLimit,
     Period,
     RateLimits,
+    RefusalBreakerEngaged,
     SessionCeilings,
     SubjectRole,
 )
@@ -457,8 +459,21 @@ def test_a_run_of_refusals_stops_the_next_call_locally(protection: Allowance) ->
     for _ in range(REFUSAL_LIMIT):
         protection.breaker.note_refusal(retry_after=None)
 
-    with pytest.raises(KsefRequestRejected):
+    with pytest.raises(RefusalBreakerEngaged):
         protection.breaker.refuse_early()
+
+
+def test_the_blown_fuse_is_not_a_port_failure(protection: Allowance) -> None:
+    # Sedno GH-234. Pod `KsefPortError` ta odmowa czytała się jak awaria
+    # rejestru, choć nic nie zostało wysłane — dokładnie tak, jak licznik
+    # budżetu przed GH-211.
+    for _ in range(REFUSAL_LIMIT):
+        protection.breaker.note_refusal(retry_after=None)
+
+    with pytest.raises(KsefMcpError) as blown:
+        protection.breaker.refuse_early()
+
+    assert isinstance(blown.value, KsefPortError) is False
 
 
 def test_the_local_refusal_says_from_when_asking_is_allowed_again(
@@ -469,7 +484,7 @@ def test_the_local_refusal_says_from_when_asking_is_allowed_again(
         protection.breaker.note_refusal(retry_after=None)
 
     with pytest.raises(
-        KsefRequestRejected,
+        RefusalBreakerEngaged,
         match=re.escape((NOON + REFUSAL_COOLDOWN).isoformat()),
     ):
         protection.breaker.refuse_early()
@@ -543,7 +558,7 @@ def test_the_fuse_outlives_the_process_that_blew_it(
         clock=clock,
     )
 
-    with pytest.raises(KsefRequestRejected):
+    with pytest.raises(RefusalBreakerEngaged):
         next_process.breaker.refuse_early()
 
 
