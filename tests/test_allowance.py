@@ -30,6 +30,7 @@ from ksef_mcp.allowance import (
 )
 from ksef_mcp.ksef_port import (
     NO_AUTOMATIC_RETRY,
+    BudgetExhausted,
     ExportHandle,
     ExportPart,
     ExportStatus,
@@ -253,7 +254,7 @@ def test_three_tool_calls_in_a_minute_cannot_each_spend_a_full_allowance(
             Operation.EXPORT
         )
 
-    with pytest.raises(KsefRequestRejected):
+    with pytest.raises(BudgetExhausted):
         protection.budget(session=session).spend(Operation.EXPORT)
 
 

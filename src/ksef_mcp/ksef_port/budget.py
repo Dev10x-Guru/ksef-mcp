@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from typing import Final, Protocol
 
 from ksef_mcp.clock import now_utc
-from ksef_mcp.ksef_port.errors import KsefRequestRejected
+from ksef_mcp.ksef_port.errors import BudgetExhausted
 from ksef_mcp.ksef_port.types import Operation, OperationLimit, RateLimits
 
 HOUR: Final[timedelta] = timedelta(hours=1)
@@ -78,13 +78,27 @@ class QueryBudget:
     def spend(self, operation: Operation) -> None:
         left = self.remaining(operation)
         if left == 0:
-            raise KsefRequestRejected(
-                f"The allowance for {operation} is spent "
-                f"({self._ceilings(operation)}). Waiting is cheaper than a call "
-                f"KSeF will refuse."
+            raise BudgetExhausted(
+                f"Refusing locally: this server's own counter for {operation} is "
+                f"spent ({self._ceilings(operation)}). Nothing was sent to KSeF. "
+                f"{self._when_it_frees(operation)}"
             )
         self._recent(operation).append(self.clock())
         self._persist()
+
+    def frees_at(self, operation: Operation) -> datetime | None:
+        """When the tightest spent window lets a call through again.
+
+        Arithmetic on the local counter and never a guess: the moment a window
+        frees is the moment the oldest call inside it leaves that window. A
+        ceiling of zero frees at no moment at all, which is why this answers
+        `None` rather than inventing a wait — inventing one is the behaviour the
+        Ministry answers with a lengthening block (D-017).
+        """
+        releases = tuple(self._releases(operation))
+        if not releases:
+            return None
+        return max(releases)
 
     def _headroom(self, operation: Operation) -> Iterable[int]:
         allowance = self.allowance(operation)
@@ -98,6 +112,27 @@ class QueryBudget:
                 continue
             horizon = self.clock() - span
             yield max(ceiling - sum(1 for moment in recent if moment > horizon), 0)
+
+    def _releases(self, operation: Operation) -> Iterable[datetime]:
+        allowance = self.allowance(operation)
+        moments = tuple(self._recent(operation))
+        for ceiling, span in (
+            (allowance.per_hour, HOUR),
+            (allowance.per_minute, MINUTE),
+            (allowance.per_second, SECOND),
+        ):
+            if ceiling is None or ceiling == 0:
+                continue
+            horizon = self.clock() - span
+            inside = tuple(moment for moment in moments if moment > horizon)
+            if len(inside) >= ceiling:
+                yield inside[len(inside) - ceiling] + span
+
+    def _when_it_frees(self, operation: Operation) -> str:
+        frees_at = self.frees_at(operation)
+        if frees_at is None:
+            return "This allowance is zero, so no wait frees it."
+        return f"The window frees up at {frees_at.isoformat()}."
 
     def _ceilings(self, operation: Operation) -> str:
         allowance = self.allowance(operation)

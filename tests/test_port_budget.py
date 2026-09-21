@@ -3,7 +3,13 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from ksef_mcp.ksef_port import KsefRequestRejected, Operation, OperationLimit, RateLimits
+from ksef_mcp.ksef_port import (
+    BudgetExhausted,
+    KsefPortError,
+    Operation,
+    OperationLimit,
+    RateLimits,
+)
 from ksef_mcp.ksef_port.budget import QueryBudget
 
 START = datetime(2026, 9, 1, 12, tzinfo=UTC)
@@ -110,7 +116,7 @@ def test_a_spent_allowance_refuses_the_call_instead_of_letting_ksef_refuse_it(
     for _ in range(20):
         budget.spend(Operation.EXPORT)
 
-    with pytest.raises(KsefRequestRejected):
+    with pytest.raises(BudgetExhausted):
         budget.spend(Operation.EXPORT)
 
 
@@ -120,8 +126,66 @@ def test_the_refusal_quotes_every_ceiling_so_the_tightest_one_is_visible(
     for _ in range(20):
         budget.spend(Operation.EXPORT)
 
-    with pytest.raises(KsefRequestRejected, match="20 per hour"):
+    with pytest.raises(BudgetExhausted, match="20 per hour"):
         budget.spend(Operation.EXPORT)
+
+
+@pytest.fixture
+def spent_export_budget(budget: QueryBudget) -> QueryBudget:
+    for _ in range(20):
+        budget.spend(Operation.EXPORT)
+    return budget
+
+
+def test_the_local_refusal_is_not_a_failure_of_the_port(
+    spent_export_budget: QueryBudget,
+) -> None:
+    # Sedno GH-211: nic nie poszło do KSeF-u, więc odmowa nie ma prawa trafić
+    # do gałęzi „awaria portu" i wysłać integratora na poszukiwanie usterki
+    # połączenia, które działa.
+    with pytest.raises(BudgetExhausted) as refused:
+        spent_export_budget.spend(Operation.EXPORT)
+
+    assert not isinstance(refused.value, KsefPortError)
+
+
+def test_the_refusal_says_nothing_was_sent(spent_export_budget: QueryBudget) -> None:
+    with pytest.raises(BudgetExhausted, match="Nothing was sent to KSeF"):
+        spent_export_budget.spend(Operation.EXPORT)
+
+
+def test_the_refusal_names_the_moment_the_window_frees_up(
+    spent_export_budget: QueryBudget,
+) -> None:
+    with pytest.raises(BudgetExhausted) as refused:
+        spent_export_budget.spend(Operation.EXPORT)
+
+    assert (START + timedelta(hours=1)).isoformat() in str(refused.value)
+
+
+def test_the_window_frees_up_when_the_oldest_call_leaves_it(
+    spent_export_budget: QueryBudget,
+) -> None:
+    assert spent_export_budget.frees_at(Operation.EXPORT) == START + timedelta(hours=1)
+
+
+def test_a_zero_allowance_frees_up_at_no_moment_at_all(clock: MovableClock) -> None:
+    # Pułap zero nigdy nie zwalnia się sam, a podanie jakiejkolwiek godziny
+    # byłoby wymyśleniem terminu — czyli tym, czego D-017 zakazuje.
+    budget = QueryBudget(limits=granted(metadata=20, exports=0, downloads=64), clock=clock)
+
+    assert budget.frees_at(Operation.EXPORT) is None
+
+
+def test_a_zero_allowance_refuses_without_promising_a_wait(clock: MovableClock) -> None:
+    budget = QueryBudget(limits=granted(metadata=20, exports=0, downloads=64), clock=clock)
+
+    with pytest.raises(BudgetExhausted, match="no wait frees it"):
+        budget.spend(Operation.EXPORT)
+
+
+def test_an_unspent_allowance_names_no_moment(budget: QueryBudget) -> None:
+    assert budget.frees_at(Operation.EXPORT) is None
 
 
 def test_the_window_slides_so_an_hour_old_call_stops_counting(
@@ -163,7 +227,7 @@ def test_a_burst_inside_the_hour_is_refused_by_the_per_second_ceiling(
     for _ in range(8):
         budget.spend(Operation.METADATA_QUERY)
 
-    with pytest.raises(KsefRequestRejected):
+    with pytest.raises(BudgetExhausted):
         budget.spend(Operation.METADATA_QUERY)
 
 
@@ -234,7 +298,7 @@ def test_an_hour_of_tool_calls_can_exhaust_the_allowance_across_processes(
         journal=journal,
     )
 
-    with pytest.raises(KsefRequestRejected):
+    with pytest.raises(BudgetExhausted):
         budget.spend(Operation.EXPORT)
 
 

@@ -28,7 +28,7 @@ from ksef_mcp.ksef_port import (
     RateLimits,
     SubjectRole,
 )
-from ksef_mcp.ksef_port.errors import KsefRequestRejected, KsefUnreachable
+from ksef_mcp.ksef_port.errors import BudgetExhausted, KsefUnreachable
 from ksef_mcp.ksef_port.types import Operation
 from ksef_mcp.metadata import SERVER_NAME
 from ksef_mcp.storage import period_cache as period_cache_module
@@ -560,7 +560,7 @@ def test_a_spent_allowance_refuses_the_first_question(
     )
     starved = PeriodMetadataReader(cache=cache, budget=spent)
 
-    with pytest.raises(KsefRequestRejected):
+    with pytest.raises(BudgetExhausted):
         starved.read(session=session, period=SEPTEMBER, subject_role=SubjectRole.BUYER)
 
 

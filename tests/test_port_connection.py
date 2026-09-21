@@ -20,11 +20,11 @@ from typing import Final
 import pytest
 
 from ksef_mcp.ksef_port import (
+    BudgetExhausted,
     ConnectionCheck,
     InvoiceMetadata,
     KsefEnvironment,
     KsefLimits,
-    KsefRequestRejected,
     MetadataPage,
     Operation,
     OperationLimit,
@@ -255,5 +255,5 @@ def test_a_spent_allowance_refuses_the_check_rather_than_letting_ksef_refuse_it(
         allowance=OperationLimit(per_second=None, per_minute=None, per_hour=0),
     )
 
-    with pytest.raises(KsefRequestRejected):
+    with pytest.raises(BudgetExhausted):
         check_connection(port=spent, nip=NIP, token=TOKEN, readers=readers)

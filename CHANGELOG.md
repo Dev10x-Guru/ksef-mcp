@@ -157,6 +157,15 @@ niż jedna zmiana łamiąca.
 
 ### Zmienione
 
+- Odmowa własnego licznika godzinowego ma własny wyjątek
+  `BudgetExhausted` spod korzenia `KsefMcpError` i nie udaje już
+  zdarzenia z portu KSeF. Integrator rozpoznający odmowy po typie
+  wyjątku odróżnia odtąd „to serwer nie wysłał zapytania" od „to KSeF
+  odmówił", zamiast szukać usterki w połączeniu, które działa.
+  Komunikat mówi wprost, że próg jest lokalny, i podaje godzinę, o
+  której okno się zwalnia — a przy pułapie zero mówi, że żadne
+  czekanie go nie zwolni (GH-211).
+
 - `ksef-mcp doctor` przegląda cały katalog `subjects/`, a nie tylko
   podmiot z bieżącej konfiguracji. Biuro rachunkowe, które onboardowało
   kolejnych klientów różnymi zapisami NIP-u, widzi odtąd każdy katalog

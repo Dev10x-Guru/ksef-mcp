@@ -6,6 +6,7 @@ from ksef_mcp.ksef_port.connection import (
     check_connection,
 )
 from ksef_mcp.ksef_port.errors import (
+    BudgetExhausted,
     InvalidKsefIdentifier,
     InvalidPeriod,
     KsefAuthenticationFailed,
@@ -46,6 +47,7 @@ from ksef_mcp.ksef_port.types import (
 __all__ = [
     "NO_AUTOMATIC_RETRY",
     "SYNCHRONISED_SUBJECT_ROLES",
+    "BudgetExhausted",
     "ConnectionCheck",
     "ContinuationPoint",
     "Credential",

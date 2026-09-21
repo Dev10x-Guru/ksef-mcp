@@ -29,9 +29,9 @@ from ksef_mcp.diagnostics import technical_log
 from ksef_mcp.invoices.package import PackageRetriever, PackageUnreadable
 from ksef_mcp.ksef_port.budget import QueryBudget
 from ksef_mcp.ksef_port.errors import (
+    BudgetExhausted,
     KsefPortError,
     KsefRefused,
-    KsefRequestRejected,
     PackageLinkExpired,
 )
 from ksef_mcp.ksef_port.protocol import KsefPort, KsefSession
@@ -474,7 +474,7 @@ class Synchroniser:
     ) -> tuple[SyncState, SubjectRoleReport]:
         try:
             budget.spend(Operation.EXPORT)
-        except KsefRequestRejected as refusal:
+        except BudgetExhausted as refusal:
             return state, SubjectRoleReport(
                 subject_role=subject_role,
                 outcome=SyncOutcome.BUDGET_SPENT,
@@ -795,7 +795,7 @@ class Synchroniser:
         """
         try:
             budget.spend(Operation.EXPORT_STATUS)
-        except KsefRequestRejected:
+        except BudgetExhausted:
             # No allowance left to ask with. The record keeps its key and its
             # parts, so the next pass asks instead of guessing now.
             return state, self._stalled(export=export, failure=expiry, reached=reached)
@@ -889,7 +889,7 @@ class Synchroniser:
         for attempt in range(self.poll_attempts):
             try:
                 budget.spend(Operation.EXPORT_STATUS)
-            except KsefRequestRejected:
+            except BudgetExhausted:
                 return status
             status = session.check_export(handle=export.handle)
             if status.state is not ExportState.RUNNING:
