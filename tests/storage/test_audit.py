@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from ksef_mcp.ksef_port.types import KsefEnvironment
+from ksef_mcp.ksef_port.types import DateType, KsefEnvironment, Period
 from ksef_mcp.storage.audit import (
     AUDIT_FILE,
     XML_FORMAT,
@@ -17,6 +17,7 @@ from ksef_mcp.storage.audit import (
     AuthorisationBasis,
     Disclosure,
     now_utc,
+    window_criteria,
 )
 from ksef_mcp.storage.token_store import TokenSource
 from tests.conftest import in_another_thread
@@ -273,3 +274,25 @@ def test_two_recorders_never_interleave_their_lines(
 
 def test_the_clock_is_the_wall_clock_in_utc() -> None:
     assert now_utc().tzinfo is UTC
+
+
+def test_the_recorded_window_states_both_ends() -> None:
+    # Ślad audytowy ma pozwolić odtworzyć zakres pytania, a od GH-84 zakres
+    # zawsze ma oba końce — nie ma już wpisu kończącego się na „open".
+    asked = Period(
+        date_from=datetime(2026, 9, 1, tzinfo=UTC),
+        date_to=datetime(2026, 9, 14, tzinfo=UTC),
+        date_type=DateType.PERMANENT_STORAGE,
+    )
+
+    assert window_criteria(asked).endswith("2026-09-01T00:00:00+00:00..2026-09-14T00:00:00+00:00")
+
+
+def test_the_recorded_window_names_the_date_the_question_was_asked_by() -> None:
+    asked = Period(
+        date_from=datetime(2026, 9, 1, tzinfo=UTC),
+        date_to=datetime(2026, 9, 14, tzinfo=UTC),
+        date_type=DateType.ISSUE,
+    )
+
+    assert window_criteria(asked).startswith("issue_date ")

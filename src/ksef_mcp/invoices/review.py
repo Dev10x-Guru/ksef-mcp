@@ -73,6 +73,13 @@ from ksef_mcp.ksef_port.types import (
     Period,
 )
 from ksef_mcp.paths import SubjectScope
+from ksef_mcp.storage.audit import (
+    AuditedOperation,
+    AuditEntry,
+    Authorisation,
+    Disclosure,
+    window_criteria,
+)
 from ksef_mcp.storage.durability import JsonDocumentStore, SchemaMismatch, exclusive_write
 from ksef_mcp.storage.period_cache import PeriodCache, PeriodMetadataReader
 
@@ -300,6 +307,41 @@ class InvoiceReview:
     period: Period
     ledger_path: str
     subject_roles: tuple[SubjectRoleReview, ...]
+
+
+def review_entries(
+    review: InvoiceReview,
+    *,
+    authorisation: Authorisation,
+    moment: datetime,
+) -> tuple[AuditEntry, ...]:
+    """What the reader was shown as new, per subject type.
+
+    `MODEL_CONTEXT` and no output path. The review ledger is written on every
+    marked subject type, but it holds this server's own bookkeeping of what has
+    already been reported, not the invoices — and the answer names it anyway,
+    under `ledger_file`. Above the threshold the rows are dropped before the
+    answer is composed, so the count stands with no numbers beside it, which is
+    precisely what the reader saw.
+
+    Beside the review rather than in the tool, so what counts as "shown" is
+    decided once, by the module that decided what was new (#135).
+    """
+    return tuple(
+        AuditEntry(
+            recorded_at=moment,
+            operation=AuditedOperation.REVIEW,
+            authorisation=authorisation,
+            disclosure=Disclosure.MODEL_CONTEXT,
+            subject_role=str(assessed.question.subject_role),
+            criteria=window_criteria(assessed.question.period),
+            document_count=assessed.new_count,
+            ksef_numbers=tuple(str(invoice.ksef_number) for invoice in assessed.new_invoices),
+            output_path=None,
+            formats=(),
+        )
+        for assessed in review.subject_roles
+    )
 
 
 def _incompleteness(complete: bool, *, budget_bound: bool) -> str:

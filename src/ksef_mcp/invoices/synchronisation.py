@@ -51,6 +51,13 @@ from ksef_mcp.storage.archive import (
     InvoiceArchive,
     PackageArchivist,
 )
+from ksef_mcp.storage.audit import (
+    XML_FORMAT,
+    AuditedOperation,
+    AuditEntry,
+    Authorisation,
+    Disclosure,
+)
 from ksef_mcp.storage.sync_store import (
     ContinuationPointMissing,
     ExportKeyDiscarded,
@@ -150,6 +157,74 @@ class SynchronisationReport:
     # granted ceiling, and a pass that ran on an assumed one would then report
     # the opposite of what happened (GH-118).
     ceilings: CeilingNotice
+
+
+def _subject_role_entries(
+    reported: SubjectRoleReport,
+    *,
+    authorisation: Authorisation,
+    moment: datetime,
+) -> tuple[AuditEntry, ...]:
+    reached = "unknown" if reported.reached is None else reported.reached.isoformat()
+    common = {
+        "recorded_at": moment,
+        "operation": AuditedOperation.SYNCHRONISATION,
+        "authorisation": authorisation,
+        "subject_role": str(reported.subject_role),
+        "criteria": f"export packages up to {reached}",
+        "output_path": reported.archive_directory,
+    }
+    written = (
+        AuditEntry(
+            disclosure=Disclosure.DISK,
+            document_count=len(reported.archived),
+            ksef_numbers=reported.archived,
+            formats=(XML_FORMAT,),
+            **common,  # type: ignore[arg-type]
+        ),
+    )
+    # Logged as its own event rather than folded into the write or left out
+    # altogether: a trail that records only what was stored would read as though
+    # these invoices had never been touched, when in fact each one was seen and
+    # correctly recognised as already held (#38, #57).
+    skipped = (
+        AuditEntry(
+            disclosure=Disclosure.DEDUPLICATION_SKIP,
+            document_count=len(reported.already_held),
+            ksef_numbers=reported.already_held,
+            formats=(),
+            **common,  # type: ignore[arg-type]
+        ),
+    )
+    return (
+        *(written if reported.archived else ()),
+        *(skipped if reported.already_held else ()),
+    )
+
+
+def synchronisation_entries(
+    report: SynchronisationReport,
+    *,
+    authorisation: Authorisation,
+    moment: datetime,
+) -> tuple[AuditEntry, ...]:
+    """One entry per subject type per outcome — stored, and seen but already held.
+
+    Beside the report it translates rather than in the tool that calls it, for
+    the reason `purge_entry` is beside `PurgeReport`: the module that knows what
+    a pass did is the one that can say what the trail should record about it,
+    and a second delivery surface asking the same question does not get to
+    rebuild the answer by hand (#135).
+    """
+    return tuple(
+        entry
+        for reported in report.subject_roles
+        for entry in _subject_role_entries(
+            reported,
+            authorisation=authorisation,
+            moment=moment,
+        )
+    )
 
 
 def now_utc() -> datetime:

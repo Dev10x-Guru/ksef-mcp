@@ -16,6 +16,7 @@ import re
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from html import unescape
 from importlib import resources
 from pathlib import Path
@@ -25,6 +26,13 @@ from ksef_mcp.errors import KsefMcpError
 from ksef_mcp.ksef_port.errors import InvalidKsefIdentifier
 from ksef_mcp.ksef_port.types import KsefEnvironment, KsefNumber
 from ksef_mcp.rendering.node_preflight import NodeReport, inspect_node
+from ksef_mcp.storage.audit import (
+    PDF_FORMAT,
+    AuditedOperation,
+    AuditEntry,
+    Authorisation,
+    Disclosure,
+)
 from ksef_mcp.storage.durability import replaced_durably, reserved_staging
 
 PACKAGE_NAME: Final[str] = "ksef_mcp.rendering"
@@ -113,6 +121,37 @@ class RenderedInvoice:
     byte_count: int
     generator_version: str
     verification_url: str | None
+
+
+def render_entries(
+    rendered: RenderedInvoice,
+    *,
+    authorisation: Authorisation,
+    moment: datetime,
+) -> tuple[AuditEntry, ...]:
+    """A disk disclosure of exactly one document, named by its number.
+
+    The body reached a PDF on disk and nothing of it reached the model, so this
+    is a `DISK` entry and not two (D-011). Nothing was fetched from KSeF either —
+    the invoice was already held — which is why no criteria window is stated.
+
+    Beside the rendering rather than in the tool that asked for it, for the
+    reason every other `*_entries` function sits beside its own report (#135).
+    """
+    return (
+        AuditEntry(
+            recorded_at=moment,
+            operation=AuditedOperation.RENDER,
+            authorisation=authorisation,
+            disclosure=Disclosure.DISK,
+            subject_role=None,
+            criteria=rendered.ksef_number,
+            document_count=1,
+            ksef_numbers=(rendered.ksef_number,),
+            output_path=str(rendered.path),
+            formats=(PDF_FORMAT,),
+        ),
+    )
 
 
 def package_root() -> Path:
