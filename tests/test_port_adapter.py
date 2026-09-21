@@ -1,4 +1,5 @@
 import inspect
+import logging
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -37,7 +38,7 @@ from ksef2.domain.models.limits import (
 )
 from ksef2.services.invoices import InvoicesService
 
-from ksef_mcp.diagnostics import correlated
+from ksef_mcp.diagnostics import LOGGER_NAME, correlated
 from ksef_mcp.ksef_port import (
     BudgetExhausted,
     DateType,
@@ -676,6 +677,18 @@ def test_unparsable_ceilings_fall_back_to_the_conservative_session(
     limits = unreadable_ceilings.read_limits()
 
     assert limits.ceilings == CONSERVATIVE_CEILINGS
+
+
+def test_the_rejected_ceilings_payload_is_named_in_the_journal(
+    unreadable_ceilings: KsefSession,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # The point of GH-253: `assumed=true` on every production run told the
+    # operator nothing about why, and the journal is where the why belongs.
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        unreadable_ceilings.read_limits()
+
+    assert "collectiveIdentifier: Field required" in caplog.text
 
 
 def test_one_unreadable_read_does_not_discard_the_other(

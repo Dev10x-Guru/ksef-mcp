@@ -41,6 +41,13 @@ udokumentowane.
   `KsefPortError`, bo to połykałoby `KsefUnreachable` i
   `KsefAuthenticationFailed`, zamieniając awarię sieci w ciche „nie
   pytałem o ten typ podmiotu" (GH-234).
+- Gdy SDK odrzuci odpowiedź KSeF o limitach sesji, dziennik techniczny
+  dostaje ostrzeżenie z powodem odrzucenia — nazwą pola, którego SDK nie
+  umiał odczytać. Dotąd każde uruchomienie na produkcji kończyło się
+  `session_ceilings.assumed=true` bez śladu, dlaczego; integrator nie
+  miał jak sprawdzić, czy to rozjazd schematu, czy wada odpowiedzi.
+  Limity nie niosą danych osobowych, więc powód trafia do dziennika w
+  całości (GH-253).
 
 ## 0.4.0 — 2026-09-21
 
