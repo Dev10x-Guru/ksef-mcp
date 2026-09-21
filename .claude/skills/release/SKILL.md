@@ -150,6 +150,7 @@ TaskCreate(subject="Potwierdzić, że uvx ksef-mcp działa po wydaniu",
 | Uznanie wydania za skończone po wypchnięciu taga | Publikacja może odpaść na OIDC; paczki nie ma, a tag sugeruje, że jest |
 | Kasowanie taga po nieudanej publikacji | Gdy numer trafił już na PyPI, nie da się go użyć ponownie — podnieś numer, nie kasuj |
 | Redagowanie notatek w tym skillu | Powiela `release-notes`; tekst wolno poprawiać, wydanie nie |
+| Szukanie rozjazdu, gdy skrypt mówi o zaległości | Po przerwie lokalny `main` jest zwykle tylko w tyle; skrypt (GH-189) nazywa ten przypadek i wypisuje `git merge --ff-only origin/main`. Przewiń sam i przeczytaj, co wciągasz — skrypt celowo tego nie robi, bo tag i numer na PyPI są nieodwracalne. Rozjazd to wyłącznie historia po obu stronach |
 
 ## Zobacz też
 
