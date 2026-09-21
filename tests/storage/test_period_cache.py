@@ -42,7 +42,7 @@ from ksef_mcp.storage.period_cache import (
     is_cacheable,
 )
 from ksef_mcp.storage.sync_store import SubjectRoleState, SyncState, SyncStore
-from tests.support.synthetic import synthetic_metadata
+from tests.support.synthetic import synthetic_content_hash, synthetic_metadata
 
 NIP = "1234567890"
 
@@ -193,6 +193,50 @@ def test_a_remembered_correction_is_still_a_correction_when_it_comes_back(
 
     assert kept is not None
     assert kept.page.invoices[0].document_type is DocumentType.KOR
+
+
+def test_a_remembered_correction_still_names_the_invoice_it_corrects(
+    cache: PeriodCache,
+) -> None:
+    # Bez skrótów w zapamiętanym miesiącu ostrzeżenie nie umiałoby odróżnić
+    # korekty z fakturą pierwotną w oknie od korekty bez niej — a to cała
+    # treść ADR-111. Stąd wersja schematu 5.
+    corrected = MetadataPage(
+        invoices=(
+            synthetic_metadata(
+                2,
+                document_type=DocumentType.KOR,
+                corrected_content_hash=synthetic_content_hash(1),
+            ),
+        ),
+        has_more=False,
+        truncated=False,
+        hwm_date=None,
+    )
+    cache.remember(period=SEPTEMBER, subject_role=SubjectRole.BUYER, page=corrected)
+
+    kept = cache.remembered(period=SEPTEMBER, subject_role=SubjectRole.BUYER)
+
+    assert kept is not None
+    assert (
+        kept.page.invoices[0].content_hash,
+        kept.page.invoices[0].corrected_content_hash,
+    ) == (synthetic_content_hash(2), synthetic_content_hash(1))
+
+
+def test_a_remembered_ordinary_invoice_names_no_original(cache: PeriodCache) -> None:
+    ordinary = MetadataPage(
+        invoices=(synthetic_metadata(1),),
+        has_more=False,
+        truncated=False,
+        hwm_date=None,
+    )
+    cache.remember(period=SEPTEMBER, subject_role=SubjectRole.BUYER, page=ordinary)
+
+    kept = cache.remembered(period=SEPTEMBER, subject_role=SubjectRole.BUYER)
+
+    assert kept is not None
+    assert kept.page.invoices[0].corrected_content_hash is None
 
 
 def test_a_remembered_period_comes_back_with_the_window_it_answered(

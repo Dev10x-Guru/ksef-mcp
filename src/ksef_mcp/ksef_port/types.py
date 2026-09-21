@@ -299,6 +299,14 @@ class InvoiceMetadata:
     being corrected, not that invoice restated — the Ministry's own schema says
     so at `P_15` and permits it to be negative — so a sum over every row is a
     sum of documents rather than of the obligation (GH-120).
+
+    The two hashes are the edge of a graph rather than two more columns: a
+    correcting document names the invoice it corrects by the digest that invoice
+    carries about itself, so `corrected_content_hash` on one row meets
+    `content_hash` on another. Matching this way and not by the corrected
+    invoice's number is what keeps ADR-111 inside D-011 — the number lives in
+    the FA(3) body, and the body does not cross this boundary. Names are ours;
+    the SDK spells them `invoice_hash` and `hash_of_corrected_invoice` (D-017).
     """
 
     ksef_number: KsefNumber
@@ -312,6 +320,9 @@ class InvoiceMetadata:
     vat_amount: Decimal
     currency: str
     document_type: DocumentType
+    content_hash: str
+    # `None` on every document that corrects nothing, which is most of them.
+    corrected_content_hash: str | None
 
 
 @dataclass(frozen=True)

@@ -65,7 +65,11 @@ CACHE_FILE_SUFFIX: Final[str] = ".json"
 # like "no corrections here". The version check is the searchable mechanism for
 # "this entry predates a format change"; leaning on the decoder's exception
 # instead would make a format change indistinguishable from a truncated file.
-SCHEMA_VERSION: Final[int] = 4
+#
+# 5 is the content hashes (ADR-111, GH-121). A month remembered without them
+# cannot say whether a correction has its original invoice inside the same
+# window, and that distinction is the whole point of the warning it feeds.
+SCHEMA_VERSION: Final[int] = 5
 
 # The completing loop stops while this many metadata queries are still unspent.
 # One question covers four subject types (D-031 §5) out of one hourly allowance,
@@ -159,6 +163,8 @@ def _encode_invoice(invoice: InvoiceMetadata) -> dict[str, object]:
         "vat_amount": str(invoice.vat_amount),
         "currency": invoice.currency,
         "document_type": str(invoice.document_type),
+        "content_hash": invoice.content_hash,
+        "corrected_content_hash": invoice.corrected_content_hash,
     }
 
 
@@ -175,6 +181,12 @@ def _decode_invoice(stored: dict[str, object]) -> InvoiceMetadata:
         vat_amount=Decimal(str(stored["vat_amount"])),
         currency=str(stored["currency"]),
         document_type=DocumentType(str(stored["document_type"])),
+        content_hash=str(stored["content_hash"]),
+        corrected_content_hash=(
+            None
+            if stored["corrected_content_hash"] is None
+            else str(stored["corrected_content_hash"])
+        ),
     )
 
 

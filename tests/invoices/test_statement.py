@@ -39,6 +39,7 @@ from ksef_mcp.invoices.statement import (
     archived_digests,
     completeness_warning,
     correction_warning,
+    corrections_matched,
     currency_warning,
     internal_root_conflict,
     prepare_working_directory,
@@ -68,6 +69,7 @@ from tests.conftest import an_allowance
 from tests.support.synthetic import (
     SELLER_NIP,
     synthetic_body,
+    synthetic_content_hash,
     synthetic_credential,
     synthetic_metadata,
     synthetic_number,
@@ -568,21 +570,161 @@ def test_a_period_without_corrections_needs_no_caveat(archived: InvoiceArchive) 
     assert correction_warning(rows) == ()
 
 
-def test_a_correction_in_the_period_cautions_about_the_gross_total(
+def test_a_correction_without_its_original_invoice_cautions_about_the_gross_total(
     archived: InvoiceArchive,
 ) -> None:
     # A correction carries the difference against the invoice it corrects,
-    # not that invoice restated (MF schema, P_15), so the sum across all
-    # rows is a sum of documents, not of liability.
+    # not that invoice restated (MF schema, P_15). With that invoice outside
+    # the window there is nothing here for the difference to apply to, so the
+    # sum is a sum of documents and not of liability (ADR-111).
     rows = rows_for(
         invoices=(
             synthetic_metadata(1),
-            synthetic_metadata(2, document_type=DocumentType.KOR),
+            synthetic_metadata(
+                2,
+                document_type=DocumentType.KOR,
+                corrected_content_hash=synthetic_content_hash(99),
+            ),
         ),
         archive=archived,
     )
 
-    assert correction_warning(rows)[0].startswith("Okres zawiera faktury korygujące (1 z 2")
+    assert correction_warning(rows)[0].startswith(
+        "Okres zawiera korekty bez faktury pierwotnej w tym samym okresie (1 z 2"
+    )
+
+
+def test_a_correction_with_its_original_invoice_says_the_total_is_sound(
+    archived: InvoiceArchive,
+) -> None:
+    # Both the difference and the amount it applies to are inside the window,
+    # so the Brutto column adds up to the obligation by itself. This one is
+    # news, not work — and the old single sentence could not tell the reader
+    # which of the two she had (ADR-111).
+    rows = rows_for(
+        invoices=(
+            synthetic_metadata(1),
+            synthetic_metadata(
+                2,
+                document_type=DocumentType.KOR,
+                corrected_content_hash=synthetic_content_hash(1),
+            ),
+        ),
+        archive=archived,
+    )
+
+    assert correction_warning(rows)[0].startswith(
+        "Okres zawiera korekty z fakturami pierwotnymi w tym samym okresie (1 z 2"
+    )
+
+
+def test_a_period_holding_both_kinds_of_correction_says_both(
+    archived: InvoiceArchive,
+) -> None:
+    rows = rows_for(
+        invoices=(
+            synthetic_metadata(1),
+            synthetic_metadata(
+                2,
+                document_type=DocumentType.KOR,
+                corrected_content_hash=synthetic_content_hash(1),
+            ),
+            synthetic_metadata(
+                3,
+                document_type=DocumentType.KOR,
+                corrected_content_hash=synthetic_content_hash(99),
+            ),
+        ),
+        archive=archived,
+    )
+
+    assert len(correction_warning(rows)) == 2
+
+
+def test_the_caveat_about_the_missing_original_comes_first(
+    archived: InvoiceArchive,
+) -> None:
+    # Only one of the two positions asks the accountant for work, and a
+    # reader who stops after the first line has to meet that one.
+    rows = rows_for(
+        invoices=(
+            synthetic_metadata(1),
+            synthetic_metadata(
+                2,
+                document_type=DocumentType.KOR,
+                corrected_content_hash=synthetic_content_hash(1),
+            ),
+            synthetic_metadata(
+                3,
+                document_type=DocumentType.KOR,
+                corrected_content_hash=synthetic_content_hash(99),
+            ),
+        ),
+        archive=archived,
+    )
+
+    assert "bez faktury pierwotnej" in correction_warning(rows)[0]
+
+
+def test_a_correction_pointing_at_nothing_counts_as_unpaired(
+    archived: InvoiceArchive,
+) -> None:
+    # `hash_of_corrected_invoice` is `None` on a document that names no
+    # original. Folding that absence into the lookup key would let it match
+    # whatever else the window happened to hold.
+    rows = rows_for(
+        invoices=(synthetic_metadata(1, document_type=DocumentType.KOR),),
+        archive=archived,
+    )
+
+    assert "bez faktury pierwotnej" in correction_warning(rows)[0]
+
+
+def test_a_period_without_corrections_matches_nothing(archived: InvoiceArchive) -> None:
+    rows = rows_for(invoices=(synthetic_metadata(1), synthetic_metadata(2)), archive=archived)
+
+    assert corrections_matched(rows) == ()
+
+
+def test_a_matched_correction_carries_the_invoice_it_corrects(
+    archived: InvoiceArchive,
+) -> None:
+    rows = rows_for(
+        invoices=(
+            synthetic_metadata(1),
+            synthetic_metadata(
+                2,
+                document_type=DocumentType.KOR,
+                corrected_content_hash=synthetic_content_hash(1),
+            ),
+        ),
+        archive=archived,
+    )
+
+    link = corrections_matched(rows)[0]
+
+    assert (link.paired, link.corrected) == (True, rows[0])
+
+
+def test_an_unmatched_correction_says_so_rather_than_reaching_for_ksef(
+    archived: InvoiceArchive,
+) -> None:
+    # Reaching back for the missing invoice would mean guessing the window and
+    # spending queries on the guess — refused by D-020 and D-031 §8.
+    rows = rows_for(
+        invoices=(
+            synthetic_metadata(
+                2,
+                document_type=DocumentType.KOR,
+                corrected_content_hash=synthetic_content_hash(99),
+            ),
+        ),
+        archive=archived,
+    )
+
+    link = corrections_matched(rows)[0]
+
+    assert (link.paired, link.corrected) == (False, None)
 
 
 def test_a_correction_caveat_names_which_row_it_means(archived: InvoiceArchive) -> None:
@@ -663,7 +805,7 @@ def test_a_statement_with_a_correction_carries_the_caveat(
 
     result = composer.run(nip=NIP, token=CREDENTIAL, period=SEPTEMBER, directory=working)
 
-    assert any("korygujące" in one for one in result.warnings)
+    assert any("korekty bez faktury pierwotnej" in one for one in result.warnings)
 
 
 def test_rows_with_no_archived_body_are_counted(archived: InvoiceArchive) -> None:

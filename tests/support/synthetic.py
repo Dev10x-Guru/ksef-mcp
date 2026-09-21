@@ -83,11 +83,22 @@ def synthetic_number(ordinal: int = 1) -> KsefNumber:
     return KsefNumber(f"1234567890-20260901-0100AB12CD{ordinal:02d}-56")
 
 
+def synthetic_content_hash(ordinal: int) -> str:
+    """The 44-character Base64 digest KSeF puts on a metadata row, per ordinal.
+
+    Derived from the ordinal rather than written out, so two synthetic invoices
+    never share a digest by accident — a correction matched to the wrong
+    original would pass the suite while the linking is broken.
+    """
+    return base64_digest(f"faktura-{ordinal}".encode())
+
+
 def synthetic_metadata(
     ordinal: int = 1,
     *,
     seller_name: str | None = "Dostawca sp. z o.o.",
     document_type: DocumentType = DocumentType.VAT,
+    corrected_content_hash: str | None = None,
 ) -> InvoiceMetadata:
     return InvoiceMetadata(
         ksef_number=synthetic_number(ordinal),
@@ -101,6 +112,8 @@ def synthetic_metadata(
         vat_amount=Decimal("230.00"),
         currency="PLN",
         document_type=document_type,
+        content_hash=synthetic_content_hash(ordinal),
+        corrected_content_hash=corrected_content_hash,
     )
 
 

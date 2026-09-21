@@ -521,6 +521,64 @@ def currency_warning(totals: tuple[CurrencyTotal, ...]) -> tuple[str, ...]:
     )
 
 
+@dataclass(frozen=True)
+class CorrectionLink:
+    """One correcting document and the invoice it corrects, when that one is here.
+
+    `corrected` is `None` for the case ADR-111 exists to surface: the original
+    invoice was issued outside the window this file covers, so nothing in the
+    statement offsets the difference the correction carries. That absence is an
+    answer and not a failed lookup — reaching back for the missing invoice would
+    mean guessing how far back to look and spending queries on the guess, which
+    D-020 and D-031 §8 rule out.
+    """
+
+    correction: StatementRow
+    corrected: StatementRow | None
+
+    @property
+    def paired(self) -> bool:
+        return self.corrected is not None
+
+
+def corrections_matched(rows: tuple[StatementRow, ...]) -> tuple[CorrectionLink, ...]:
+    """Every correcting row, against the original invoice if it is in this window.
+
+    Matched by digest and never by the corrected invoice's number: the number
+    lives in the FA(3) body, and reading it would drag the counterparty's
+    personal data across a boundary that exists to stop exactly that (D-011).
+    The digests are already in the metadata, so the edge costs no query at all.
+    """
+    originals = {row.invoice.content_hash: row for row in rows}
+    return tuple(
+        CorrectionLink(correction=row, corrected=matching_original(row, originals=originals))
+        for row in rows
+        if row.invoice.document_type.corrective
+    )
+
+
+def matching_original(
+    correction: StatementRow,
+    *,
+    originals: Mapping[str, StatementRow],
+) -> StatementRow | None:
+    """The row the correction points at, keeping "points at nothing" distinct.
+
+    A correcting document whose `corrected_content_hash` is absent is looked up
+    for nothing; folding that absence into the lookup key would let an empty
+    digest anywhere in the window answer for it.
+    """
+    pointed_at = correction.invoice.corrected_content_hash
+    if pointed_at is None:
+        return None
+    return originals.get(pointed_at)
+
+
+def invoice_numbers(links: tuple[CorrectionLink, ...]) -> str:
+    """The rows a caveat is about, so the reader is not sent hunting for them."""
+    return ", ".join(link.correction.invoice.seller_invoice_number for link in links)
+
+
 def correction_warning(rows: tuple[StatementRow, ...]) -> tuple[str, ...]:
     """The same caveat `currency_warning` makes, for the other way a sum misleads.
 
@@ -528,22 +586,41 @@ def correction_warning(rows: tuple[StatementRow, ...]) -> tuple[str, ...]:
     the difference. The Ministry's schema says as much at `P_15` — "w przypadku
     faktur korygujących: korekta kwoty wynikającej z faktury korygowanej" — and
     its `TKwotowy` pattern admits a leading minus, so the difference may be
-    negative. Either way a sum over every row answers "how much was invoiced in
-    documents", which is not the obligation the accountant is reconciling.
+    negative.
+
+    Two sentences and not one, because the two positions call for different work
+    (ADR-111). A correction whose original invoice is in the same window needs
+    none: the difference and the amount it applies to are both inside, so the
+    Brutto column adds up to the obligation by itself. A correction without it
+    is the one that misleads, and no sum taken in this file can repair it —
+    the answer is in the period the original invoice was issued in.
 
     Naming the count and the numbers, rather than the fact alone: the reader has
     to find the rows to do anything about it, and a warning that sends them
     through a hundred and thirty of them is a warning that gets ignored.
     """
-    corrections = tuple(row for row in rows if row.invoice.document_type.corrective)
-    if corrections:
-        numbers = ", ".join(row.invoice.seller_invoice_number for row in corrections)
-        return (
-            f"Okres zawiera faktury korygujące ({len(corrections)} z {len(rows)}: "
-            f"{numbers}). Korekta niesie różnicę wobec faktury korygowanej, nie tę "
-            f"fakturę na nowo, więc suma całej kolumny Brutto to suma dokumentów, "
-            f"a nie zobowiązanie — rozlicz korekty z fakturami pierwotnymi.",
-        )
+    links = corrections_matched(rows)
+    if links:
+        unpaired = tuple(link for link in links if not link.paired)
+        paired = tuple(link for link in links if link.paired)
+        told: list[str] = []
+        if unpaired:
+            told.append(
+                f"Okres zawiera korekty bez faktury pierwotnej w tym samym okresie "
+                f"({len(unpaired)} z {len(rows)}: {invoice_numbers(unpaired)}). Korekta "
+                f"niesie różnicę wobec faktury korygowanej, a tej faktury w pliku nie "
+                f"ma — suma kolumny Brutto nie odda zobowiązania i żadne sumowanie tu "
+                f"tego nie naprawi. Sięgnij po okres, w którym wystawiono fakturę "
+                f"pierwotną."
+            )
+        if paired:
+            told.append(
+                f"Okres zawiera korekty z fakturami pierwotnymi w tym samym okresie "
+                f"({len(paired)} z {len(rows)}: {invoice_numbers(paired)}). Dla nich "
+                f"suma kolumny Brutto jest poprawna, bo różnica i kwota pierwotna są "
+                f"obie w pliku — to informacja, nie zadanie do wykonania."
+            )
+        return tuple(told)
     # Unrecognised is not the same as ordinary. The type table has grown before,
     # and reporting silence for a document nobody here can classify would let a
     # future correcting type pass as a plain invoice.

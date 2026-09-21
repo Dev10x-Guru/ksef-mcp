@@ -88,7 +88,7 @@ from tests.support.doubles import (
     sdk_metadata,
     sdk_part,
 )
-from tests.support.synthetic import synthetic_credential
+from tests.support.synthetic import synthetic_content_hash, synthetic_credential
 
 NIP = "1234567890"
 
@@ -448,6 +448,36 @@ def test_the_document_type_arrives_so_a_correction_can_be_told_apart(
         page = opened.query_metadata(period=WINDOW, subject_role=SubjectRole.BUYER)
 
     assert page.invoices[0].document_type is expected
+
+
+def test_the_content_hashes_arrive_so_a_correction_can_name_its_original(
+    monkeypatch: pytest.MonkeyPatch,
+    port: Ksef2Port,
+) -> None:
+    # Nazwy są nasze, drutowe zostają po drugiej stronie portu (D-017):
+    # `invoice_hash` i `hash_of_corrected_invoice` w SDK, `content_hash` i
+    # `corrected_content_hash` u nas (ADR-111).
+    Plan(
+        page=[sdk_metadata(2, invoice_type="kor", hash_of_corrected_invoice="cGllcndvdG5h")]
+    ).install(monkeypatch)
+
+    with port.session(nip=NIP, token=TOKEN) as opened:
+        page = opened.query_metadata(period=WINDOW, subject_role=SubjectRole.BUYER)
+
+    first = page.invoices[0]
+
+    assert (first.content_hash, first.corrected_content_hash) == (
+        synthetic_content_hash(2),
+        "cGllcndvdG5h",
+    )
+
+
+def test_a_document_correcting_nothing_names_no_original(
+    session: KsefSession,
+) -> None:
+    page = session.query_metadata(period=WINDOW, subject_role=SubjectRole.BUYER)
+
+    assert page.invoices[0].corrected_content_hash is None
 
 
 def test_a_page_carries_the_high_water_mark_the_next_window_starts_from(
