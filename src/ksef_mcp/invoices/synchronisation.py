@@ -344,7 +344,6 @@ class Synchroniser:
             retriever = PackageRetriever(session=session, store=self.store)
             for subject_role in SYNCHRONISED_SUBJECT_ROLES:
                 state, report = self._advance_one(
-                    session=session,
                     budget=budget,
                     retriever=retriever,
                     state=state,
@@ -375,14 +374,12 @@ class Synchroniser:
     def _advance_one(
         self,
         *,
-        session: KsefSession,
         budget: QueryBudget,
         retriever: PackageRetriever,
         state: SyncState,
         subject_role: SubjectRole,
     ) -> tuple[SyncState, SubjectRoleReport]:
         state, report = self._attempt(
-            session=session,
             budget=budget,
             retriever=retriever,
             state=state,
@@ -397,7 +394,6 @@ class Synchroniser:
         # attempt finds no queued export, and `is_due` and the export budget
         # still gate whatever it does next.
         state, resumed = self._attempt(
-            session=session,
             budget=budget,
             retriever=retriever,
             state=state,
@@ -408,7 +404,6 @@ class Synchroniser:
     def _attempt(
         self,
         *,
-        session: KsefSession,
         budget: QueryBudget,
         retriever: PackageRetriever,
         state: SyncState,
@@ -418,7 +413,6 @@ class Synchroniser:
         stored = state.subject_roles.get(subject_role)
         if queued is not None and queued.state is ExportState.RUNNING:
             return self._resume(
-                session=session,
                 budget=budget,
                 retriever=retriever,
                 state=state,
@@ -429,7 +423,6 @@ class Synchroniser:
             # it costs neither an export nor a status query, so it goes first —
             # and until it lands, this subject type asks KSeF for nothing new.
             return self._archive(
-                session=session,
                 budget=budget,
                 retriever=retriever,
                 state=state,
@@ -452,7 +445,6 @@ class Synchroniser:
                 reached=None if stored is None else stored.reached,
             )
         return self._start(
-            session=session,
             budget=budget,
             retriever=retriever,
             state=state,
@@ -464,7 +456,6 @@ class Synchroniser:
     def _start(
         self,
         *,
-        session: KsefSession,
         budget: QueryBudget,
         retriever: PackageRetriever,
         state: SyncState,
@@ -481,7 +472,7 @@ class Synchroniser:
                 message=str(refusal),
                 reached=opening.reached,
             )
-        handle = session.start_export(
+        handle = retriever.session.start_export(
             # The pass's own `moment`, not a second reading of the clock: the
             # window's two ends have to come from one instant, or a slow run
             # widens the very span the ceiling is there to bound.
@@ -504,7 +495,6 @@ class Synchroniser:
             SubjectRoleState(reached=opening.reached, attempted_at=moment),
         )
         return self._resume(
-            session=session,
             budget=budget,
             retriever=retriever,
             state=advanced,
@@ -514,13 +504,12 @@ class Synchroniser:
     def _resume(
         self,
         *,
-        session: KsefSession,
         budget: QueryBudget,
         retriever: PackageRetriever,
         state: SyncState,
         export: PendingExport,
     ) -> tuple[SyncState, SubjectRoleReport]:
-        status = self._poll(session=session, budget=budget, export=export)
+        status = self._poll(session=retriever.session, budget=budget, export=export)
         if status is None:
             return state, SubjectRoleReport(
                 subject_role=export.subject_role,
@@ -577,7 +566,6 @@ class Synchroniser:
                 message=f"KSeF odrzucił eksport {export.reference}.",
             )
         return self._complete(
-            session=session,
             budget=budget,
             retriever=retriever,
             state=state,
@@ -622,7 +610,6 @@ class Synchroniser:
     def _complete(
         self,
         *,
-        session: KsefSession,
         budget: QueryBudget,
         retriever: PackageRetriever,
         state: SyncState,
@@ -641,7 +628,6 @@ class Synchroniser:
         carrying = state.with_pending(ready)
         if moved is None:
             return self._archive(
-                session=session,
                 budget=budget,
                 retriever=retriever,
                 state=carrying,
@@ -657,7 +643,6 @@ class Synchroniser:
         # point ahead of a package nobody recorded would declare a period
         # complete that was never fetched.
         return self._archive(
-            session=session,
             budget=budget,
             retriever=retriever,
             state=carrying.with_subject_role(
@@ -673,7 +658,6 @@ class Synchroniser:
     def _archive(
         self,
         *,
-        session: KsefSession,
         budget: QueryBudget,
         retriever: PackageRetriever,
         state: SyncState,
@@ -709,7 +693,6 @@ class Synchroniser:
             if renewed:
                 return state, self._stalled(export=export, failure=expiry, reached=reached)
             return self._renew(
-                session=session,
                 budget=budget,
                 retriever=retriever,
                 state=state,
@@ -776,7 +759,6 @@ class Synchroniser:
     def _renew(
         self,
         *,
-        session: KsefSession,
         budget: QueryBudget,
         retriever: PackageRetriever,
         state: SyncState,
@@ -800,7 +782,7 @@ class Synchroniser:
             # parts, so the next pass asks instead of guessing now.
             return state, self._stalled(export=export, failure=expiry, reached=reached)
         try:
-            status = session.check_export(handle=export.handle)
+            status = retriever.session.check_export(handle=export.handle)
         except KsefRefused as refusal:
             # KSeF answered, and the answer was about this export: it is gone.
             return self._abandon(
@@ -825,7 +807,6 @@ class Synchroniser:
             )
         renewed = export.relinked(parts=status.parts)
         return self._archive(
-            session=session,
             budget=budget,
             retriever=retriever,
             state=state.with_pending(renewed),
