@@ -39,6 +39,7 @@ from ksef2.services.invoices import InvoicesService
 
 from ksef_mcp.diagnostics import correlated
 from ksef_mcp.ksef_port import (
+    BudgetExhausted,
     DateType,
     DocumentType,
     ExportPart,
@@ -47,7 +48,6 @@ from ksef_mcp.ksef_port import (
     KsefEnvironment,
     KsefRateLimited,
     KsefRefused,
-    KsefRequestRejected,
     KsefSession,
     KsefUnreachable,
     Operation,
@@ -663,7 +663,7 @@ def test_a_degraded_allowance_still_runs_out(unreadable_limits: KsefSession) -> 
     # that one of them does is.
     budget = QueryBudget(limits=unreadable_limits.read_limits().rates)
 
-    with pytest.raises(KsefRequestRejected):
+    with pytest.raises(BudgetExhausted):
         for _ in range(21):
             budget.spend(Operation.METADATA_QUERY)
 

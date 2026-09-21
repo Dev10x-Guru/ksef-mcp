@@ -30,7 +30,7 @@ from typing import Final
 
 from ksef_mcp.allowance import Allowance
 from ksef_mcp.clock import now_utc
-from ksef_mcp.ksef_port.errors import KsefPortError, KsefRateLimited, KsefRequestRejected
+from ksef_mcp.ksef_port.errors import BudgetExhausted, KsefRateLimited, KsefRequestRejected
 from ksef_mcp.ksef_port.protocol import KsefPort
 from ksef_mcp.ksef_port.types import (
     SYNCHRONISED_SUBJECT_ROLES,
@@ -75,18 +75,19 @@ DATE_TYPE_LABELS: Final[dict[DateType, str]] = {
 }
 
 
-# Two refusals, one consequence for the caller: this subject type went unasked,
-# and the answers the allowance already bought stay. They are siblings and not
-# parent and child in `ksef_port.errors`, so both have to be named — the local
-# counter declining, and KSeF itself answering 429.
+# Three refusals, one consequence for the caller: this subject type went
+# unasked, and the answers the allowance already bought stay. None of them is a
+# parent of another — the local counter declining (GH-211), the port declining
+# to send, and KSeF itself answering 429 — so all three have to be named.
 #
-# Exactly these two. Widening to `KsefPortError` would swallow `KsefUnreachable`
-# and `KsefAuthenticationFailed`, reporting a dead network or a rejected
-# credential as "that subject type declined" and returning a cheerful partial
-# answer where the caller needs to know nothing was asked at all.
-AllowanceRefusal = KsefRequestRejected | KsefRateLimited
+# Exactly these three. Widening to `KsefPortError` would swallow
+# `KsefUnreachable` and `KsefAuthenticationFailed`, reporting a dead network or
+# a rejected credential as "that subject type declined" and returning a cheerful
+# partial answer where the caller needs to know nothing was asked at all.
+AllowanceRefusal = BudgetExhausted | KsefRequestRejected | KsefRateLimited
 
-ALLOWANCE_REFUSALS: Final[tuple[type[KsefPortError], ...]] = (
+ALLOWANCE_REFUSALS: Final[tuple[type[Exception], ...]] = (
+    BudgetExhausted,
     KsefRequestRejected,
     KsefRateLimited,
 )

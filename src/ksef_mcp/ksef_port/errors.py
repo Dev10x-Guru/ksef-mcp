@@ -1,4 +1,4 @@
-from ksef_mcp.errors import KsefMcpInputRejected
+from ksef_mcp.errors import KsefMcpError, KsefMcpInputRejected
 
 
 class KsefPortError(RuntimeError):
@@ -22,6 +22,17 @@ class InvalidKsefIdentifier(KsefMcpInputRejected):
 
 class InvalidPeriod(KsefMcpInputRejected):
     """A window this client will not ask about: inverted, or wider than KSeF answers."""
+
+
+class BudgetExhausted(KsefMcpError):
+    """This server's own hourly counter is spent. Nothing was sent to KSeF.
+
+    Outside `KsefPortError` for the reason above: a caller matching on the port
+    root reads "the registry failed" and starts looking at a connection that is
+    perfectly healthy. The refusal is this project's own, the threshold is this
+    project's own, and the wait it names is arithmetic on a local counter rather
+    than anything KSeF said (GH-211).
+    """
 
 
 class KsefAuthenticationFailed(KsefPortError):
