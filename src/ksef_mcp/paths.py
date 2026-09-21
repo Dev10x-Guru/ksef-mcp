@@ -122,25 +122,54 @@ class SubjectScope:
     def under(self, base: Path) -> Path:
         return base / SUBJECT_DIRECTORY / self.nip.value / str(self.environment)
 
-    def unnormalised_twins(self, *, override: Path | None = None) -> tuple[Path, ...]:
-        """Directories holding this same taxpayer under a spelling we no longer write.
 
-        Normalising the spelling moves where a subject's files are looked for,
-        so somebody who onboarded with `123-456-32-18` would find an archive
-        that had apparently emptied itself. This reports those directories and
-        does nothing else on purpose: an archive holds a counterparty's personal
-        data, and relocating one behind the taxpayer's back is a worse answer
-        than a directory they can see named and move themselves (GH-111).
-        """
-        holder = self.data_root(override=override).parent.parent
-        if not holder.is_dir():
-            return ()
-        return tuple(sorted(found for found in holder.iterdir() if self.is_twin(found)))
+@dataclass(frozen=True)
+class UnnormalisedSubject:
+    """A subject directory named the way this version no longer names one."""
 
-    def is_twin(self, candidate: Path) -> bool:
-        if not candidate.is_dir() or candidate.name == self.nip.value:
-            return False
-        try:
-            return Nip.parsed(candidate.name) == self.nip
-        except NipRejected:
-            return False
+    directory: Path
+    normalised: Path
+
+    @property
+    def normalised_exists(self) -> bool:
+        return self.normalised.is_dir()
+
+
+def subjects_root(*, override: Path | None = None) -> Path:
+    base = user_data_path(appname=SERVER_NAME) if override is None else override
+    return base / SUBJECT_DIRECTORY
+
+
+def unnormalised_subjects(*, override: Path | None = None) -> tuple[UnnormalisedSubject, ...]:
+    """Every subject directory written under a spelling we no longer write.
+
+    Every subject, not the configured one: an accounting office onboards a
+    client, changes the configuration to the next one, and the first client's
+    directory is then reachable by nobody — the one shape of this problem the
+    per-subject check could never see (GH-210).
+
+    Nothing is moved here and nothing is moved by the caller either. An archive
+    holds a counterparty's personal data, and relocating one behind the
+    taxpayer's back is a worse answer than a directory they can see named and
+    move themselves (GH-111).
+    """
+    holder = subjects_root(override=override)
+    if not holder.is_dir():
+        return ()
+    return tuple(
+        found
+        for candidate in sorted(holder.iterdir())
+        if (found := unnormalised(candidate, holder=holder)) is not None
+    )
+
+
+def unnormalised(candidate: Path, *, holder: Path) -> UnnormalisedSubject | None:
+    if not candidate.is_dir():
+        return None
+    try:
+        parsed = Nip.parsed(candidate.name)
+    except NipRejected:
+        return None
+    if parsed.value == candidate.name:
+        return None
+    return UnnormalisedSubject(directory=candidate, normalised=holder / parsed.value)

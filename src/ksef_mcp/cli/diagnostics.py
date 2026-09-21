@@ -6,7 +6,7 @@ import shutil
 from dataclasses import replace
 from pathlib import Path
 
-from ksef_mcp import config, keyring_preflight, ksef_port, messages
+from ksef_mcp import config, keyring_preflight, ksef_port, messages, paths
 from ksef_mcp.allowance import Allowance
 from ksef_mcp.cli.console import Console
 from ksef_mcp.cli.exits import (
@@ -16,10 +16,9 @@ from ksef_mcp.cli.exits import (
     EXIT_NOT_CONFIGURED,
     EXIT_OK,
 )
-from ksef_mcp.config import Configuration
 from ksef_mcp.ksef_port.lazy import load_adapter
 from ksef_mcp.metadata import SERVER_NAME, VERSION
-from ksef_mcp.paths import Nip, NipRejected, SubjectScope
+from ksef_mcp.paths import Nip, NipRejected
 from ksef_mcp.rendering import node_preflight
 from ksef_mcp.storage import token_store
 from ksef_mcp.storage.period_cache import MeteredPeriods, PeriodCache
@@ -117,22 +116,6 @@ def run_verify(console: Console, *, configuration_file: Path | None) -> int:
     return report_connection(console, checked)
 
 
-def stranded_directories(configuration: Configuration | None) -> tuple[Path, ...]:
-    """Files this version would no longer look at, for `doctor` to point out.
-
-    A configuration whose NIP cannot be read at all is not this function's
-    problem — `verify` and every tool say so in their own words — so it answers
-    "nothing stranded" rather than raising inside a diagnostic command.
-    """
-    if configuration is None:
-        return ()
-    try:
-        scope = SubjectScope.parsed(nip=configuration.nip, environment=configuration.environment)
-    except NipRejected:
-        return ()
-    return scope.unnormalised_twins()
-
-
 def run_doctor(
     console: Console, *, working_directory: Path, configuration_file: Path | None
 ) -> int:
@@ -144,7 +127,7 @@ def run_doctor(
     configuration = config.load_configuration(path=configuration_file)
     for line in messages.describe_subject(configuration):
         console.write(line)
-    for line in messages.describe_unnormalised_twins(stranded_directories(configuration)):
+    for line in messages.describe_unnormalised_subjects(paths.unnormalised_subjects()):
         console.write(line)
     console.write("")
     report_preflight(console, working_directory=working_directory)

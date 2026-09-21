@@ -107,47 +107,67 @@ def scope() -> SubjectScope:
     return SubjectScope.parsed(nip=NIP, environment=KsefEnvironment.TEST)
 
 
-def test_katalog_spod_starego_zapisu_jest_zgloszony(scope: SubjectScope, tmp_path: Path) -> None:
-    (tmp_path / "subjects" / "123-456-32-18" / "test").mkdir(parents=True)
+@pytest.fixture
+def office(tmp_path: Path) -> Path:
+    """Biuro rachunkowe z trzema klientami: jeden zapisany dobrze, dwóch starym zapisem."""
+    holder = tmp_path / "subjects"
+    for name in ("1234563218", "123-456-32-18", "PL9876543210"):
+        (holder / name / "test").mkdir(parents=True)
+    return holder
 
-    assert scope.unnormalised_twins(override=tmp_path) == (tmp_path / "subjects" / "123-456-32-18",)
+
+def test_katalog_spod_starego_zapisu_jest_zgloszony(office: Path, tmp_path: Path) -> None:
+    found = paths.unnormalised_subjects(override=tmp_path)
+
+    assert tuple(subject.directory for subject in found) == (
+        office / "123-456-32-18",
+        office / "PL9876543210",
+    )
 
 
-def test_katalog_spod_starego_zapisu_nie_jest_ruszany(scope: SubjectScope, tmp_path: Path) -> None:
+def test_zgloszenie_nazywa_katalog_docelowy(office: Path, tmp_path: Path) -> None:
+    found = paths.unnormalised_subjects(override=tmp_path)
+
+    assert tuple(subject.normalised for subject in found) == (
+        office / "1234563218",
+        office / "9876543210",
+    )
+
+
+def test_istniejacy_katalog_docelowy_jest_widoczny_w_zgloszeniu(
+    office: Path, tmp_path: Path
+) -> None:
+    # Dwa katalogi jednego podatnika obok siebie to inna sytuacja niż jeden
+    # katalog do przemianowania: przeniesienie zawartości może nadpisać pliki.
+    found = paths.unnormalised_subjects(override=tmp_path)
+
+    assert tuple(subject.normalised_exists for subject in found) == (True, False)
+
+
+def test_katalog_spod_starego_zapisu_nie_jest_ruszany(office: Path, tmp_path: Path) -> None:
     # Decyzja o wstecznej zgodności: wykrycie, nie migracja. W tych katalogach
     # leżą faktury z danymi kontrahentów i nie przenosimy ich bez pytania.
-    stale = tmp_path / "subjects" / "123-456-32-18" / "test"
-    stale.mkdir(parents=True)
+    paths.unnormalised_subjects(override=tmp_path)
 
-    scope.unnormalised_twins(override=tmp_path)
-
-    assert stale.is_dir()
+    assert (office / "123-456-32-18" / "test").is_dir()
 
 
-def test_wlasny_katalog_nie_jest_zglaszany_jako_obcy(scope: SubjectScope, tmp_path: Path) -> None:
+def test_znormalizowany_katalog_nie_jest_zglaszany(scope: SubjectScope, tmp_path: Path) -> None:
     scope.data_root(override=tmp_path).mkdir(parents=True)
 
-    assert scope.unnormalised_twins(override=tmp_path) == ()
+    assert paths.unnormalised_subjects(override=tmp_path) == ()
 
 
-def test_katalog_innego_podatnika_nie_jest_zglaszany(scope: SubjectScope, tmp_path: Path) -> None:
-    (tmp_path / "subjects" / "9876543210" / "test").mkdir(parents=True)
-
-    assert scope.unnormalised_twins(override=tmp_path) == ()
-
-
-def test_smiec_w_katalogu_podmiotow_nie_wywraca_sprawdzenia(
-    scope: SubjectScope, tmp_path: Path
-) -> None:
+def test_smiec_w_katalogu_podmiotow_nie_wywraca_sprawdzenia(tmp_path: Path) -> None:
     (tmp_path / "subjects").mkdir(parents=True)
     (tmp_path / "subjects" / "nie-jest-nipem").mkdir()
     (tmp_path / "subjects" / "1234563218.txt").write_text("", encoding="utf-8")
 
-    assert scope.unnormalised_twins(override=tmp_path) == ()
+    assert paths.unnormalised_subjects(override=tmp_path) == ()
 
 
-def test_brak_katalogu_podmiotow_to_brak_znalezisk(scope: SubjectScope, tmp_path: Path) -> None:
-    assert scope.unnormalised_twins(override=tmp_path) == ()
+def test_brak_katalogu_podmiotow_to_brak_znalezisk(tmp_path: Path) -> None:
+    assert paths.unnormalised_subjects(override=tmp_path) == ()
 
 
 def test_bez_podmiany_korzenie_sa_tymi_z_platformdirs(monkeypatch: pytest.MonkeyPatch) -> None:

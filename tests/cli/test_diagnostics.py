@@ -154,7 +154,7 @@ def test_doctor_says_nothing_about_twins_when_there_are_none(
 ) -> None:
     _, recorder = doctored
 
-    assert "zapisane inaczej" not in recorder.transcript
+    assert "zapisane starym sposobem" not in recorder.transcript
 
 
 @pytest.fixture
@@ -203,6 +203,58 @@ def test_doctor_leaves_the_old_archive_exactly_where_it_is(
     )
 
     assert (stale_subject_directory / "faktury").is_dir()
+
+
+@pytest.fixture
+def accounting_office(subject_data_root: Path) -> Path:
+    # Trzech klientów biura onboardowanych różnymi zapisami. Konfiguracja
+    # wskazuje w danej chwili najwyżej jednego z nich, a pozostali są dokładnie
+    # tymi, o których nikt się nie dowie bez przejrzenia całego katalogu.
+    holder = subject_data_root / "subjects"
+    for name in ("9876543210", "PL9876543210", "111-222-33-44"):
+        (holder / name / "test").mkdir(parents=True)
+    return holder
+
+
+@pytest.fixture
+def office_transcript(
+    healthy_node: None,
+    usable_keyring: keyring_preflight.KeyringReport,
+    tmp_path: Path,
+    configured: Path,
+    accounting_office: Path,
+) -> str:
+    recorder = Recorder()
+
+    cli.main(
+        ["doctor"],
+        console=recorder.console,
+        working_directory=tmp_path,
+        configuration_file=configured,
+    )
+    return recorder.transcript
+
+
+def test_doctor_names_a_client_the_configuration_does_not(
+    office_transcript: str,
+    accounting_office: Path,
+) -> None:
+    assert str(accounting_office / "111-222-33-44") in office_transcript
+
+
+def test_doctor_names_the_directory_the_old_one_belongs_under(
+    office_transcript: str,
+    accounting_office: Path,
+) -> None:
+    assert f"→ {accounting_office / '9876543210'}" in office_transcript
+
+
+def test_doctor_says_when_the_normalised_directory_already_exists(
+    office_transcript: str,
+) -> None:
+    # Przeniesienie zawartości do istniejącego katalogu może nadpisać faktury,
+    # więc ta różnica musi być widoczna, zanim ktoś ruszy pliki.
+    assert "ten katalog już istnieje" in office_transcript
 
 
 def test_doctor_does_not_crash_on_a_configuration_whose_nip_is_not_one(

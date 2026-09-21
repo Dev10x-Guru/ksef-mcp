@@ -157,6 +157,13 @@ niż jedna zmiana łamiąca.
 
 ### Zmienione
 
+- `ksef-mcp doctor` przegląda cały katalog `subjects/`, a nie tylko
+  podmiot z bieżącej konfiguracji. Biuro rachunkowe, które onboardowało
+  kolejnych klientów różnymi zapisami NIP-u, widzi odtąd każdy katalog
+  zapisany starym sposobem wraz z nazwą katalogu docelowego i
+  informacją, czy ten docelowy już istnieje. Nic nie jest przenoszone —
+  to wciąż wykrycie, nie migracja faktur bez pytania (GH-210).
+
 - Bieżący czas pochodzi odtąd z jednej funkcji `now_utc()` w module
   `ksef_mcp.clock`, a nie z dziewięciu identycznych kopii rozsianych
   po modułach. Zachowanie się nie zmienia — to wciąż ten sam
