@@ -30,7 +30,13 @@ from cryptography.hazmat.primitives.padding import PKCS7
 
 from ksef_mcp.errors import KsefMcpError
 from ksef_mcp.ksef_port.protocol import KsefSession
-from ksef_mcp.ksef_port.types import ExportEncryption, ExportHandle, ExportPart
+from ksef_mcp.ksef_port.types import (
+    ExportEncryption,
+    ExportHandle,
+    ExportPackage,
+    ExportPart,
+    PackageDocument,
+)
 from ksef_mcp.storage.sync_store import PendingExport, SyncStore
 
 # Always present since 27.10.2025 and the input to deduplication by KSeF number
@@ -101,21 +107,6 @@ def decrypted(payload: bytes, *, reference: str, encryption: ExportEncryption) -
 def escapes_package(name: str) -> bool:
     entry = PurePosixPath(name)
     return entry.is_absolute() or ".." in entry.parts
-
-
-@dataclass(frozen=True)
-class PackageDocument:
-    """One file out of the package. `content` is invoice XML — never logged."""
-
-    name: str
-    content: bytes
-
-
-@dataclass(frozen=True)
-class ExportPackage:
-    reference: str
-    documents: tuple[PackageDocument, ...]
-    metadata: bytes | None
 
 
 @dataclass(frozen=True)
