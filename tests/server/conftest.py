@@ -98,7 +98,7 @@ def configured(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Configuration
         nip=NIP,
         environment=KsefEnvironment.TEST,
         keyring_backend="keyring.backends.SecretService.Keyring",
-        invoice_directory=tmp_path,
+        working_directory=tmp_path,
     )
     monkeypatch.setattr(config, "load_configuration", lambda: configuration)
     return configuration

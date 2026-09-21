@@ -52,9 +52,9 @@ from platformdirs import user_data_path
 from ksef_mcp.allowance import Allowance
 from ksef_mcp.clock import now_utc
 from ksef_mcp.config import (
-    INVOICE_DIRECTORY_MODE,
+    WORKING_DIRECTORY_MODE,
     cloud_sync_marker,
-    prepare_invoice_directory,
+    prepare_directory,
 )
 from ksef_mcp.errors import KsefMcpError, KsefMcpInputRejected
 from ksef_mcp.invoices.listing import CurrencyTotal, gross_totals, invoices_phrase
@@ -353,7 +353,7 @@ class WorkingDirectory:
                 f"({self.cloud_marker}). Dokument nazywa kontrahentów — "
                 f"kopia trafi na cudzy serwer."
             )
-        if self.mode != INVOICE_DIRECTORY_MODE:
+        if self.mode != WORKING_DIRECTORY_MODE:
             told.append(
                 f"Katalog roboczy istniał wcześniej i ma uprawnienia "
                 f"{self.mode:04o}, nie zmieniam ich. Jeśli ma być prywatny: "
@@ -383,7 +383,7 @@ def prepare_working_directory(
             f"zabrałoby stamtąd faktury albo punkty kontynuacji. Wskaż katalog "
             f"poza oboma korzeniami."
         )
-    prepared = prepare_invoice_directory(directory)
+    prepared = prepare_directory(directory)
     return WorkingDirectory(
         path=prepared.path,
         created=prepared.created,

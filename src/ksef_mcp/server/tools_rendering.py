@@ -47,7 +47,7 @@ def render_invoice(
 ) -> RenderedInvoiceResult:
     subject = SubjectDependencies(configuration=configured_subject())
     directory = (
-        subject.configuration.invoice_directory
+        subject.configuration.working_directory
         if working_directory is None
         else Path(working_directory).expanduser()
     )

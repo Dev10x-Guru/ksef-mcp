@@ -20,7 +20,13 @@ CONFIGURATION_FILE: Final[str] = "configuration.json"
 # silently misread.
 SCHEMA_VERSION: Final[int] = 1
 
-INVOICE_DIRECTORY_MODE: Final[int] = 0o700
+# The field is `working_directory`, the stored key is not. Renaming the key
+# would make every `configuration.json` written so far a schema-2 refusal —
+# `require_schema` compares versions by equality — and send every taxpayer
+# through onboarding again for a name only a code reader ever sees (GH-188).
+WORKING_DIRECTORY_KEY: Final[str] = "invoice_directory"
+
+WORKING_DIRECTORY_MODE: Final[int] = 0o700
 
 CONFIGURATION_FILE_MODE: Final[int] = 0o600
 
@@ -51,7 +57,10 @@ class Configuration:
     nip: str
     environment: KsefEnvironment
     keyring_backend: str
-    invoice_directory: Path
+    # Not the archive: invoice XML lands in the subject's data directory and
+    # nobody chooses that (D-032). This is the declared working directory —
+    # where a statement and a rendered PDF are written (GH-188).
+    working_directory: Path
 
 
 def configuration_path() -> Path:
@@ -97,7 +106,7 @@ def load_configuration(*, path: Path | None = None) -> Configuration | None:
             nip=stored["nip"],
             environment=KsefEnvironment(stored["environment"]),
             keyring_backend=stored["keyring_backend"],
-            invoice_directory=Path(stored["invoice_directory"]),
+            working_directory=Path(stored[WORKING_DIRECTORY_KEY]),
         )
     except (KeyError, TypeError, ValueError) as incomplete:
         raise ConfigurationUnreadable(
@@ -126,7 +135,7 @@ def save_configuration(
         "nip": configuration.nip,
         "environment": str(configuration.environment),
         "keyring_backend": configuration.keyring_backend,
-        "invoice_directory": str(configuration.invoice_directory),
+        WORKING_DIRECTORY_KEY: str(configuration.working_directory),
     }
     return json_written_atomically(
         resolved,
@@ -136,19 +145,19 @@ def save_configuration(
 
 
 @dataclass(frozen=True)
-class InvoiceDirectory:
+class PreparedDirectory:
     path: Path
     created: bool
     mode: int
 
 
-def prepare_invoice_directory(directory: Path) -> InvoiceDirectory:
+def prepare_directory(directory: Path) -> PreparedDirectory:
     existed = directory.is_dir()
     # Only a directory we created gets its permissions decided here. Someone
     # may point this at a home directory or a shared path, and silently
     # tightening what they already had is a change nobody asked for.
-    directory.mkdir(mode=INVOICE_DIRECTORY_MODE, parents=True, exist_ok=True)
-    return InvoiceDirectory(
+    directory.mkdir(mode=WORKING_DIRECTORY_MODE, parents=True, exist_ok=True)
+    return PreparedDirectory(
         path=directory,
         created=not existed,
         mode=stat.S_IMODE(directory.stat().st_mode),

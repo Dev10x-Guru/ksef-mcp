@@ -258,6 +258,17 @@ niż jedna zmiana łamiąca.
 
 ### Poprawione
 
+- Onboarding mówi wreszcie, gdzie lądują faktury. Pytał o „katalog na
+  pobrane faktury" i przy ścieżce synchronizowanej do chmury ostrzegał,
+  że są w nim dane osobowe kontrahentów — tyle że XML-e nigdy tam nie
+  trafiały. Wskazany katalog przyjmuje zestawienia i PDF-y, a faktury
+  idą do archiwum w katalogu danych, o który nikt nie pyta (D-032).
+  Podatnik oceniał więc kopię zapasową i prywatność po niewłaściwej
+  ścieżce. Pytanie nazywa teraz katalog roboczy tym, czym jest, a zaraz
+  po nim onboarding wypisuje ścieżkę archiwum, mówi, że to ją trzeba
+  objąć kopią zapasową, i to jej dotyczy ostrzeżenie o synchronizacji
+  (GH-188, decyzja D-041).
+
 - Typ podmiotu, którego eksport KSeF zostawił w budowie, przestaje być
   zablokowany na zawsze. Dotąd taki wpis nie miał żadnego ograniczenia
   czasowego: punkt kontynuacji nie ruszał, dopóki paczka się nie

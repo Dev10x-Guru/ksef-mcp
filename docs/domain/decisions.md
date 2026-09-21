@@ -1619,3 +1619,34 @@ Odwołania do `olegtyshcneko/ksef-mcp` w [D-030] dotyczą cudzego projektu.
   przeznaczonego do czytania przez człowieka (patrz ADR-108 / GH-163) nie
   jest częścią kontraktu SemVer — zmiana słów nie łamie parsowania przez
   agenta, o ile kształt pól się nie zmienia.
+
+## D-041 — Katalog roboczy to nie archiwum; pole zmienia nazwę, klucz w pliku zostaje
+
+- **Status:** Aktywna
+- **Decyzja:** Katalog wskazany w onboardingu jest **katalogiem
+  roboczym** — przyjmuje zestawienia i PDF-y, nigdy XML-e faktur. XML-e
+  trafiają do archiwum w katalogu danych podmiotu [D-032] i o to miejsce
+  nikt nie pyta, bo ono jest ustalone. Pole `Configuration` nazywa się
+  więc `working_directory`, zgodnie ze słownictwem, którego [D-032] i
+  `WorkingDirectory` w `invoices/statement.py` używają od początku.
+- **Klucz w `configuration.json` zostaje `invoice_directory`.** Nazwa
+  pola to sprawa czytelnika kodu; klucz to dane leżące już na dyskach
+  podatników. `require_schema` porównuje wersje schematu na równość, więc
+  przemianowanie klucza znaczyłoby schemat 2 i **odmowę odczytu każdego
+  pliku zapisanego dotąd** — powierzchnia (3) z [D-040], czyli zmiana
+  łamiąca, i ponowny onboarding dla wszystkich. Cena jest realna,
+  korzyść byłaby wyłącznie kosmetyczna, więc rozejście się nazwy pola i
+  klucza jest tu świadomie tańsze. Trzyma je razem stała
+  `WORKING_DIRECTORY_KEY` i test, który pilnuje zapisanego klucza.
+- **Onboarding pokazuje ścieżkę archiwum.** Skoro to archiwum niesie
+  dane osobowe kontrahentów, to jego dotyczy zdanie o kopii zapasowej i
+  ostrzeżenie o synchronizacji z chmurą. Ostrzeżenie przy katalogu
+  roboczym zostaje, ale mówi o zestawieniach i PDF-ach — bo one też
+  nazywają kontrahentów — zamiast obiecywać, że leżą tam faktury.
+- **Powód:** onboarding pytał o „katalog na pobrane faktury" i ostrzegał
+  o danych osobowych przy ścieżce, na której tych danych nie ma. Podatnik
+  oceniał kopię zapasową i prywatność po niewłaściwym katalogu, a czytelnik
+  kodu miał dwa różne `invoice_directory` — jedno na `Configuration`, drugie
+  na `InvoiceArchive` (GH-188).
+- **Czego nie zmieniamy:** umiejscowienia archiwum. Ono jest poprawne i
+  celowe [D-032]; błędem był tekst, nie zapis.

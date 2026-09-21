@@ -195,7 +195,7 @@ def describe_environment_choices() -> tuple[str, ...]:
     )
 
 
-def describe_invoice_directory(prepared: config.InvoiceDirectory) -> tuple[str, ...]:
+def describe_prepared_directory(prepared: config.PreparedDirectory) -> tuple[str, ...]:
     if prepared.created:
         return (f"  Katalog utworzony z uprawnieniami 0700: {prepared.path}",)
     # Permissions on a directory that already existed are left alone — someone
@@ -207,6 +207,53 @@ def describe_invoice_directory(prepared: config.InvoiceDirectory) -> tuple[str, 
     )
 
 
+def describe_working_directory_choice(
+    prepared: config.PreparedDirectory,
+    *,
+    cloud_marker: str | None,
+) -> tuple[str, ...]:
+    """What the chosen directory does hold — statements and PDFs, not the archive.
+
+    The prompt used to promise downloaded invoices here and the warning used to
+    call them personal data, while the XML went to the data directory nobody
+    chooses (GH-188). A statement names the counterparties and a rendered PDF is
+    the invoice, so the caution stays — it just stops standing in for the
+    archive's own warning.
+    """
+    told = describe_prepared_directory(prepared)
+    if cloud_marker is None:
+        return told
+    return (
+        *told,
+        f"  Uwaga: ścieżka wygląda na synchronizowaną ({cloud_marker}).",
+        "  Zestawienia i PDF-y nazywają kontrahentów — kopia trafi na cudzy serwer.",
+    )
+
+
+def describe_archive_location(directory: Path, *, cloud_marker: str | None) -> tuple[str, ...]:
+    """Say where invoice XML really lands, because nobody is asked about it.
+
+    The archive sits in the subject's data directory by design (D-032), so the
+    taxpayer never names that path — and therefore never learns that this, not
+    the working directory, is what a backup has to cover and what a sync client
+    would copy out of the house.
+    """
+    told = (
+        "",
+        "Archiwum XML faktur — miejsce ustalone, nie pytam o nie:",
+        f"  {directory}",
+        "  Tu leżą faktury z danymi osobowymi kontrahentów.",
+        "  Ten katalog obejmij kopią zapasową.",
+    )
+    if cloud_marker is None:
+        return told
+    return (
+        *told,
+        f"  Uwaga: ta ścieżka wygląda na synchronizowaną ({cloud_marker}) —",
+        "  XML-e faktur trafiają wtedy na cudzy serwer.",
+    )
+
+
 def describe_configuration(configuration: Configuration, *, saved_to: Path) -> tuple[str, ...]:
     return (
         "",
@@ -214,7 +261,7 @@ def describe_configuration(configuration: Configuration, *, saved_to: Path) -> t
         f"  NIP: {configuration.nip}",
         f"  Środowisko: {configuration.environment}",
         f"  Magazyn tokenu: {configuration.keyring_backend}",
-        f"  Katalog faktur: {configuration.invoice_directory}",
+        f"  Katalog roboczy (zestawienia, PDF-y): {configuration.working_directory}",
         f"  Plik: {saved_to}",
     )
 
