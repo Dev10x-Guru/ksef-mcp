@@ -10,6 +10,9 @@ udokumentowane.
 
 ## Bez wydania
 
+## 0.4.0 — 2026-09-21
+
+
 ### Zmiany łamiące
 
 Powierzchnia (2) decyzji D-040 — pola modeli odpowiedzi. Projekt jest
@@ -425,7 +428,6 @@ dualizm nazw byłby gorszy niż jedna zmiana łamiąca.
   się `...-NIEKOMPLETNE.csv`, więc widać to już w skrzynce pocztowej.
   Ostrzeżenie rozróżnia też brak godzinowego przydziału — wtedy warto ponowić
   za godzinę — od okresu uciętego przez sam KSeF (GH-181).
-
 ## 0.3.4 — 2026-09-19
 
 
