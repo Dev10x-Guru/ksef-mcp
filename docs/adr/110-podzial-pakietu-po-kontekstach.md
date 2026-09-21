@@ -33,17 +33,17 @@ pakiety:
 
 | Pakiet | Moduły | Czym jest ten kontekst |
 |---|---|---|
-| `storage/` | `durability`, `sync_store`, `archive`, `period_cache`, `audit`, `token_store` | co i jak zostaje na dysku |
+| `storage/` | `sync_store`, `archive`, `period_cache`, `audit`, `token_store` | co i jak zostaje na dysku |
 | `invoices/` | `package`, `synchronisation`, `listing`, `review`, `statement` | co przychodzi z KSeF-u i co z tego widzi księgowa |
 | `rendering/` | `pdf`, `node_preflight` oraz zasoby `node/` i `vendor/` | wizualizacja faktury pod Node |
 | `setup/` | `skill`, `client` | ustawienie środowiska przed pierwszym uruchomieniem |
 
 Moduły pozostające na szczycie — `config`, `paths`, `errors`,
 `messages`, `metadata`, `allowance`, `retention`, `diagnostics`,
-`keyring_preflight` oraz adaptery wejścia `server` i `cli` — nie należą
-do żadnego z czterech kontekstów: używa ich każdy. Wypchnięcie ich do
-piątego pakietu o nazwie w rodzaju `common/` nazwałoby zbiór „reszta",
-a to nie jest kontekst.
+`durability`, `keyring_preflight` oraz adaptery wejścia `server` i
+`cli` — nie należą do żadnego z czterech kontekstów: używa ich każdy.
+Wypchnięcie ich do piątego pakietu o nazwie w rodzaju `common/`
+nazwałoby zbiór „reszta", a to nie jest kontekst.
 
 ### Dlaczego kontekst zamiast warstwy?
 
@@ -76,11 +76,22 @@ linii, uzasadni oddzielenie reguł od przypadków użycia.
 Moduł `ksef_mcp/storage.py` trzymał prymitywy wyłączności zapisu i
 trwałej podmiany ([ADR-107](107-wylacznosc-zapisu-w-katalogu-podmiotu.md),
 D-006). Nazwa `storage` nie może naraz oznaczać tego modułu i pakietu,
-więc moduł wchodzi do pakietu jako `storage/durability.py`.
+więc moduł został przemianowany na `durability`.
 
 Odrzucono re-eksport w `storage/__init__.py`, który zachowałby starą
 ścieżkę importu: dawałby jednej nazwie dwa znaczenia i ukryłby zmianę
 przed integratorem, którego `CHANGELOG.md` ma o niej uprzedzić.
+
+**Poprawka (GH-233):** pierwotnie moduł wszedł do pakietu jako
+`storage/durability.py`, bo kolizja nazw była wtedy jedynym pytaniem.
+To go umieściło w kontekście wbrew regule powyżej: przez te prymitywy
+pisze każdy z czterech kontekstów, a poza nimi jeszcze `config` i
+`allowance`, więc moduł nie należy do żadnego. Wewnątrz `storage/`
+zmuszał obu tych czytelników do sięgania w górę — a że `storage`
+sięgał w drugą stronę po `allowance`, kontrakt kierunku importów
+musiał łączyć cztery moduły w jedną warstwę z dwukropkiem, która nie
+chroni niczego w swoim wnętrzu. Moduł mieszka odtąd jako
+`ksef_mcp/durability.py`; nazwa `durability` zostaje bez zmian.
 
 ## Uzasadnienie
 
@@ -121,9 +132,12 @@ w `tests/test_distribution.py`.
   `SERVER_NAME` i `DISTRIBUTION_NAME` zostają nietknięte, a narzędzia
   MCP nie zmieniają ani nazw, ani sygnatur — koszt ponosi wyłącznie
   integrator sięgający po moduły wprost.
-- Zmiana nazwy `storage` → `storage.durability` jest jedyną, która
-  oprócz miejsca zmienia też nazwę modułu; wymaga osobnej uwagi przy
-  czytaniu dziennika zmian.
+- Zmiana nazwy `storage` → `durability` jest jedyną, która oprócz
+  miejsca zmienia też nazwę modułu; wymaga osobnej uwagi przy czytaniu
+  dziennika zmian. Ten moduł przeniósł się dwa razy — najpierw do
+  `storage/durability.py`, potem na szczyt pakietu (GH-233) — więc
+  integrator, który przestawił się na pierwszą ścieżkę, przestawia się
+  raz jeszcze.
 - Granica między `invoices/` a `storage/` bywa sporna: `archive`
   przechowuje faktury, więc dałoby się bronić przypisania go do
   `invoices/`. Rozstrzygnięto na rzecz `storage/`, bo `archive`

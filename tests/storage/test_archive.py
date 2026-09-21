@@ -21,6 +21,7 @@ import pytest
 
 from ksef_mcp import paths
 from ksef_mcp.diagnostics import short_reference
+from ksef_mcp.durability import WriteExclusivityUnavailable, exclusive_write
 from ksef_mcp.ksef_port.types import ExportPackage, KsefEnvironment, PackageDocument
 from ksef_mcp.metadata import SERVER_NAME
 from ksef_mcp.storage.archive import (
@@ -37,7 +38,6 @@ from ksef_mcp.storage.archive import (
     digest_of,
     identities,
 )
-from ksef_mcp.storage.durability import WriteExclusivityUnavailable, exclusive_write
 from tests.conftest import in_another_thread
 from tests.support.synthetic import base64_digest, synthetic_number
 

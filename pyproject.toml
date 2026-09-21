@@ -126,19 +126,20 @@ containers = ["ksef_mcp"]
 # module has to be placed in the order deliberately, instead of joining the
 # package as an unranked island nothing constrains.
 exhaustive = true
-# `:` means the modules of one layer may read each other, `|` that they may
-# not. Two such pairs sit in `allowance : config : invoices : storage` and are
-# the only remaining two-way edges in the package: `storage.archive` reads
-# `invoices.package`, while `invoices` reads all of `storage`; and
-# `storage.period_cache` reads `allowance`, while `allowance` and `config`
-# read `storage.durability`.
+# `|` means the modules of one layer may not read each other. No layer here
+# uses `:` any more — the two-way edges that forced one are gone (GH-233), so
+# every module below is ordered against every other one and a backwards import
+# fails wherever it appears, not only across the layers it used to cross.
 layers = [
     "cli",
     "server",
     "messages",
     "rendering | retention | setup",
-    "allowance : config : invoices : storage",
-    "keyring_preflight | paths",
+    "invoices",
+    "storage",
+    "allowance",
+    "config",
+    "durability | keyring_preflight | paths",
     "ksef_port",
     "diagnostics",
     "clock | errors | metadata",

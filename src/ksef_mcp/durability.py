@@ -24,6 +24,12 @@ read (GH-145).
 The lock refuses instead of waiting. A blocked MCP tool is a hung agent session,
 and an unbounded wait against a lock a dead process left behind is worse than a
 refusal that says which directory is busy.
+
+At the top of the package rather than inside `storage/`, by the rule ADR-110
+uses for every other module up here: all four contexts write through these
+primitives, and `config` and `allowance` do too, so it belongs to none of them.
+Kept under `storage/` it made two of its own readers import the context they sit
+beside, which is what the layers contract could not then state (GH-233).
 """
 
 from __future__ import annotations

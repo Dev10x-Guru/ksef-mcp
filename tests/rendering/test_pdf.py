@@ -9,10 +9,10 @@ from pathlib import Path
 import pytest
 from pypdf import PdfReader
 
+from ksef_mcp import durability
 from ksef_mcp.ksef_port.types import KsefEnvironment
 from ksef_mcp.rendering import pdf
 from ksef_mcp.rendering.node_preflight import NodeReport
-from ksef_mcp.storage import durability
 from tests.support.synthetic import BUYER_NAME, SELLER_NIP, synthetic_fa3_invoice
 
 KSEF_NUMBER = "1234567890-20260817-0100AB12CD01-56"
