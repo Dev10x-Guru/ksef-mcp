@@ -201,6 +201,31 @@ Gdy PR demonstruje doskonałe praktyki:
 - Nie każdy PR wymaga prośby o zmiany
 - Jedno pozytywne podsumowanie na rozwiązany cykl
 
+## Zmiana łamiąca — lista kontrolna przeglądu
+
+Gdy PR zawiera zmianę łamiacą (breaking change) widoczną dla
+użytkownika końcowego (zmiana API, zmiana zachowania, usunięcie
+funkcji dostępnej publicznie):
+
+1. **Treść PR-a** — zmiana łamiąca jest wyraźnie oznaczona
+   nagłówkiem (`## Zmiana łamiąca`) lub sekcją analogiczną, umieszczona
+   *przed* wszelkimi nagłówkami szczegółów (patrz również punkt 12
+   w `review-checks-common.md` o pozycji nagłówka JTBD)
+2. **CHANGELOG.md** — wpis o zmianie łamiaccej pojawia się
+   *przed* nagłówkiem `### Dodane` (zgodnie ze strukturą sekcji
+   niezwolnionej); opisuje starą ścieżkę i nową dla użytkowników
+3. **Migracja dostępna** — jeśli zmiana ma ścieżkę migracji
+   (np. „użyj X zamiast Y"), jest ona wyjaśniona w treści PR-a
+   i/lub CHANGELOG-u
+4. **Zgodność z regułami KSeF** — zmiana nie narusza zasad bezpieczeństwa
+   KSeF: ani zmiana w wywołaniu API do KSeF, ani zmiana w obsłudze
+   poświadczeń, ani zmiana w obsłudze XML faktury bez przejrzenia
+   bezpieczeństwa (patrz `review-checks-common.md` § Zagadnienia
+   specyficzne dla KSeF)
+5. **Wersjonowanie** — zmiana powinna być poprzedzona podwyższeniem
+   numeru wersji (major bump dla publicznego API; patrz polityka
+   wersjonowania w CLAUDE.md albo ADR dotyczącej wersjonowania)
+
 ## Unikaj bezwartościowych sugestii
 
 - NIGDY nie sugeruj kodu identycznego z oryginałem
