@@ -261,7 +261,7 @@ def test_doctor_does_not_crash_on_a_configuration_whose_nip_is_not_one(
     healthy_node: None,
     usable_keyring: keyring_preflight.KeyringReport,
     tmp_path: Path,
-    invoice_directory: Path,
+    working_directory: Path,
 ) -> None:
     # `doctor` is where a person goes when something is already wrong, so it
     # reports and keeps going rather than raising over the same bad value.
@@ -271,7 +271,7 @@ def test_doctor_does_not_crash_on_a_configuration_whose_nip_is_not_one(
             nip="nie-jest-nipem",
             environment=KsefEnvironment.TEST,
             keyring_backend="keyring.backends.SecretService",
-            invoice_directory=invoice_directory,
+            working_directory=working_directory,
         ),
         path=path,
     )
@@ -634,7 +634,7 @@ def test_verify_refuses_before_touching_a_locked_keyring(
 
 def test_verify_refuses_a_configuration_whose_nip_is_not_one(
     tmp_path: Path,
-    invoice_directory: Path,
+    working_directory: Path,
 ) -> None:
     path = tmp_path / "state" / config.CONFIGURATION_FILE
     config.save_configuration(
@@ -642,7 +642,7 @@ def test_verify_refuses_a_configuration_whose_nip_is_not_one(
             nip="nie-jest-nipem",
             environment=KsefEnvironment.TEST,
             keyring_backend="keyring.backends.SecretService",
-            invoice_directory=invoice_directory,
+            working_directory=working_directory,
         ),
         path=path,
     )

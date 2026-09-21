@@ -24,6 +24,7 @@ from ksef_mcp.paths import Nip, NipRejected
 from ksef_mcp.setup import client
 from ksef_mcp.setup.skill import SkillScope
 from ksef_mcp.storage import token_store
+from ksef_mcp.storage.archive import InvoiceArchive
 
 ENVIRONMENT_ORDER: Final[tuple[KsefEnvironment, ...]] = (
     KsefEnvironment.TEST,
@@ -102,21 +103,40 @@ def choose_environment(console: Console) -> KsefEnvironment:
         console.write(f"Podaj numer od 1 do {len(ENVIRONMENT_ORDER)} albo nazwę.")
 
 
-def choose_invoice_directory(console: Console, *, nip: str) -> Path:
+def choose_working_directory(console: Console, *, nip: str) -> Path:
+    """Name the directory by what it receives: statements and rendered PDFs.
+
+    It never receives the invoice XML — that goes to the archive, whose place is
+    fixed (D-032). Asking for a „katalog na pobrane faktury" promised otherwise,
+    and the taxpayer judged backup and privacy by the wrong path (GH-188).
+    """
     answer = ask_with_default(
         console,
-        prompt="Katalog na pobrane faktury",
+        prompt="Katalog roboczy na zestawienia i PDF-y",
         default=str(Path.home() / "ksef" / nip),
     )
     directory = Path(answer).expanduser()
-    marker = config.cloud_sync_marker(directory)
-    if marker is not None:
-        console.write(f"  Uwaga: ścieżka wygląda na synchronizowaną ({marker}).")
-        console.write("  Pobrane faktury zawierają dane osobowe kontrahentów.")
-    prepared = config.prepare_invoice_directory(directory)
-    for line in messages.describe_invoice_directory(prepared):
+    prepared = config.prepare_directory(directory)
+    for line in messages.describe_working_directory_choice(
+        prepared,
+        cloud_marker=config.cloud_sync_marker(directory),
+    ):
         console.write(line)
     return prepared.path
+
+
+def report_archive_location(
+    console: Console,
+    *,
+    nip: str,
+    environment: KsefEnvironment,
+) -> None:
+    directory = InvoiceArchive(nip=nip, environment=environment).invoice_directory
+    for line in messages.describe_archive_location(
+        directory,
+        cloud_marker=config.cloud_sync_marker(directory),
+    ):
+        console.write(line)
 
 
 def summarize_configuration(
@@ -219,12 +239,13 @@ def run_onboarding(
         f"  Token zapisany i odczytany z powrotem: {stored.length} znaków, "
         f"końcówka …{stored.suffix}"
     )
-    directory = choose_invoice_directory(console, nip=nip)
+    directory = choose_working_directory(console, nip=nip)
+    report_archive_location(console, nip=nip, environment=environment)
     configuration = Configuration(
         nip=nip,
         environment=environment,
         keyring_backend=backend,
-        invoice_directory=directory,
+        working_directory=directory,
     )
     saved_to = config.save_configuration(configuration, path=configuration_file)
     summarize_configuration(console, configuration, saved_to=saved_to)

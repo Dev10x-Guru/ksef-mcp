@@ -10,6 +10,7 @@ from ksef_mcp.ksef_port.types import KsefEnvironment
 from ksef_mcp.metadata import SERVER_NAME
 from ksef_mcp.setup import client
 from ksef_mcp.storage import token_store
+from ksef_mcp.storage.archive import InvoiceArchive
 from tests.cli.conftest import NIP, TOKEN, Recorder, keyring_report
 from tests.invoices.test_statement import RecordingPort, RecordingSession, page_of
 from tests.support.synthetic import BUYER_NAME
@@ -132,30 +133,69 @@ def test_environment_rejects_a_number_past_the_list() -> None:
     assert onboarding.choose_environment(recorder.console) is KsefEnvironment.TEST
 
 
-def test_invoice_directory_is_created_and_reported(invoice_directory: Path) -> None:
-    recorder = Recorder(answers=[str(invoice_directory)])
+def test_working_directory_is_created_and_reported(working_directory: Path) -> None:
+    recorder = Recorder(answers=[str(working_directory)])
 
-    chosen = onboarding.choose_invoice_directory(recorder.console, nip=NIP)
+    chosen = onboarding.choose_working_directory(recorder.console, nip=NIP)
 
-    assert (chosen, chosen.is_dir()) == (invoice_directory, True)
+    assert (chosen, chosen.is_dir()) == (working_directory, True)
 
 
-def test_an_existing_invoice_directory_is_left_as_it_was(tmp_path: Path) -> None:
+def test_an_existing_working_directory_is_left_as_it_was(tmp_path: Path) -> None:
     shared = tmp_path / "wspolny"
     shared.mkdir(mode=0o755)
     recorder = Recorder(answers=[str(shared)])
 
-    onboarding.choose_invoice_directory(recorder.console, nip=NIP)
+    onboarding.choose_working_directory(recorder.console, nip=NIP)
 
     assert "zostawiam uprawnienia 0755" in recorder.transcript
 
 
-def test_invoice_directory_in_a_synced_folder_is_flagged(tmp_path: Path) -> None:
+def test_working_directory_in_a_synced_folder_is_flagged(tmp_path: Path) -> None:
     recorder = Recorder(answers=[str(tmp_path / "Dropbox" / "faktury")])
 
-    onboarding.choose_invoice_directory(recorder.console, nip=NIP)
+    onboarding.choose_working_directory(recorder.console, nip=NIP)
 
     assert "dropbox" in recorder.transcript
+
+
+def test_the_prompt_asks_about_statements_and_pdfs_not_about_invoices(
+    working_directory: Path,
+) -> None:
+    # GH-188: „Katalog na pobrane faktury" obiecywał XML-e, które trafiają
+    # gdzie indziej — i to po tej obietnicy podatnik oceniał kopię zapasową.
+    recorder = Recorder(answers=[str(working_directory)])
+
+    onboarding.choose_working_directory(recorder.console, nip=NIP)
+
+    assert recorder.prompts[0].startswith("Katalog roboczy na zestawienia i PDF-y")
+
+
+def test_onboarding_says_where_the_invoice_archive_really_is() -> None:
+    recorder = Recorder()
+
+    onboarding.report_archive_location(
+        recorder.console,
+        nip=NIP,
+        environment=KsefEnvironment.TEST,
+    )
+
+    assert (
+        str(InvoiceArchive(nip=NIP, environment=KsefEnvironment.TEST).invoice_directory)
+        in recorder.transcript
+    )
+
+
+def test_onboarding_says_the_archive_is_the_directory_to_back_up() -> None:
+    recorder = Recorder()
+
+    onboarding.report_archive_location(
+        recorder.console,
+        nip=NIP,
+        environment=KsefEnvironment.TEST,
+    )
+
+    assert "kopią zapasową" in recorder.transcript
 
 
 def test_onboarding_stops_when_no_keyring_is_available(
@@ -198,12 +238,12 @@ def completed_onboarding(
     usable_keyring: keyring_preflight.KeyringReport,
     accepting_token_store: list[tuple[str, str]],
     configuration_file: Path,
-    invoice_directory: Path,
+    working_directory: Path,
 ) -> tuple[int, Recorder]:
     # Four settings, then the three closing offers from GH-74 and GH-72:
     # register with the client, install the skill, check the connection.
     recorder = Recorder(
-        answers=[NIP, "", "", str(invoice_directory), "n", "n", ""],
+        answers=[NIP, "", "", str(working_directory), "n", "n", ""],
         secrets=[TOKEN],
     )
     code = cli.main(
@@ -222,13 +262,13 @@ def onboarding_with(
     usable_keyring: keyring_preflight.KeyringReport,
     accepting_token_store: list[tuple[str, str]],
     configuration_file: Path,
-    invoice_directory: Path,
+    working_directory: Path,
 ) -> Callable[[list[str]], Recorder]:
     """Onboarding driven to the end, with the three closing offers answered."""
 
     def run(closing_answers: list[str]) -> Recorder:
         recorder = Recorder(
-            answers=[NIP, "", "", str(invoice_directory), *closing_answers],
+            answers=[NIP, "", "", str(working_directory), *closing_answers],
             secrets=[TOKEN],
         )
         cli.main(
@@ -388,7 +428,7 @@ def onboarded_and_then_verified(
     usable_keyring: keyring_preflight.KeyringReport,
     token_kept_in_memory: dict[str, str],
     configuration_file: Path,
-    invoice_directory: Path,
+    working_directory: Path,
 ) -> tuple[int, Recorder, RecordingSession]:
     """Onboarding to the end, then `verify` on the same disk, in one run.
 
@@ -403,7 +443,7 @@ def onboarded_and_then_verified(
         lambda *, environment: RecordingPort(session_object=session, environment=environment),
     )
     recorder = Recorder(
-        answers=[NIP, "", "", str(invoice_directory), "n", "n", "t"],
+        answers=[NIP, "", "", str(working_directory), "n", "n", "t"],
         secrets=[TOKEN],
     )
     code = cli.main(
@@ -474,7 +514,7 @@ def test_onboarding_confirms_the_token_by_fingerprint(
 def test_onboarding_saves_the_configuration(
     completed_onboarding: tuple[int, Recorder],
     configuration_file: Path,
-    invoice_directory: Path,
+    working_directory: Path,
 ) -> None:
     stored = config.load_configuration(path=configuration_file)
 
@@ -482,7 +522,7 @@ def test_onboarding_saves_the_configuration(
         nip=NIP,
         environment=KsefEnvironment.TEST,
         keyring_backend="keyring.backends.SecretService",
-        invoice_directory=invoice_directory,
+        working_directory=working_directory,
     )
 
 
@@ -507,10 +547,10 @@ def test_onboarding_asks_again_when_the_nip_is_not_one(
     usable_keyring: keyring_preflight.KeyringReport,
     accepting_token_store: list[tuple[str, str]],
     configuration_file: Path,
-    invoice_directory: Path,
+    working_directory: Path,
 ) -> None:
     recorder = Recorder(
-        answers=["nie-nip", NIP, "", "", str(invoice_directory), "n", "n", ""],
+        answers=["nie-nip", NIP, "", "", str(working_directory), "n", "n", ""],
         secrets=[TOKEN],
     )
 
@@ -530,12 +570,12 @@ def test_onboarding_stores_one_spelling_however_the_nip_was_typed(
     usable_keyring: keyring_preflight.KeyringReport,
     accepting_token_store: list[tuple[str, str]],
     configuration_file: Path,
-    invoice_directory: Path,
+    working_directory: Path,
 ) -> None:
     # GH-111: the grouped spelling used to become both a second keyring entry
     # and a second archive directory, with nothing said about either.
     recorder = Recorder(
-        answers=["123-456-78-90", "", "", str(invoice_directory), "n", "n", ""],
+        answers=["123-456-78-90", "", "", str(working_directory), "n", "n", ""],
         secrets=[TOKEN],
     )
 

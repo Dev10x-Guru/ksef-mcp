@@ -119,18 +119,18 @@ def configuration_file(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def invoice_directory(tmp_path: Path) -> Path:
-    return tmp_path / "faktury"
+def working_directory(tmp_path: Path) -> Path:
+    return tmp_path / "zestawienia"
 
 
 @pytest.fixture
-def configured(configuration_file: Path, invoice_directory: Path) -> Path:
+def configured(configuration_file: Path, working_directory: Path) -> Path:
     config.save_configuration(
         Configuration(
             nip=NIP,
             environment=KsefEnvironment.TEST,
             keyring_backend="keyring.backends.SecretService",
-            invoice_directory=invoice_directory,
+            working_directory=working_directory,
         ),
         path=configuration_file,
     )

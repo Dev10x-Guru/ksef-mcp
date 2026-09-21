@@ -15,7 +15,7 @@ def configuration(tmp_path: Path) -> Configuration:
         nip="1234567890",
         environment=KsefEnvironment.TEST,
         keyring_backend="keyring.backends.SecretService",
-        invoice_directory=tmp_path / "faktury",
+        working_directory=tmp_path / "zestawienia",
     )
 
 
@@ -52,6 +52,17 @@ def test_saved_configuration_is_readable_json(saved_configuration: Path) -> None
     stored = json.loads(saved_configuration.read_text(encoding="utf-8"))
 
     assert stored["environment"] == "test"
+
+
+def test_the_working_directory_keeps_the_key_written_so_far(
+    saved_configuration: Path,
+    configuration: Configuration,
+) -> None:
+    # GH-188 przemianowało pole, nie klucz: plik zapisany wcześniej ma zostać
+    # czytelny bez schematu 2 i bez ponownego onboardingu.
+    stored = json.loads(saved_configuration.read_text(encoding="utf-8"))
+
+    assert stored["invoice_directory"] == str(configuration.working_directory)
 
 
 def test_saved_configuration_is_not_world_readable(saved_configuration: Path) -> None:
@@ -136,7 +147,7 @@ def test_an_interrupted_write_leaves_the_previous_configuration_intact(
                 nip="9876543210",
                 environment=KsefEnvironment.DEMO,
                 keyring_backend="keyring.backends.fail",
-                invoice_directory=saved_configuration.parent,
+                working_directory=saved_configuration.parent,
             ),
             path=saved_configuration,
         )
@@ -152,30 +163,30 @@ def test_a_saved_configuration_leaves_no_staging_file_behind(
     ]
 
 
-def test_invoice_directory_is_created_private(tmp_path: Path) -> None:
-    prepared = config.prepare_invoice_directory(tmp_path / "faktury" / "1234567890")
+def test_a_prepared_directory_is_created_private(tmp_path: Path) -> None:
+    prepared = config.prepare_directory(tmp_path / "zestawienia" / "1234567890")
 
-    assert stat.S_IMODE(prepared.path.stat().st_mode) == config.INVOICE_DIRECTORY_MODE
-
-
-def test_a_created_invoice_directory_says_so(tmp_path: Path) -> None:
-    assert config.prepare_invoice_directory(tmp_path / "faktury").created is True
+    assert stat.S_IMODE(prepared.path.stat().st_mode) == config.WORKING_DIRECTORY_MODE
 
 
-def test_an_existing_invoice_directory_keeps_its_permissions(tmp_path: Path) -> None:
+def test_a_created_directory_says_so(tmp_path: Path) -> None:
+    assert config.prepare_directory(tmp_path / "zestawienia").created is True
+
+
+def test_an_existing_directory_keeps_its_permissions(tmp_path: Path) -> None:
     shared = tmp_path / "wspolny"
     shared.mkdir(mode=0o755)
 
-    prepared = config.prepare_invoice_directory(shared)
+    prepared = config.prepare_directory(shared)
 
     assert (prepared.created, prepared.mode) == (False, 0o755)
 
 
-def test_invoice_directory_preparation_is_repeatable(tmp_path: Path) -> None:
-    target = tmp_path / "faktury"
-    config.prepare_invoice_directory(target)
+def test_directory_preparation_is_repeatable(tmp_path: Path) -> None:
+    target = tmp_path / "zestawienia"
+    config.prepare_directory(target)
 
-    assert config.prepare_invoice_directory(target).path.is_dir()
+    assert config.prepare_directory(target).path.is_dir()
 
 
 @pytest.mark.parametrize(

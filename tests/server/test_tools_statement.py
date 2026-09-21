@@ -95,7 +95,7 @@ def test_the_statement_refuses_before_onboarding(monkeypatch: pytest.MonkeyPatch
 def test_the_statement_lands_in_the_configured_working_directory(
     exported: StatementResult, configured: Configuration
 ) -> None:
-    assert StubComposer.directories == [configured.invoice_directory]
+    assert StubComposer.directories == [configured.working_directory]
 
 
 def test_a_caller_may_declare_the_directory_for_one_call(composing: None, tmp_path: Path) -> None:
