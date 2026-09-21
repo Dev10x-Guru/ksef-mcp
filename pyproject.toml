@@ -141,7 +141,7 @@ layers = [
     "keyring_preflight | paths",
     "ksef_port",
     "diagnostics",
-    "errors | metadata",
+    "clock | errors | metadata",
 ]
 
 [[tool.importlinter.contracts]]
