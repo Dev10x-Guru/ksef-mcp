@@ -83,6 +83,14 @@ jobs:
       - name: Format
         run: uv run ruff format --check .
 
+      # Kontrakty kierunku importów żyją w `pyproject.toml`, obok reguł
+      # ruffa, i ten krok jest jedynym miejscem, które je egzekwuje. Należy
+      # do zadania `lint`, a nie do osobnego: dzieli z nim `uv sync`, a
+      # `all-checks` już po nim dziedziczy, więc ochrona wchodzi bez
+      # dokładania kolejnej nazwy do reguły ochrony gałęzi.
+      - name: Imports
+        run: uv run lint-imports
+
   # The ADR provenance tooling in bin/ carries its own pytest suite and is
   # deliberately excluded from the package's testpaths and coverage, so it
   # needs a separate invocation or it would never run.

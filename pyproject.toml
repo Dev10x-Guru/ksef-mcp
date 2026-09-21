@@ -70,6 +70,12 @@ packages = ["src/ksef_mcp"]
 dev = [
     "anyio==4.15.1",
     "bump-my-version==1.5.1",
+    # Ruff's `E, F, I, UP, B, ANN, RUF` selection says nothing about which
+    # package may import which — `flake8-tidy-imports` bans symbols, not
+    # directions. The layout settled by #129/#131/#132/#133 is therefore held
+    # up by review discipline alone, and the first backwards import would pass
+    # CI unremarked (#150).
+    "import-linter==2.15",
     # The scanner belongs in the lock file rather than in a `--with` flag on
     # the workflow: a scanner pinned only in CI is a version nobody updates,
     # and a stale advisory database is the one failure this job cannot report.
@@ -102,6 +108,75 @@ exclude_also = ["if TYPE_CHECKING:"]
 
 [tool.coverage.html]
 directory = ".tmp/coverage"
+
+# The layout is described here in the direction it is allowed to be read:
+# every layer may import the ones below it and none of the ones above. The
+# order is derived from the tree as it stands, not from an ideal one — a
+# contract that needs an `ignore_imports` exception to pass protects nothing,
+# so where the tree genuinely holds a two-way edge the modules share a layer
+# and the coupling stays visible here instead of being waived (#150).
+[tool.importlinter]
+root_package = "ksef_mcp"
+
+[[tool.importlinter.contracts]]
+name = "Zależności biegną w dół, nigdy w górę"
+type = "layers"
+containers = ["ksef_mcp"]
+# `exhaustive` is the half that keeps this honest over time: a new top-level
+# module has to be placed in the order deliberately, instead of joining the
+# package as an unranked island nothing constrains.
+exhaustive = true
+# `:` means the modules of one layer may read each other, `|` that they may
+# not. Two such pairs sit in `allowance : config : invoices : storage` and are
+# the only remaining two-way edges in the package: `storage.archive` reads
+# `invoices.package`, while `invoices` reads all of `storage`; and
+# `storage.period_cache` reads `allowance`, while `allowance` and `config`
+# read `storage.durability`.
+layers = [
+    "cli",
+    "server",
+    "messages",
+    "rendering | retention | setup",
+    "allowance : config : invoices : storage",
+    "keyring_preflight | paths",
+    "ksef_port",
+    "diagnostics",
+    "errors | metadata",
+]
+
+[[tool.importlinter.contracts]]
+name = "Konteksty faktur, renderu i konfiguracji klienta nie znają się wzajemnie"
+type = "independence"
+modules = [
+    "ksef_mcp.invoices",
+    "ksef_mcp.rendering",
+    "ksef_mcp.setup",
+]
+
+# ADR-102 in the direction the suite could not check: `tests/
+# test_port_substitutability.py` guards the port against the `ksef2` SDK
+# below it, this guards it against the project above it. The issue proposing
+# the contract allowed `config` through — that edge was cut by #122, so the
+# port today reads exactly two modules from above, and the contract records
+# the tighter truth rather than the older plan.
+[[tool.importlinter.contracts]]
+name = "Port KSeF nie sięga po nic ponad sobą poza wyjątkami i dziennikiem"
+type = "forbidden"
+source_modules = ["ksef_mcp.ksef_port"]
+forbidden_modules = [
+    "ksef_mcp.allowance",
+    "ksef_mcp.cli",
+    "ksef_mcp.config",
+    "ksef_mcp.invoices",
+    "ksef_mcp.keyring_preflight",
+    "ksef_mcp.messages",
+    "ksef_mcp.paths",
+    "ksef_mcp.rendering",
+    "ksef_mcp.retention",
+    "ksef_mcp.server",
+    "ksef_mcp.setup",
+    "ksef_mcp.storage",
+]
 
 [tool.ruff]
 line-length = 100
