@@ -10,12 +10,10 @@ from pathlib import Path
 from typing import Final
 
 from ksef_mcp import (
-    client,
     config,
     keyring_preflight,
     ksef_port,
     messages,
-    skill,
 )
 from ksef_mcp.allowance import Allowance
 from ksef_mcp.config import Configuration
@@ -32,7 +30,8 @@ from ksef_mcp.retention import (
     purge_entry,
 )
 from ksef_mcp.server import main as run_mcp_server
-from ksef_mcp.skill import SkillScope
+from ksef_mcp.setup import client, skill
+from ksef_mcp.setup.skill import SkillScope
 from ksef_mcp.storage import token_store
 from ksef_mcp.storage.archive import InvoiceArchive
 from ksef_mcp.storage.audit import AuditTrail, Authorisation, AuthorisationBasis
