@@ -59,10 +59,10 @@ from pathlib import Path
 from typing import Final
 
 from ksef_mcp.clock import now_utc
+from ksef_mcp.durability import exclusive_write, require_schema
 from ksef_mcp.errors import KsefMcpError
 from ksef_mcp.ksef_port.types import KsefEnvironment, Period
 from ksef_mcp.paths import SubjectScope
-from ksef_mcp.storage.durability import exclusive_write, require_schema
 
 AUDIT_FILE: Final[str] = "audit.jsonl"
 

@@ -25,6 +25,7 @@ from typing import Final, Self
 
 from ksef_mcp.clock import now_utc
 from ksef_mcp.diagnostics import technical_log
+from ksef_mcp.durability import JsonDocumentStore, SchemaMismatch
 from ksef_mcp.ksef_port.budget import HOUR, QueryBudget
 from ksef_mcp.ksef_port.errors import KsefRequestRejected
 from ksef_mcp.ksef_port.guard import GuardedSession
@@ -38,7 +39,6 @@ from ksef_mcp.ksef_port.types import (
     SessionCeilings,
 )
 from ksef_mcp.paths import SubjectScope
-from ksef_mcp.storage.durability import JsonDocumentStore, SchemaMismatch
 
 LEDGER_FILE: Final[str] = "budget.json"
 

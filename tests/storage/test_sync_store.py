@@ -14,6 +14,8 @@ from pathlib import Path
 
 import pytest
 
+from ksef_mcp import durability
+from ksef_mcp.durability import WriteExclusivityUnavailable
 from ksef_mcp.ksef_port import (
     ContinuationPoint,
     ExportEncryption,
@@ -22,8 +24,6 @@ from ksef_mcp.ksef_port import (
     KsefEnvironment,
     SubjectRole,
 )
-from ksef_mcp.storage import durability
-from ksef_mcp.storage.durability import WriteExclusivityUnavailable
 from ksef_mcp.storage.sync_store import (
     MINIMUM_INTERVAL,
     SCHEMA_VERSION,

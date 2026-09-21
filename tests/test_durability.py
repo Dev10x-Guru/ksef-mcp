@@ -16,8 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from ksef_mcp.errors import KsefMcpError
-from ksef_mcp.storage.durability import (
+from ksef_mcp.durability import (
     LOCK_FILE,
     STAGING_SUFFIX,
     JsonDocumentStore,
@@ -29,6 +28,7 @@ from ksef_mcp.storage.durability import (
     reserved_staging,
     written_atomically,
 )
+from ksef_mcp.errors import KsefMcpError
 
 DIRECTORY_MODE = 0o700
 

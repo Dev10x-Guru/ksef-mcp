@@ -56,6 +56,7 @@ from ksef_mcp.config import (
     cloud_sync_marker,
     prepare_invoice_directory,
 )
+from ksef_mcp.durability import written_atomically
 from ksef_mcp.errors import KsefMcpError, KsefMcpInputRejected
 from ksef_mcp.invoices.listing import CurrencyTotal, gross_totals, invoices_phrase
 from ksef_mcp.ksef_port.protocol import KsefPort
@@ -82,7 +83,6 @@ from ksef_mcp.storage.audit import (
     Authorisation,
     Disclosure,
 )
-from ksef_mcp.storage.durability import written_atomically
 from ksef_mcp.storage.period_cache import PeriodCache, PeriodMetadataReader, cache_root
 
 # The counterparty on every one of the eight columns is the seller, so the

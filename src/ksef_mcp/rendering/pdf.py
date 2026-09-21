@@ -22,6 +22,7 @@ from importlib import resources
 from pathlib import Path
 from typing import Final
 
+from ksef_mcp.durability import replaced_durably, reserved_staging
 from ksef_mcp.errors import KsefMcpError
 from ksef_mcp.ksef_port.errors import InvalidKsefIdentifier
 from ksef_mcp.ksef_port.types import KsefEnvironment, KsefNumber
@@ -33,7 +34,6 @@ from ksef_mcp.storage.audit import (
     Authorisation,
     Disclosure,
 )
-from ksef_mcp.storage.durability import replaced_durably, reserved_staging
 
 PACKAGE_NAME: Final[str] = "ksef_mcp.rendering"
 

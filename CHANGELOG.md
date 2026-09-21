@@ -48,10 +48,14 @@ niż jedna zmiana łamiąca.
   - moduł `token_store` przeniesiony z `ksef_mcp.token_store` do
     `ksef_mcp.storage.token_store`,
   - moduł `storage` przeniesiony z `ksef_mcp.storage` do
-    `ksef_mcp.storage.durability`. Ta jedna przeprowadzka zmienia
-    nazwę modułu, a nie tylko jego miejsce: nazwa `ksef_mcp.storage`
-    należy teraz do pakietu, a nazwa `durability` mówi, co ten moduł
-    naprawdę trzyma — wyłączność zapisu i trwałość podmiany.
+    `ksef_mcp.durability`. Ta jedna przeprowadzka zmienia nazwę
+    modułu, a nie tylko jego miejsce: nazwa `ksef_mcp.storage` należy
+    teraz do pakietu, a nazwa `durability` mówi, co ten moduł naprawdę
+    trzyma — wyłączność zapisu i trwałość podmiany. Docelowa ścieżka
+    jest na szczycie pakietu, nie w `ksef_mcp.storage.durability`
+    (GH-233): przez te prymitywy pisze każdy kontekst, więc moduł nie
+    należy do żadnego. Kto śledził tę sekcję przed wydaniem, przestawia
+    się z `ksef_mcp.storage.durability` na `ksef_mcp.durability`.
 
 - Moduły kontekstu faktur zebrano w pakiecie `ksef_mcp.invoices`.
   Podział jest po kontekstach, nie warstwowy: przy około sześciu i pół
@@ -111,6 +115,19 @@ niż jedna zmiana łamiąca.
   Sam odczyt paczki zostaje w `ksef_mcp.invoices.package`
   ([ADR-104](docs/adr/104-odczyt-paczki-eksportu-i-cykl-zycia-klucza.md)
   §1) — na dół schodzi kształt wyniku, nie logika.
+
+- Prymitywy trwałego zapisu wyszły z pakietu `ksef_mcp.storage` na
+  szczyt pakietu. Pisze przez nie każdy z czterech kontekstów, a poza
+  nimi jeszcze `config` i `allowance`, więc moduł nie należy do
+  żadnego — a trzymany w `storage` zmuszał swoich czytelników do
+  sięgania w górę (GH-233):
+
+  - moduł `durability` przeniesiony z `ksef_mcp.storage.durability` do
+    `ksef_mcp.durability`.
+
+  Poprawkę do podziału na pakiety notuje
+  [ADR-110](docs/adr/110-podzial-pakietu-po-kontekstach.md) w miejscu,
+  w którym zapadła pierwotna decyzja.
 
 - Import samego pakietu `ksef_mcp` nie buduje już serwera MCP. Ta
   pozycja różni się od czterech powyżej: nic się nie przeniosło,

@@ -37,6 +37,7 @@ from platformdirs import user_cache_path
 
 from ksef_mcp.allowance import Allowance
 from ksef_mcp.clock import now_utc
+from ksef_mcp.durability import JsonDocumentStore, SchemaMismatch, exclusive_write
 from ksef_mcp.ksef_port.budget import QueryBudget
 from ksef_mcp.ksef_port.protocol import KsefSession
 from ksef_mcp.ksef_port.types import (
@@ -52,7 +53,6 @@ from ksef_mcp.ksef_port.types import (
 )
 from ksef_mcp.metadata import SERVER_NAME
 from ksef_mcp.paths import SubjectScope
-from ksef_mcp.storage.durability import JsonDocumentStore, SchemaMismatch, exclusive_write
 
 PERIOD_DIRECTORY: Final[str] = "periods"
 
