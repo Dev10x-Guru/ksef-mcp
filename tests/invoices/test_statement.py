@@ -1,13 +1,14 @@
-"""Czy miesiąc da się oddać księgowej jednym plikiem, któremu można zaufać.
+"""Whether a month can be handed to the accountant as one trustworthy file.
 
-Sprawdzane są tu cztery niezmienniki i wszystkie cztery wynikają z tego, że plik
-opuszcza maszynę. Kwota przechodzi z KSeF-u do komórki bez straty grosza i bez
-float-a po drodze. Katalog roboczy jest produktem, więc jego skasowanie nie
-rusza ani archiwum, ani cache (D-032) — i katalog wewnątrz któregokolwiek z tych
-korzeni jest odrzucany, zamiast być cicho przyjęty. KOD I powstaje ze skrótu
-pliku, który archiwum naprawdę trzyma, a nie z wiersza metadanych o tym pliku.
-Braki są nazwane: niekompletny okres, kilka walut i pozycje bez pliku wracają w
-ostrzeżeniach, bo CSV nie ma gdzie pomieścić zastrzeżenia (D-023).
+Four invariants are checked here, and all four follow from the file leaving
+the machine. An amount travels from KSeF to the cell without losing a grosz
+and without a float along the way. The working directory is a product, so
+deleting it must not touch the archive or the cache (D-032) — and a directory
+inside either of those roots is refused rather than silently accepted. KOD I
+is derived from the digest of the file the archive actually holds, not from a
+metadata row about that file. Gaps are named: an incomplete period, several
+currencies, and rows with no file come back as warnings, because the CSV has
+nowhere to hold a caveat (D-023).
 """
 
 import json
@@ -115,7 +116,7 @@ def page_of(
 
 @dataclass
 class RecordingSession:
-    """Liczy, ile z dwudziestu zapytań na godzinę naprawdę poszło do KSeF-u."""
+    """Counts how many of the twenty requests per hour actually reached KSeF."""
 
     page: MetadataPage
     asked: list[SubjectRole] = field(default_factory=list)
@@ -228,8 +229,9 @@ def written(statement: Statement) -> str:
     ],
 )
 def test_an_amount_reaches_the_cell_without_losing_a_grosz(value: Decimal, expected: str) -> None:
-    # Notacja wykładnicza i zaokrąglenie to dwa sposoby na rozjazd z Aplikacją
-    # Podatnika, których nikt nie przypisałby do generatora CSV.
+    # Exponential notation and rounding are two ways to drift from the
+    # taxpayer's own application, neither of which anyone would blame on
+    # the CSV generator.
     assert amount(value) == expected
 
 
@@ -263,16 +265,16 @@ def test_the_window_covers_the_whole_month() -> None:
 
 
 def test_the_window_asks_by_issue_date() -> None:
-    # Data trwałego zapisu wrzuciłaby fakturę do miesiąca, w którym KSeF
-    # skończył ją przetwarzać, a nie do tego, do którego należy.
+    # The permanent-storage date would drop an invoice into the month KSeF
+    # finished processing it, not the month it actually belongs to.
     assert SEPTEMBER.queried.date_type is DateType.ISSUE
 
 
 def test_the_window_ends_on_the_last_day_of_the_month() -> None:
-    # Okno zestawienia ma obejmować dokładnie miesiąc, o który zapytano.
-    # Sprawdzenie „ma koniec" byłoby od GH-84 tautologią — koniec jest wymagany
-    # przez typ — więc test pilnuje tego, co nadal może się zepsuć: którego dnia
-    # okno się kończy.
+    # The statement's window must cover exactly the month asked for. Since
+    # GH-84, checking "it has an end" would be a tautology — an end is
+    # required by the type — so this test guards what can still break:
+    # which day the window ends on.
     assert SEPTEMBER.queried.date_to.date() == date(2026, 9, 30)
 
 
@@ -299,14 +301,14 @@ def test_a_verification_code_takes_its_digest_from_the_index(archived: InvoiceAr
 def test_a_verification_code_falls_back_to_the_file_the_index_never_heard_of(
     archived: InvoiceArchive,
 ) -> None:
-    """Indeks bywa starszy niż katalog, który opisuje — pełny odczyt zostaje siatką."""
+    """The index can be older than the directory it describes — a full read is the safety net."""
     code = verification_code(invoice=synthetic_metadata(1), archive=archived, digests={})
 
     assert code is not None and code.content_hash == digest_of(synthetic_body(1))
 
 
 def test_an_unreadable_index_does_not_refuse_the_statement(archived: InvoiceArchive) -> None:
-    """Indeks jest skrótem tego modułu, a nie jego źródłem prawdy — są nim pliki."""
+    """The index is this module's cache, not its source of truth — the files are."""
     archived.index_path.write_text(
         json.dumps({"schema_version": 99, "entries": []}), encoding="utf-8"
     )
@@ -315,7 +317,7 @@ def test_an_unreadable_index_does_not_refuse_the_statement(archived: InvoiceArch
 
 
 def test_an_invoice_outside_the_archive_gets_no_code(archived: InvoiceArchive) -> None:
-    """Obecność treści sprawdza dysk, nigdy indeks: kod jest twierdzeniem o bajtach."""
+    """Content presence is checked on disk, never in the index: the code asserts bytes."""
     assert (
         verification_code(
             invoice=synthetic_metadata(2),
@@ -352,13 +354,13 @@ def test_a_seller_without_a_name_leaves_the_field_empty(archived: InvoiceArchive
 
 
 def test_a_row_with_no_archived_body_says_so_in_as_many_words() -> None:
-    # Pusta komórka wyglądałaby jak faktura, której skrótu nie policzono.
+    # An empty cell would look like an invoice whose digest was never computed.
     assert StatementRow(invoice=synthetic_metadata(1), code=None).cells[-1] == NO_ARCHIVED_BODY
 
 
 def test_a_row_names_the_currency_its_amounts_are_in(archived: InvoiceArchive) -> None:
-    # Bez tego miesiąc z fakturą w euro obok złotówkowej sumował się w jedną
-    # liczbę, która nie znaczyła nic (#63).
+    # Without this, a month with an invoice in euros next to one in zloty
+    # summed into a single number that meant nothing (#63).
     row = rows_for(invoices=(synthetic_metadata(1),), archive=archived)[0]
 
     assert row.cells[COLUMNS.index("Waluta")] == "PLN"
@@ -371,8 +373,8 @@ def test_the_file_opens_with_a_header_of_every_column() -> None:
 
 
 def test_the_file_opens_with_a_byte_order_mark() -> None:
-    # Bez niego polski Excel czyta UTF-8 jako stronę kodową i nazwy
-    # kontrahentów przychodzą rozsypane.
+    # Without it, Polish Excel reads UTF-8 as a code page and counterparty
+    # names come out garbled.
     assert rendered(()).startswith("﻿")
 
 
@@ -381,7 +383,7 @@ def test_the_file_name_says_what_the_attachment_is() -> None:
 
 
 def test_the_file_name_carries_the_warning_about_a_shortened_period() -> None:
-    # Ostrzeżenie z odpowiedzi narzędzia nie dojeżdża do księgowej — plik tak.
+    # The warning in the tool's response never reaches the accountant — the file does.
     assert (
         statement_file_name(period=SEPTEMBER, nip=NIP, complete=False)
         == "zestawienie-2026-09-1234567890-NIEKOMPLETNE.csv"
@@ -425,8 +427,8 @@ def test_a_new_working_directory_is_created_0700(working: Path) -> None:
 
 
 def test_an_existing_directory_keeps_the_permissions_it_had(tmp_path: Path) -> None:
-    # Ktoś mógł wskazać katalog domowy albo współdzielony; ciche zacieśnienie
-    # uprawnień to zmiana, o którą nie prosił.
+    # Someone may have pointed at a home directory or a shared one; silently
+    # tightening its permissions is a change nobody asked for.
     existing = tmp_path / "wspolny"
     existing.mkdir(mode=0o755)
 
@@ -491,9 +493,9 @@ def test_a_complete_statement_leaves_the_sentence_with_the_sum_alone(statement: 
 def test_the_sentence_with_the_sum_says_itself_that_the_period_is_short(
     composer: StatementComposer, working: Path
 ) -> None:
-    # Produktem tego narzędzia jest liczba wysyłana księgowej, a suma z części
-    # miesiąca wygląda tak samo jak pełna — ostrzeżenie obok bywa czytane po
-    # decyzji albo wcale.
+    # This tool's product is the number sent to the accountant, and a sum
+    # from part of a month looks exactly like a full one — the warning next
+    # to it is often read after the decision, or never.
     composer.port.session_object.page = replace(
         composer.port.session_object.page,
         has_more=False,
@@ -546,8 +548,8 @@ def test_a_single_currency_needs_no_caveat(statement: Statement) -> None:
 def test_several_currencies_caution_about_the_gross_column(
     composer: StatementComposer, working: Path
 ) -> None:
-    # Kolumny waluty nie ma (rozstrzygnięte w #41), więc faktura w EUR i w PLN
-    # dają w kolumnie Brutto liczby nie do odróżnienia.
+    # There is no currency column (settled in #41), so an invoice in EUR and
+    # one in PLN put indistinguishable numbers in the Gross column.
     composer.port.session_object.page = MetadataPage(
         invoices=(synthetic_metadata(1), replace(synthetic_metadata(2), currency="EUR")),
         has_more=False,
@@ -569,9 +571,9 @@ def test_a_period_without_corrections_needs_no_caveat(archived: InvoiceArchive) 
 def test_a_correction_in_the_period_cautions_about_the_gross_total(
     archived: InvoiceArchive,
 ) -> None:
-    # Korekta niesie różnicę wobec faktury korygowanej, a nie tę fakturę na
-    # nowo (schemat MF, P_15), więc suma po wszystkich wierszach jest sumą
-    # dokumentów, nie zobowiązania.
+    # A correction carries the difference against the invoice it corrects,
+    # not that invoice restated (MF schema, P_15), so the sum across all
+    # rows is a sum of documents, not of liability.
     rows = rows_for(
         invoices=(
             synthetic_metadata(1),
@@ -584,8 +586,9 @@ def test_a_correction_in_the_period_cautions_about_the_gross_total(
 
 
 def test_a_correction_caveat_names_which_row_it_means(archived: InvoiceArchive) -> None:
-    # Bez numeru czytelnik szuka korekty wśród stu trzydziestu wierszy, a
-    # ostrzeżenie, które każe szukać, jest ostrzeżeniem pomijanym.
+    # Without a number, the reader hunts for the correction among a hundred
+    # and thirty rows, and a warning that makes someone hunt is a warning
+    # that gets skipped.
     rows = rows_for(
         invoices=(synthetic_metadata(7, document_type=DocumentType.KOR_ZAL),),
         archive=archived,
@@ -607,8 +610,9 @@ def test_a_correction_caveat_names_which_row_it_means(archived: InvoiceArchive) 
 def test_every_kind_of_correction_is_recognised(
     archived: InvoiceArchive, document_type: DocumentType
 ) -> None:
-    # FA, zaliczkowa, rozliczeniowa, PEF i FA_RR mają własny rodzaj korygujący.
-    # Sprawdzenie napisane pod samo `kor` przeszłoby testy i przepuściło cztery.
+    # FA, advance, settlement, PEF and FA_RR each have their own correction
+    # kind. A check written against bare `kor` would pass and let four slip
+    # through.
     rows = rows_for(
         invoices=(synthetic_metadata(1, document_type=document_type),), archive=archived
     )
@@ -633,8 +637,9 @@ def test_an_ordinary_document_is_not_a_correction(
 def test_an_unrecognised_kind_does_not_pass_for_an_ordinary_invoice(
     archived: InvoiceArchive,
 ) -> None:
-    # Tabela rodzajów już rosła. Milczenie o dokumencie, którego ta wersja nie
-    # umie zaklasyfikować, przepuściłoby przyszły rodzaj korygujący.
+    # The table of kinds has already grown once. Staying silent about a
+    # document this version cannot classify would let a future correction
+    # kind slip through unnoticed.
     rows = rows_for(
         invoices=(synthetic_metadata(1, document_type=DocumentType.UNKNOWN),),
         archive=archived,
@@ -695,8 +700,8 @@ def test_the_total_agrees_with_the_gross_column_of_the_file(
 def test_the_statement_asks_ksef_only_about_the_buyer_role(
     statement: Statement, session: RecordingSession
 ) -> None:
-    # Kontrahentem w każdej z ośmiu kolumn jest sprzedawca, więc podmiot
-    # pytający jest nabywcą — jedno zapytanie zamiast czterech.
+    # The counterparty in every one of the eight columns is the seller, so
+    # the querying subject is the buyer — one query instead of four.
     assert session.asked == [SubjectRole.BUYER]
 
 
@@ -775,21 +780,21 @@ def test_a_period_cut_short_comes_back_with_a_caveat(
 
 
 def test_the_file_carries_no_invoice_content(written: str) -> None:
-    # FA(2)/FA(3) to dane osobowe kontrahenta i nie przekraczają tej granicy
-    # (D-011) — do CSV trafia skrót pliku, nigdy jego zawartość.
+    # FA(2)/FA(3) is the counterparty's personal data and does not cross this
+    # boundary (D-011) — the CSV gets the file's digest, never its content.
     assert "<Faktura" not in written
 
 
 def test_the_file_carries_no_local_paths(written: str, archived: InvoiceArchive) -> None:
-    # Ścieżka po przesłaniu jest bezużyteczna albo myląca; niesie ją odpowiedź
-    # narzędzia, nie załącznik (D-011).
+    # A local path is useless or misleading once uploaded; the tool's
+    # response carries it, not the attachment (D-011).
     assert str(archived.invoice_directory) not in written
 
 
 def test_deleting_the_working_directory_touches_neither_archive_nor_cache(
     statement: Statement, archived: InvoiceArchive, cache: PeriodCache, working: Path
 ) -> None:
-    # Sedno D-032: katalog roboczy jest produktem, magazyn jest wewnętrzny.
+    # The heart of D-032: the working directory is a product, the storage is internal.
     body = archived.invoice_directory / f"{synthetic_number(1)}.xml"
     remembered = cache.path_for(period=SEPTEMBER.queried, subject_role=SubjectRole.BUYER)
 

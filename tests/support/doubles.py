@@ -39,9 +39,9 @@ class FakeMetadata:
     gross_amount: float
     vat_amount: float
     currency: str
-    # Wartość SDK-owa, nie drutowa: `ksef2` tłumaczy `Kor` na `kor`, zanim
-    # rekord dotrze do adaptera, więc atrapa mówiąca `Kor` sprawdzałaby napis,
-    # którego port nigdy nie zobaczy.
+    # The SDK's own value, not the wire one: `ksef2` translates `Kor` to
+    # `kor` before the record reaches the adapter, so a double saying `Kor`
+    # would be checking a spelling the port never sees.
     invoice_type: InvoiceType = "vat"
 
 
