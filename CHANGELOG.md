@@ -96,6 +96,24 @@ niż jedna zmiana łamiąca.
   Uzasadnienie całego podziału na pakiety opisuje
   [ADR-110](docs/adr/110-podzial-pakietu-po-kontekstach.md).
 
+- Import samego pakietu `ksef_mcp` nie buduje już serwera MCP. Ta
+  pozycja różni się od czterech powyżej: nic się nie przeniosło,
+  ubyła natomiast fasada. `ksef_mcp/__init__.py` re-eksportował
+  `server`, `main` i `ServerInfo`, a `server/app.py` tworzy instancję
+  `MCPServer` i rejestruje narzędzia już na poziomie modułu — więc
+  odczytanie numeru wersji przez `from ksef_mcp import VERSION`
+  wciągało czternaście modułów i konstruowało serwer. Niweczyło to
+  wysiłek pięciu miejsc odraczających import `ksef2` (GH-154).
+
+  Wprost: `import ksef_mcp; ksef_mcp.main()` przestaje działać.
+  Zamiast tego `from ksef_mcp.cli import main` albo skrypt konsolowy
+  `ksef-mcp`. Na szczycie pakietu zostają wyłącznie `SERVER_NAME`
+  i `VERSION`.
+
+  Ścieżka `uvx ksef-mcp` nie jest dotknięta — skrypt konsolowy celuje
+  w `ksef_mcp.cli:main`, nie w fasadę pakietu. Serwer i jego symbole
+  pozostają dostępne pod `ksef_mcp.server`.
+
 ### Dodane
 
 - Zestawienie okresu ostrzega, gdy w okresie jest faktura korygująca.
