@@ -50,7 +50,8 @@ plików obsługiwanych przez agenty domenowe.
 11. **Konwencje async/współbieżności** — limity czasu dla wywołań
     sieciowych do KSeF, brak nieograniczonych ponowień wobec żywego
     punktu końcowego
-12. **Uchwyty narzędzi MCP** — `src/ksef_mcp/server.py` oraz wszelkie
+12. **Uchwyty narzędzi MCP** — `src/ksef_mcp/server/tools_*.py`, ramka
+    wywołania w `src/ksef_mcp/server/app.py` oraz wszelkie
     uchwyty oznaczone `@tool` muszą walidować dane wejściowe i
     delegować wywołania KSeF do modułu klienta/usługi, a nie wywoływać
     `httpx`/`requests` bezpośrednio w uchwycie
