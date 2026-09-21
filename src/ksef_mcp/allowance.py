@@ -19,10 +19,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Final, Self
 
+from ksef_mcp.clock import now_utc
 from ksef_mcp.diagnostics import technical_log
 from ksef_mcp.ksef_port.budget import HOUR, QueryBudget
 from ksef_mcp.ksef_port.errors import KsefRequestRejected
@@ -69,10 +70,6 @@ REFUSAL_LIMIT: Final[int] = 5
 # hour the allowance is counted in — not a number invented for the occasion, and
 # not a guess at when the registry will relent (D-017).
 REFUSAL_COOLDOWN: Final[timedelta] = HOUR
-
-
-def now_utc() -> datetime:
-    return datetime.now(tz=UTC)
 
 
 # All three documents here answer a mismatch the same way, so they share one

@@ -35,7 +35,6 @@ from ksef_mcp.invoices.review import (
     SubjectRoleReview,
     arrived_before_this_month,
     assess,
-    now_utc,
     review_period,
 )
 from ksef_mcp.ksef_port import (
@@ -637,7 +636,3 @@ def test_an_unfetched_subject_role_says_it_does_not_know(
     reviewed = reviewer.run(nip=NIP, token=CREDENTIAL)
 
     assert "nie wiem, czy coś doszło" in reviewed.subject_roles[0].message
-
-
-def test_the_default_clock_reads_utc() -> None:
-    assert now_utc().tzinfo is UTC

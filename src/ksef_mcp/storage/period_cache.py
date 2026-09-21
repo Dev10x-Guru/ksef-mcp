@@ -28,7 +28,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Callable
 from dataclasses import dataclass, replace
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Final
@@ -36,6 +36,7 @@ from typing import Final
 from platformdirs import user_cache_path
 
 from ksef_mcp.allowance import Allowance
+from ksef_mcp.clock import now_utc
 from ksef_mcp.ksef_port.budget import QueryBudget
 from ksef_mcp.ksef_port.protocol import KsefSession
 from ksef_mcp.ksef_port.types import (
@@ -81,10 +82,6 @@ CACHE_FILE_MODE: Final[int] = 0o600
 # Enough of the digest to make a collision between two windows unreachable,
 # short enough to keep the name readable on Windows' path ceiling.
 KEY_LENGTH: Final[int] = 32
-
-
-def now_utc() -> datetime:
-    return datetime.now(tz=UTC)
 
 
 def cache_root() -> Path:

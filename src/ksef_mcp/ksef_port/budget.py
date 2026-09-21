@@ -1,9 +1,10 @@
 from collections import deque
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Final, Protocol
 
+from ksef_mcp.clock import now_utc
 from ksef_mcp.ksef_port.errors import KsefRequestRejected
 from ksef_mcp.ksef_port.types import Operation, OperationLimit, RateLimits
 
@@ -12,10 +13,6 @@ HOUR: Final[timedelta] = timedelta(hours=1)
 MINUTE: Final[timedelta] = timedelta(minutes=1)
 
 SECOND: Final[timedelta] = timedelta(seconds=1)
-
-
-def now_utc() -> datetime:
-    return datetime.now(tz=UTC)
 
 
 class BudgetJournal(Protocol):

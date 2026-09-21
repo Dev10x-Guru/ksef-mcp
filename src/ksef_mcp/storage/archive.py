@@ -36,10 +36,11 @@ import hashlib
 import json
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Final
 
+from ksef_mcp.clock import now_utc
 from ksef_mcp.diagnostics import short_reference, technical_log
 from ksef_mcp.errors import KsefMcpError
 from ksef_mcp.invoices.package import ExportPackage
@@ -209,10 +210,6 @@ class ArchiveReport:
     index_path: str
     archived: tuple[str, ...]
     already_held: tuple[str, ...]
-
-
-def now_utc() -> datetime:
-    return datetime.now(tz=UTC)
 
 
 def digest_of(content: bytes) -> str:

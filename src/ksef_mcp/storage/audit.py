@@ -53,11 +53,12 @@ import json
 import os
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import Final
 
+from ksef_mcp.clock import now_utc
 from ksef_mcp.errors import KsefMcpError
 from ksef_mcp.ksef_port.types import KsefEnvironment, Period
 from ksef_mcp.paths import SubjectScope
@@ -195,10 +196,6 @@ def window_criteria(period: Period) -> str:
     as one.
     """
     return f"{period.date_type} {period.date_from.isoformat()}..{period.date_to.isoformat()}"
-
-
-def now_utc() -> datetime:
-    return datetime.now(tz=UTC)
 
 
 def _encode(entry: AuditEntry) -> dict[str, object]:

@@ -27,7 +27,6 @@ from ksef_mcp.invoices.synchronisation import (
     Synchroniser,
     SyncOutcome,
     advance,
-    now_utc,
     rolled_back_to,
 )
 from ksef_mcp.ksef_port import (
@@ -1506,7 +1505,3 @@ def test_a_complete_package_ignores_a_missing_last_invoice_timestamp() -> None:
     moved = advance(point, status=ready(last_permanent_storage_date=None))
 
     assert moved is not None and moved.reached == HWM
-
-
-def test_the_default_clock_answers_in_utc() -> None:
-    assert now_utc().tzinfo is UTC

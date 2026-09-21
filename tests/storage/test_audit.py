@@ -16,7 +16,6 @@ from ksef_mcp.storage.audit import (
     Authorisation,
     AuthorisationBasis,
     Disclosure,
-    now_utc,
     window_criteria,
 )
 from ksef_mcp.storage.token_store import TokenSource
@@ -270,10 +269,6 @@ def test_two_recorders_never_interleave_their_lines(
     in_another_thread(lambda: trail.record((crowded,)))
 
     assert len(trail.entries()) == 3
-
-
-def test_the_clock_is_the_wall_clock_in_utc() -> None:
-    assert now_utc().tzinfo is UTC
 
 
 def test_the_recorded_window_states_both_ends() -> None:

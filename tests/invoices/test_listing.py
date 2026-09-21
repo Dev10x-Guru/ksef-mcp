@@ -30,7 +30,6 @@ from ksef_mcp.invoices.listing import (
     gross_totals,
     invoices_phrase,
     listing_period,
-    now_utc,
     summarise,
 )
 from ksef_mcp.ksef_port import (
@@ -536,7 +535,3 @@ def test_a_failure_that_is_not_about_the_allowance_is_not_reported_as_one(
 
     with pytest.raises(type(failure)):
         lister.run(nip=NIP, token=CREDENTIAL)
-
-
-def test_the_default_clock_reads_utc() -> None:
-    assert now_utc().tzinfo is UTC
