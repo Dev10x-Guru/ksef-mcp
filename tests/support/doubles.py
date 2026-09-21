@@ -12,7 +12,7 @@ from typing import Self
 from ksef2.core.exceptions import KSeFException, KSeFValidationError
 from ksef2.domain.models.invoices import InvoiceType
 
-from tests.support.synthetic import BUYER_NAME, SELLER_NIP
+from tests.support.synthetic import BUYER_NAME, SELLER_NIP, synthetic_content_hash
 
 HWM = datetime(2026, 9, 10, tzinfo=UTC)
 
@@ -43,6 +43,10 @@ class FakeMetadata:
     # `kor` before the record reaches the adapter, so a double saying `Kor`
     # would be checking a spelling the port never sees.
     invoice_type: InvoiceType = "vat"
+    # SHA-256 of the invoice itself, Base64, 44 characters. Defaulted like the
+    # SDK defaults it: `None` on every document that corrects nothing.
+    invoice_hash: str = ""
+    hash_of_corrected_invoice: str | None = None
 
 
 @dataclass
@@ -130,6 +134,7 @@ def sdk_metadata(
     *,
     seller_name: str | None = "Dostawca sp. z o.o.",
     invoice_type: InvoiceType = "vat",
+    hash_of_corrected_invoice: str | None = None,
 ) -> FakeMetadata:
     return FakeMetadata(
         ksef_number=f"1234567890-20260901-0100AB12CD{ordinal:02d}-56",
@@ -142,6 +147,8 @@ def sdk_metadata(
         vat_amount=230.0,
         currency="PLN",
         invoice_type=invoice_type,
+        invoice_hash=synthetic_content_hash(ordinal),
+        hash_of_corrected_invoice=hash_of_corrected_invoice,
     )
 
 

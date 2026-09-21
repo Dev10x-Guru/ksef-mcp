@@ -10,6 +10,22 @@ udokumentowane.
 
 ## Bez wydania
 
+### Dodane
+
+- Zestawienie okresu nie mówi już samo „w okresie jest korekta", lecz
+  rozróżnia dwa położenia, z których tylko jedno wymaga pracy. Korekta,
+  której faktura pierwotna jest w tym samym miesiącu, dostaje
+  informację: suma kolumny Brutto jest dla niej poprawna, bo różnica i
+  kwota pierwotna są obie w pliku. Korekta bez tej faktury dostaje
+  ostrzeżenie: suma nie odda zobowiązania i trzeba sięgnąć po okres, w
+  którym fakturę pierwotną wystawiono. Powiązanie powstaje po skrócie z
+  metadanych, więc ani nie sięga do treści faktury, ani nie kosztuje
+  jednego zapytania do KSeF (ADR-111, GH-121).
+
+  Zapamiętane miesiące sprzed tej zmiany zostaną pobrane na nowo —
+  wersja schematu cache rośnie z 4 na 5, bo miesiąc bez skrótów nie
+  umiałby odpowiedzieć na pytanie o parę.
+
 ### Zmienione
 
 - Druga odmowa lokalna — zapalony bezpiecznik po serii odmów KSeF-u —

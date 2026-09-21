@@ -188,6 +188,8 @@ def as_metadata(record: object) -> InvoiceMetadata:
         vat_amount=as_amount(record.vat_amount),
         currency=record.currency,
         document_type=as_document_type(record.invoice_type),
+        content_hash=record.invoice_hash,
+        corrected_content_hash=record.hash_of_corrected_invoice,
     )
 
 
