@@ -74,6 +74,13 @@ from ksef_mcp.storage.archive import (
     InvoiceArchive,
     digest_of,
 )
+from ksef_mcp.storage.audit import (
+    CSV_FORMAT,
+    AuditedOperation,
+    AuditEntry,
+    Authorisation,
+    Disclosure,
+)
 from ksef_mcp.storage.durability import written_atomically
 from ksef_mcp.storage.period_cache import PeriodCache, PeriodMetadataReader, cache_root
 
@@ -451,6 +458,39 @@ class Statement:
             "UWAGA: to nie jest cały okres — KSeF nie oddał go w całości, więc "
             "suma obejmuje część dokumentów. "
         )
+
+
+def statement_entries(
+    statement: Statement,
+    *,
+    authorisation: Authorisation,
+    moment: datetime,
+) -> tuple[AuditEntry, ...]:
+    """One entry, and it is a disk one — the rows leave in a file, not in the answer.
+
+    `StatementResult` carries counts, sums and a path; no KSeF number of the
+    period reaches the model through it. Recording a `MODEL_CONTEXT` event
+    beside the write would therefore claim a disclosure that did not happen,
+    and the D-011 distinction is worth only as much as its accuracy.
+
+    Beside the statement rather than in the tool that asked for it, so the
+    numbers `ksef_numbers` was kept for reach the trail wherever the month was
+    composed from (#135).
+    """
+    return (
+        AuditEntry(
+            recorded_at=moment,
+            operation=AuditedOperation.STATEMENT,
+            authorisation=authorisation,
+            disclosure=Disclosure.DISK,
+            subject_role=str(STATEMENT_SUBJECT_ROLE),
+            criteria=str(statement.period),
+            document_count=statement.row_count,
+            ksef_numbers=statement.ksef_numbers,
+            output_path=statement.path,
+            formats=(CSV_FORMAT,),
+        ),
+    )
 
 
 def completeness_warning(*, complete: bool, budget_bound: bool = False) -> tuple[str, ...]:

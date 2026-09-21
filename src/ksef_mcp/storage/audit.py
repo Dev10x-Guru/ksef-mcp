@@ -59,7 +59,7 @@ from pathlib import Path
 from typing import Final
 
 from ksef_mcp.errors import KsefMcpError
-from ksef_mcp.ksef_port.types import KsefEnvironment
+from ksef_mcp.ksef_port.types import KsefEnvironment, Period
 from ksef_mcp.paths import SubjectScope
 from ksef_mcp.storage.durability import exclusive_write, require_schema
 
@@ -184,6 +184,17 @@ class AuditEntry:
     ksef_numbers: tuple[str, ...]
     output_path: str | None
     formats: tuple[str, ...]
+
+
+def window_criteria(period: Period) -> str:
+    """The query as asked, so a reader can tell scope from happenstance.
+
+    Here rather than beside either caller: the listing and the review both ask a
+    window and both write the answer into `criteria`, and a second spelling of
+    the same window would make two entries about the same question unreadable
+    as one.
+    """
+    return f"{period.date_type} {period.date_from.isoformat()}..{period.date_to.isoformat()}"
 
 
 def now_utc() -> datetime:

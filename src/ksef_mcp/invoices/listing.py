@@ -41,6 +41,13 @@ from ksef_mcp.ksef_port.types import (
     Period,
     SubjectRole,
 )
+from ksef_mcp.storage.audit import (
+    AuditedOperation,
+    AuditEntry,
+    Authorisation,
+    Disclosure,
+    window_criteria,
+)
 from ksef_mcp.storage.period_cache import PeriodCache, PeriodMetadataReader
 
 # D-023, and the number is dimensioned against the need rather than against the
@@ -192,6 +199,39 @@ class InvoiceListing:
     threshold: int
     period: Period
     subject_roles: tuple[SubjectRoleListing, ...]
+
+
+def listing_entries(
+    listing: InvoiceListing,
+    *,
+    authorisation: Authorisation,
+    moment: datetime,
+) -> tuple[AuditEntry, ...]:
+    """What the model was shown, which is a different event from what was written.
+
+    Recorded even for a subject type that returned nothing: the query was still
+    made, and the scope of what was asked is half of what a dispute turns on.
+    Above the listing threshold the rows never reach the answer, so the count
+    stands alone with no numbers beside it — which is exactly what happened.
+
+    Beside the listing rather than in the tool, so a second delivery surface
+    asking the same question records the same event (#135).
+    """
+    return tuple(
+        AuditEntry(
+            recorded_at=moment,
+            operation=AuditedOperation.LISTING,
+            authorisation=authorisation,
+            disclosure=Disclosure.MODEL_CONTEXT,
+            subject_role=str(listed.question.subject_role),
+            criteria=window_criteria(listed.question.period),
+            document_count=listed.invoice_count,
+            ksef_numbers=tuple(str(invoice.ksef_number) for invoice in listed.invoices),
+            output_path=None,
+            formats=(),
+        )
+        for listed in listing.subject_roles
+    )
 
 
 def summarise(
