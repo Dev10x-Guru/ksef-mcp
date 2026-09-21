@@ -36,6 +36,14 @@ Przed opublikowaniem **jakiegokolwiek** komentarza inline:
 3. Sprawdź, czy poprawka nie pojawiła się już w późniejszych commitach
 4. Cytuj dokładny kod, formułując twierdzenia
 
+## Walidacja metadanych PR-a
+
+Sprawdzaj PRZED opublikowaniem przeglądu:
+
+- **Długość tytułu PR-a** — maks. 72 znaki (linia 1 commita).
+  Uruchom: `git log -1 --format=%s | wc -c`. Jeśli tytuł PR-a na
+  GitHubie jest dłuższy, zasugeruj skrócenie (poziom RECOMMENDED).
+
 ## Znane pułapki fałszywych trafień
 
 Przed zgłoszeniem którejkolwiek z nich **zweryfikuj rzeczywisty kod**:
