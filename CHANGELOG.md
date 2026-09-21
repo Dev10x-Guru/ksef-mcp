@@ -157,6 +157,15 @@ niż jedna zmiana łamiąca.
 
 ### Zmienione
 
+- `bin/release.py` rozróżnia zaległość, brak pushu i rozjazd, zamiast
+  nazywać rozjazdem każdą nierówność `main` i `origin/main`. Opiekun
+  projektu wracający do wydania po przerwie czyta odtąd, że gałąź jest
+  po prostu w tyle, i dostaje gotowe `git merge --ff-only origin/main`;
+  gałąź do przodu prosi o `push`, a prawdziwy rozjazd zostaje odmową,
+  bo tam wybór należy do człowieka. Skrypt niczego nie przewija sam —
+  przewinięcie wciągnęłoby do wydania commity, których wydający nie
+  oglądał, a tag i numer na PyPI są nieodwracalne (GH-189).
+
 - Odmowa własnego licznika godzinowego ma własny wyjątek
   `BudgetExhausted` spod korzenia `KsefMcpError` i nie udaje już
   zdarzenia z portu KSeF. Integrator rozpoznający odmowy po typie
