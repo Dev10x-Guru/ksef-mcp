@@ -58,4 +58,5 @@ załadowania. Nie jest to pakiet npm i nie ma zależności.
 
 Kod uruchamiający generator (`render.mjs`) **nie leży tutaj** — jest
 nasz i objęty licencją AGPL-3.0-only, więc mieszka w
-`src/ksef_mcp/node/`. Ten katalog trzyma wyłącznie artefakty obce.
+`src/ksef_mcp/rendering/node/`. Ten katalog trzyma wyłącznie artefakty
+obce.

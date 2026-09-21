@@ -206,7 +206,7 @@ punktu kontynuacji, `DateType = PermanentStorage`,
 
 Wizualizację generuje **oficjalny generator Ministerstwa Finansów**
 (`@akmf/ksef-fe-invoice-converter`, MIT), zwendorowany jako zbudowany
-bundel w `src/ksef_mcp/vendor/` i uruchamiany pod Node [D-027].
+bundel w `src/ksef_mcp/rendering/vendor/` i uruchamiany pod Node [D-027].
 
 - Kontrakt: `generateInvoice(file, { nrKSeF, qrCode }, 'blob')` — wejściem
   dokładnie te bajty, które zapisaliśmy pod `<NumerKSeF>.xml`.

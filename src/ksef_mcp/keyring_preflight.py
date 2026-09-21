@@ -1,8 +1,8 @@
 """Whether a secret store is reachable, and whether its collection is locked.
 
-Separate from `node_preflight` for the reason given there: the renderer has no
-business importing `keyring.backend` and the D-Bus probe, and it did only
-because both checks happened to share a file (GH-125).
+Separate from `rendering.node_preflight` for the reason given there: the
+renderer has no business importing `keyring.backend` and the D-Bus probe, and
+it did only because both checks happened to share a file (GH-125).
 """
 
 import importlib

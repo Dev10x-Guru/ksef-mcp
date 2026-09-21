@@ -69,6 +69,22 @@ niż jedna zmiana łamiąca.
   - moduł `statement` przeniesiony z `ksef_mcp.statement` do
     `ksef_mcp.invoices.statement`.
 
+- Renderowanie PDF zebrano w pakiecie `ksef_mcp.rendering` razem z
+  zasobami, które zużywa — shim `node/render.mjs` i zwendorowany
+  generator Ministerstwa w `vendor/` idą tą samą przeprowadzką, więc
+  manifest paczki (`[tool.hatch.build] artifacts`) i `license-files`
+  nadal wskazują pliki, które istnieją (GH-131):
+
+  - moduł `pdf` przeniesiony z `ksef_mcp.pdf` do
+    `ksef_mcp.rendering.pdf`,
+  - moduł `node_preflight` przeniesiony z `ksef_mcp.node_preflight` do
+    `ksef_mcp.rendering.node_preflight`,
+  - zasoby przeniesione z `src/ksef_mcp/node/` i `src/ksef_mcp/vendor/`
+    do `src/ksef_mcp/rendering/node/` i
+    `src/ksef_mcp/rendering/vendor/`. Kto pakuje własną dystrybucję
+    albo sięga po notę licencyjną MF po ścieżce, przestawia się na
+    nową.
+
 ### Dodane
 
 - Zestawienie okresu ostrzega, gdy w okresie jest faktura korygująca.

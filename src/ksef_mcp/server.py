@@ -45,7 +45,7 @@ from ksef_mcp.ksef_port.lazy import load_adapter
 from ksef_mcp.ksef_port.types import InvoiceMetadata, KsefEnvironment, Period
 from ksef_mcp.metadata import SERVER_NAME, VERSION
 from ksef_mcp.paths import Nip
-from ksef_mcp.pdf import InvoiceRenderer, RenderedInvoice
+from ksef_mcp.rendering.pdf import InvoiceRenderer, RenderedInvoice
 from ksef_mcp.storage import token_store
 from ksef_mcp.storage.archive import InvoiceArchive
 from ksef_mcp.storage.audit import (

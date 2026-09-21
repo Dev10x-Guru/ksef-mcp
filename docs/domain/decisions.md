@@ -822,7 +822,7 @@ nie ma mechanizmu, który powiedziałby „czegoś brakuje".
   PDF, zachowując XML, CSV i listę. Potwierdzone działanie na Node 22.17;
   generator deklaruje 22.14.0.
 - **Ustalenia pakietowe:**
-  - Bundel ląduje w `src/ksef_mcp/vendor/`, pod nazwą niosącą wersję
+  - Bundel ląduje w `src/ksef_mcp/rendering/vendor/`, pod nazwą niosącą wersję
     generatora — trafia do wheela domyślną ścieżką hatchlinga, bez
     `force-include`.
   - `pre-commit` ma hook `check-added-large-files` z limitem 500 kB;

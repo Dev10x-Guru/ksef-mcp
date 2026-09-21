@@ -82,7 +82,7 @@ def lay_down_vendor_bundle(root: Path) -> None:
     (#108), więc drzewo bez obu plików nie przeszłoby pierwszej bramki i
     każdy test tutaj wywracałby się na kontroli, o którą nie pyta.
     """
-    vendor = root / "src" / "ksef_mcp" / "vendor"
+    vendor = root / "src" / "ksef_mcp" / "rendering" / "vendor"
     vendor.mkdir(parents=True)
     (vendor / "ksef-fe-invoice-converter.1.1.39.js").write_bytes(BUNDLE)
     (vendor / "LICENCJA-MF.md").write_text(
@@ -177,7 +177,14 @@ def test_a_truncated_vendor_bundle_stops_the_release(
 ) -> None:
     # Przerwany transfer z portalu MF jest zdarzeniem zaobserwowanym, nie
     # hipotezą, a opublikowanej paczki nie da się wycofać (#108).
-    bundle = reopened / "src" / "ksef_mcp" / "vendor" / "ksef-fe-invoice-converter.1.1.39.js"
+    bundle = (
+        reopened
+        / "src"
+        / "ksef_mcp"
+        / "rendering"
+        / "vendor"
+        / "ksef-fe-invoice-converter.1.1.39.js"
+    )
     bundle.write_bytes(BUNDLE[:10])
     git(reopened, "commit", "-am", "obcina bundel")
 

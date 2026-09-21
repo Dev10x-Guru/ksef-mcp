@@ -12,7 +12,7 @@ license = "AGPL-3.0-only"
 # The vendored MIT-licensed artifact ships in the wheel (ADR-112), so its
 # notice must ship in `.dist-info/licenses/` too — the project's own LICENSE
 # alone does not cover it.
-license-files = ["LICENSE", "src/ksef_mcp/vendor/LICENCJA-MF.md"]
+license-files = ["LICENSE", "src/ksef_mcp/rendering/vendor/LICENCJA-MF.md"]
 authors = [{ name = "Dev10x.Guru" }]
 keywords = ["ksef", "mcp", "e-invoicing", "faktury", "poland"]
 classifiers = [
@@ -55,10 +55,10 @@ ksef-mcp = "ksef_mcp.cli:main"
 # a resource missing from the sdist is missing from the wheel too (#106).
 [tool.hatch.build]
 artifacts = [
-    "src/ksef_mcp/node/render.mjs",
-    "src/ksef_mcp/vendor/ksef-fe-invoice-converter.*.js",
-    "src/ksef_mcp/vendor/package.json",
-    "src/ksef_mcp/vendor/LICENCJA-MF.md",
+    "src/ksef_mcp/rendering/node/render.mjs",
+    "src/ksef_mcp/rendering/vendor/ksef-fe-invoice-converter.*.js",
+    "src/ksef_mcp/rendering/vendor/package.json",
+    "src/ksef_mcp/rendering/vendor/LICENCJA-MF.md",
 ]
 
 # Stated rather than inferred from the distribution name: a rename that
