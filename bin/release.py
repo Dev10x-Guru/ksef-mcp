@@ -304,15 +304,51 @@ def require_release_branch(project: Project) -> None:
 
 
 def require_synced_with_remote(project: Project) -> None:
+    """Nazwij po imieniu, CZYM różni się gałąź — zaległość to nie rozjazd.
+
+    Nierówność wskaźników zachodzi w trzech sytuacjach, a dotąd wszystkie
+    trzy nazywały się rozjazdem (#189). Zaległość i brak pushu mają
+    dokładnie jedno wyjście i skrypt je tutaj wypisuje; rozjazd jest
+    jedynym przypadkiem, w którym wybór należy do człowieka.
+
+    Żadnego z nich nie naprawiamy sami. Przewinięcie `--ff-only` jest
+    bezpieczne dla historii, ale zmienia TREŚĆ wydania: wciąga commity,
+    których wydający nie oglądał, a wypuszcza je pod swoim tagiem i na
+    PyPI, gdzie numeru nie da się użyć ponownie.
+    """
     run(["git", "fetch", "origin", RELEASE_BRANCH], root=project.root)
     local = run(["git", "rev-parse", "HEAD"], root=project.root)
     remote = run(["git", "rev-parse", f"origin/{RELEASE_BRANCH}"], root=project.root)
-    if local != remote:
+    if local == remote:
+        return
+    ancestor_of_remote = succeeds(
+        ["git", "merge-base", "--is-ancestor", local, remote],
+        root=project.root,
+    )
+    if ancestor_of_remote:
         raise ReleaseRefused(
-            f"Lokalny `{RELEASE_BRANCH}` rozjechał się z `origin/{RELEASE_BRANCH}`. "
-            "Wydanie z rozjazdu opublikowałoby kod, którego nie ma na zdalnym "
-            "repozytorium."
+            f"Lokalny `{RELEASE_BRANCH}` jest w tyle za `origin/{RELEASE_BRANCH}` — "
+            "to zaległość, nie rozjazd: cała lokalna historia jest na zdalnym "
+            "repozytorium. Wydanie stąd pominęłoby commity, które już tam są.\n"
+            f"    Nadrób i zacznij od nowa: git merge --ff-only origin/{RELEASE_BRANCH}"
         )
+    ancestor_of_local = succeeds(
+        ["git", "merge-base", "--is-ancestor", remote, local],
+        root=project.root,
+    )
+    if ancestor_of_local:
+        raise ReleaseRefused(
+            f"Lokalny `{RELEASE_BRANCH}` jest do przodu przed "
+            f"`origin/{RELEASE_BRANCH}` — brakuje `push`. Wydanie opublikowałoby "
+            "kod, którego nie ma na zdalnym repozytorium.\n"
+            f"    Wypchnij i zacznij od nowa: git push origin {RELEASE_BRANCH}"
+        )
+    raise ReleaseRefused(
+        f"Lokalny `{RELEASE_BRANCH}` rozjechał się z `origin/{RELEASE_BRANCH}`: obie "
+        "gałęzie mają commity, których nie ma ta druga. Wydanie z rozjazdu "
+        "opublikowałoby kod, którego nie ma na zdalnym repozytorium, a wybór "
+        "między historiami należy do człowieka."
+    )
 
 
 def require_intact_vendor_bundle(project: Project) -> None:

@@ -203,6 +203,95 @@ def test_releasing_off_main_stops_the_release(
         release.release(root=repository, kind="fixes", dry_run=True)
 
 
+@pytest.fixture
+def with_a_remote(repository: Path, tmp_path: Path) -> Path:
+    """Drzewo z prawdziwym `origin`, bo kontrola synchronizacji pyta o to gita.
+
+    Zdalne repozytorium jest gołe i leży obok, w `tmp_path` — nic tu nie
+    sięga do sieci ani do prawdziwego repozytorium projektu.
+    """
+    remote = tmp_path / "origin.git"
+    git(repository, "init", "--bare", str(remote))
+    git(repository, "remote", "add", "origin", str(remote))
+    git(repository, "push", "origin", "main")
+    return repository
+
+
+@pytest.fixture
+def behind_the_remote(with_a_remote: Path) -> Path:
+    git(with_a_remote, "commit", "--allow-empty", "-m", "cudzy commit")
+    git(with_a_remote, "push", "origin", "main")
+    git(with_a_remote, "reset", "--hard", "HEAD~1")
+    return with_a_remote
+
+
+def test_a_branch_in_step_with_the_remote_lets_the_release_through(
+    with_a_remote: Path,
+) -> None:
+    assert release.require_synced_with_remote(release.read_project(with_a_remote)) is None
+
+
+def test_a_branch_behind_the_remote_is_called_a_backlog_not_a_divergence(
+    behind_the_remote: Path,
+) -> None:
+    # #189: każda nierówność wskaźników nazywała się rozjazdem, więc wydanie
+    # po przerwie wysyłało człowieka na poszukiwanie historii, której nie ma.
+    with pytest.raises(release.ReleaseRefused, match="zaległość, nie rozjazd"):
+        release.require_synced_with_remote(release.read_project(behind_the_remote))
+
+
+def test_a_branch_behind_the_remote_says_how_to_catch_up(
+    behind_the_remote: Path,
+) -> None:
+    with pytest.raises(release.ReleaseRefused, match="git merge --ff-only origin/main"):
+        release.require_synced_with_remote(release.read_project(behind_the_remote))
+
+
+def test_a_branch_behind_the_remote_is_not_fast_forwarded_for_the_releaser(
+    behind_the_remote: Path,
+) -> None:
+    # Przewinięcie wciągnęłoby commity, których wydający nie oglądał, a wydanie
+    # jest nieodwracalne — skrypt odmawia i podaje polecenie, nie wykonuje go.
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=behind_the_remote,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+    with pytest.raises(release.ReleaseRefused):
+        release.require_synced_with_remote(release.read_project(behind_the_remote))
+
+    assert (
+        subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=behind_the_remote,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        == head
+    )
+
+
+def test_a_branch_ahead_of_the_remote_asks_for_a_push(with_a_remote: Path) -> None:
+    git(with_a_remote, "commit", "--allow-empty", "-m", "jeszcze niewypchnięty")
+
+    with pytest.raises(release.ReleaseRefused, match="brakuje `push`"):
+        release.require_synced_with_remote(release.read_project(with_a_remote))
+
+
+def test_a_genuinely_diverged_branch_is_still_refused(with_a_remote: Path) -> None:
+    git(with_a_remote, "commit", "--allow-empty", "-m", "cudzy commit")
+    git(with_a_remote, "push", "origin", "main")
+    git(with_a_remote, "reset", "--hard", "HEAD~1")
+    git(with_a_remote, "commit", "--allow-empty", "-m", "własny commit")
+
+    with pytest.raises(release.ReleaseRefused, match="rozjechał się"):
+        release.require_synced_with_remote(release.read_project(with_a_remote))
+
+
 def test_an_already_published_version_stops_the_release(
     reopened: Path,
     offline: None,
