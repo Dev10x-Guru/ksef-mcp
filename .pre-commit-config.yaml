@@ -5,7 +5,7 @@ repos:
       - id: check-added-large-files
         # The vendored Ministry of Finance invoice renderer is ~3.1 MB and is a
         # binary pin, like any other pinned version. Only that path is exempt.
-        exclude: ^src/ksef_mcp/vendor/
+        exclude: ^src/ksef_mcp/rendering/vendor/
       - id: check-merge-conflict
       - id: check-toml
       - id: check-yaml
@@ -15,9 +15,9 @@ repos:
       # zgodność bajt w bajt z plikiem serwowanym przez portal. Wyłączenie
       # obejmuje cały `vendor/`, bo cały ten katalog jest cudzy.
       - id: end-of-file-fixer
-        exclude: ^src/ksef_mcp/vendor/
+        exclude: ^src/ksef_mcp/rendering/vendor/
       - id: trailing-whitespace
-        exclude: ^src/ksef_mcp/vendor/
+        exclude: ^src/ksef_mcp/rendering/vendor/
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.16.7

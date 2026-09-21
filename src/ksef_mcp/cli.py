@@ -15,7 +15,6 @@ from ksef_mcp import (
     keyring_preflight,
     ksef_port,
     messages,
-    node_preflight,
     skill,
 )
 from ksef_mcp.allowance import Allowance
@@ -25,6 +24,7 @@ from ksef_mcp.ksef_port.lazy import load_adapter
 from ksef_mcp.ksef_port.types import KsefEnvironment
 from ksef_mcp.metadata import SERVER_NAME, VERSION
 from ksef_mcp.paths import Nip, NipRejected, SubjectScope
+from ksef_mcp.rendering import node_preflight
 from ksef_mcp.retention import (
     ArchivePurge,
     PurgeWindow,

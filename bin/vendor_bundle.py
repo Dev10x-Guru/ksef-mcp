@@ -5,7 +5,7 @@
 # ///
 """Sprawdź, czy zwendorowany bundel MF jest tym, za co się podaje.
 
-`src/ksef_mcp/vendor/LICENCJA-MF.md` od początku zapisuje rozmiar i skrót
+`src/ksef_mcp/rendering/vendor/LICENCJA-MF.md` od początku zapisuje rozmiar i skrót
 SHA-256 generatora Ministerstwa oraz ostrzega, że portal dwukrotnie zerwał
 transfer w połowie. Nota była jednak wyłącznie opisem: nic tych dwóch liczb
 nie przeliczało, więc obcięty plik przeszedłby przez commit, przez wydanie
@@ -36,7 +36,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-VENDOR_DIRECTORY = Path("src") / "ksef_mcp" / "vendor"
+VENDOR_DIRECTORY = Path("src") / "ksef_mcp" / "rendering" / "vendor"
 
 NOTE_NAME = "LICENCJA-MF.md"
 

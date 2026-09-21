@@ -15,7 +15,7 @@
 
 Zgłoszenie [#42](https://github.com/Dev10x-Guru/ksef-mcp/issues/42)
 wprowadziło do repozytorium
-`src/ksef_mcp/vendor/ksef-fe-invoice-converter.1.1.39.js` — 3 135 550
+`src/ksef_mcp/rendering/vendor/ksef-fe-invoice-converter.1.1.39.js` — 3 135 550
 bajtów zbudowanego JS-a, wytwarzanego przez Ministerstwo Finansów
 i rozpowszechnianego na licencji **MIT**, w projekcie objętym
 **AGPL-3.0-only**. Decyzja produktowa — że w ogóle wendorujemy ten
@@ -53,7 +53,7 @@ dopóki go nie podmienimy świadomie.
 MIT pozwala na włączenie artefaktu do projektu objętego licencją
 silniej copyleftową (AGPL-3.0-only), pod warunkiem zachowania noty.
 Kierunek zgodności jest więc poprawny. Nota mieszka obok artefaktu —
-`src/ksef_mcp/vendor/LICENCJA-MF.md` — z jawnym zastrzeżeniem, że
+`src/ksef_mcp/rendering/vendor/LICENCJA-MF.md` — z jawnym zastrzeżeniem, że
 dotyczy **wyłącznie** tego jednego pliku, nie reszty projektu.
 
 Sama obecność noty w repozytorium nie wystarcza: skoro plik trafia do
@@ -67,7 +67,7 @@ projektu, nie notę artefaktu obcego. Ta decyzja rozstrzyga, że
 
 ```toml
 [project]
-license-files = ["LICENSE", "src/ksef_mcp/vendor/LICENCJA-MF.md"]
+license-files = ["LICENSE", "src/ksef_mcp/rendering/vendor/LICENCJA-MF.md"]
 ```
 
 ### Skutki pakowania
@@ -84,7 +84,7 @@ nowych:
    hatchling pakuje pliki wg tego, co VCS *nie* ignoruje; bez tego
    wpisu przyszły `*.js` w `.gitignore` po cichu wypuściłby zasób
    z dystrybucji bez błędu na żadnym etapie.
-2. **`.pre-commit-config.yaml`** wyklucza `src/ksef_mcp/vendor/` z
+2. **`.pre-commit-config.yaml`** wyklucza `src/ksef_mcp/rendering/vendor/` z
    hooków, które **przepisują** pliki (`end-of-file-fixer`,
    `trailing-whitespace`, `check-added-large-files`) — jeden z nich
    skrócił bundel o 14 bajtów przy pierwszym uruchomieniu, unieważniając
@@ -120,11 +120,11 @@ jako rutynowa synchronizacja stałych:
 
 | Miejsce | Co zmienić |
 |---|---|
-| `src/ksef_mcp/vendor/ksef-fe-invoice-converter.<stara>.js` | usunąć; podmienić na `<nowa>.js` pobrany z portalu z wznawianiem (`curl -C -`) |
-| `src/ksef_mcp/vendor/LICENCJA-MF.md` | przepisać datę pobrania, rozmiar, skrót SHA-256, `Last-Modified` |
-| `src/ksef_mcp/pdf.py:35` (`BUNDLE_NAME`) | nowa nazwa pliku |
-| `tests/test_pdf.py:24` (`BUNDLE_DIGEST`, stała **testowa**, nie produkcyjna) | nowy skrót SHA-256 |
-| `tests/test_pdf.py`, `tests/test_server.py` | literały wersji generatora w asercjach (`"1.1.39"`) |
+| `src/ksef_mcp/rendering/vendor/ksef-fe-invoice-converter.<stara>.js` | usunąć; podmienić na `<nowa>.js` pobrany z portalu z wznawianiem (`curl -C -`) |
+| `src/ksef_mcp/rendering/vendor/LICENCJA-MF.md` | przepisać datę pobrania, rozmiar, skrót SHA-256, `Last-Modified` |
+| `src/ksef_mcp/rendering/pdf.py` (`BUNDLE_NAME`) | nowa nazwa pliku |
+| `tests/rendering/test_pdf.py` (`BUNDLE_DIGEST`, stała **testowa**, nie produkcyjna) | nowy skrót SHA-256 |
+| `tests/rendering/test_pdf.py`, `tests/test_server.py` | literały wersji generatora w asercjach (`"1.1.39"`) |
 | `bin/test_release.py`, `bin/test_vendor_bundle.py`, `tests/test_distribution.py` | ścieżki/literały zawierające nazwę pliku z wersją |
 
 `bin/vendor_bundle.py` łapie niespójność między plikiem a notą, ale

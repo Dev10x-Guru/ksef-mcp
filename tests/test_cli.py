@@ -13,13 +13,13 @@ from ksef_mcp import (
     keyring_preflight,
     ksef_port,
     messages,
-    node_preflight,
     skill,
 )
 from ksef_mcp.config import Configuration
 from ksef_mcp.ksef_port import adapter as port_adapter
 from ksef_mcp.ksef_port.types import KsefEnvironment
 from ksef_mcp.metadata import SERVER_NAME
+from ksef_mcp.rendering import node_preflight
 from ksef_mcp.storage import token_store
 from ksef_mcp.storage.archive import InvoiceArchive
 from ksef_mcp.storage.audit import AuditTrail, AuthorisationBasis, Disclosure

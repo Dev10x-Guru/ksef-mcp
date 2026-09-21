@@ -32,16 +32,16 @@ BUILD_TIMEOUT_SECONDS = 600.0
 # Ścieżki wewnątrz pakietu importu, bez przedrostka dystrybucji — koło niesie
 # je pod `ksef_mcp/`, sdist pod `src/ksef_mcp/`.
 REQUIRED_RESOURCES = (
-    "node/render.mjs",
-    "vendor/ksef-fe-invoice-converter.1.1.39.js",
-    "vendor/package.json",
-    "vendor/LICENCJA-MF.md",
+    "rendering/node/render.mjs",
+    "rendering/vendor/ksef-fe-invoice-converter.1.1.39.js",
+    "rendering/vendor/package.json",
+    "rendering/vendor/LICENCJA-MF.md",
 )
 
 # Czy bundel w drzewie zgadza się z notą licencyjną, pilnuje `bin/vendor_bundle.py`
 # (108). Tu pytanie jest węższe i dotyczy wyłącznie pakowania: czy to, co
 # spakowano, to ten sam plik co w drzewie, czy jego skrócona wersja.
-BUNDLE_NAME = "vendor/ksef-fe-invoice-converter.1.1.39.js"
+BUNDLE_NAME = "rendering/vendor/ksef-fe-invoice-converter.1.1.39.js"
 
 
 @pytest.fixture(scope="module")

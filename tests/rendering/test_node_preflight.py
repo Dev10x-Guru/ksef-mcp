@@ -3,7 +3,7 @@ from subprocess import CompletedProcess, TimeoutExpired
 
 import pytest
 
-from ksef_mcp import node_preflight
+from ksef_mcp.rendering import node_preflight
 from tests.conftest import raiser
 
 

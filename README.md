@@ -187,13 +187,14 @@ jeszcze nie zsynchronizowano, jest odmawiana, a nie dociągana.
 
 PDF-y generuje **oficjalny generator Ministerstwa Finansów**
 (`@akmf/ksef-fe-invoice-converter`, licencja MIT), zwendorowany w
-`src/ksef_mcp/vendor/`. Wynik jest tożsamy z tym, co daje portal MF — zweryfikowane
+`src/ksef_mcp/rendering/vendor/`. Wynik jest tożsamy z tym, co daje portal MF — zweryfikowane
 uruchomieniem, nie tylko lekturą kodu. Dokument niesie kod QR, link weryfikacyjny
 i numer KSeF.
 
 Bundel **nie pochodzi z rejestru npm** — paczki o tej nazwie tam nie ma.
 Serwuje go portal weryfikacyjny MF pod `/client-app/pdf-lib/`; szczegóły
-i suma kontrolna w [`src/ksef_mcp/vendor/LICENCJA-MF.md`](src/ksef_mcp/vendor/LICENCJA-MF.md).
+i suma kontrolna w
+[`src/ksef_mcp/rendering/vendor/LICENCJA-MF.md`](src/ksef_mcp/rendering/vendor/LICENCJA-MF.md).
 
 Link weryfikacyjny trafia wyłącznie na dokumenty **produkcyjne**. Środowiska
 TEST i DEMO nie mają powierzchni weryfikacyjnej, więc PDF stamtąd nie niesie
@@ -242,5 +243,5 @@ Projekt jest na licencji **AGPL-3.0-only** — pełny tekst w pliku [LICENSE](LI
 
 Zwendorowany generator PDF Ministerstwa Finansów jest osobnym artefaktem na
 licencji **MIT**. Jego nota licencyjna leży obok niego —
-[`src/ksef_mcp/vendor/LICENCJA-MF.md`](src/ksef_mcp/vendor/LICENCJA-MF.md) —
-i dotyczy wyłącznie tego pliku, nie reszty projektu.
+[`src/ksef_mcp/rendering/vendor/LICENCJA-MF.md`](src/ksef_mcp/rendering/vendor/LICENCJA-MF.md)
+— i dotyczy wyłącznie tego pliku, nie reszty projektu.

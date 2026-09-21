@@ -42,8 +42,8 @@ from ksef_mcp.ksef_port import (
 )
 from ksef_mcp.ksef_port import adapter as port_adapter
 from ksef_mcp.metadata import SERVER_NAME, VERSION
-from ksef_mcp.node_preflight import NodeReport
-from ksef_mcp.pdf import (
+from ksef_mcp.rendering.node_preflight import NodeReport
+from ksef_mcp.rendering.pdf import (
     GeneratorFailed,
     InvoiceNotArchived,
     InvoiceRenderer,
