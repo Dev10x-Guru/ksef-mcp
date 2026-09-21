@@ -2,8 +2,8 @@ from subprocess import CompletedProcess, TimeoutExpired
 
 import pytest
 
-from ksef_mcp import client
 from ksef_mcp.metadata import SERVER_NAME
+from ksef_mcp.setup import client
 from tests.conftest import raiser
 
 

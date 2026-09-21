@@ -85,6 +85,17 @@ niż jedna zmiana łamiąca.
     albo sięga po notę licencyjną MF po ścieżce, przestawia się na
     nową.
 
+- Konfigurację klienta zebrano w pakiecie `ksef_mcp.setup` — ustawienie
+  środowiska to osobny kontekst od logiki faktur (GH-132):
+
+  - moduł `skill` przeniesiony z `ksef_mcp.skill` do
+    `ksef_mcp.setup.skill`,
+  - moduł `client` przeniesiony z `ksef_mcp.client` do
+    `ksef_mcp.setup.client`.
+
+  Uzasadnienie całego podziału na pakiety opisuje
+  [ADR-110](docs/adr/110-podzial-pakietu-po-kontekstach.md).
+
 ### Dodane
 
 - Zestawienie okresu ostrzega, gdy w okresie jest faktura korygująca.

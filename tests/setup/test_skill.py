@@ -2,9 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from ksef_mcp import skill
 from ksef_mcp.metadata import SERVER_NAME, VERSION
-from ksef_mcp.skill import SkillScope
+from ksef_mcp.setup import skill
+from ksef_mcp.setup.skill import SkillScope
 
 
 @pytest.fixture
