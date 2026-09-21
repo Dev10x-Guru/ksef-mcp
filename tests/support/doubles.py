@@ -207,7 +207,9 @@ class FakeUnparsableLimitsClient:
 
     def get_context_limits(self) -> FakeContextLimits:
         if self.ceilings_unparsable:
-            raise KSeFValidationError("Invalid response payload")
+            raise KSeFValidationError("Invalid response payload") from ValueError(
+                "onlineSession.collectiveIdentifier: Field required"
+            )
         return sdk_context_limits()
 
 

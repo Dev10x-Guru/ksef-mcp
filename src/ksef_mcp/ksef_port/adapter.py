@@ -297,7 +297,14 @@ class Ksef2Session:
         with translated():
             try:
                 ceilings = self.authenticated.limits.get_context_limits()
-            except KSeFValidationError:
+            except KSeFValidationError as rejected:
+                # The pydantic error chained as `__cause__` names the field
+                # the SDK could not read; limits carry no personal data, so
+                # it may go to the journal in full (GH-253).
+                technical_log().warning(
+                    "KSeF answered about session ceilings in a shape the SDK rejected: %s",
+                    rejected.__cause__ or rejected,
+                )
                 return CONSERVATIVE_CEILINGS, False
         session = ceilings.online_session
         return (
