@@ -12,12 +12,14 @@ udokumentowane.
 
 ### Zmiany łamiące
 
-Powierzchnia (2) decyzji D-040 — pola modeli odpowiedzi. Wydanie
-zawierające tę sekcję musi podnieść wersję major, nawet jeśli żadne
-narzędzie MCP nie zmieniło nazwy ani sygnatury. Precedensem jest
-GH-144, gdzie `subject_types`/`subject_type` ujednolicono bez okresu
-przejściowego z tego samego powodu: trwały dualizm nazw byłby gorszy
-niż jedna zmiana łamiąca.
+Powierzchnia (2) decyzji D-040 — pola modeli odpowiedzi. Projekt jest
+wciąż na `0.x`, więc ta sekcja podnosi wersję minor, nie major: numery
+przed `1.0.0` nie niosą obietnicy stabilności i SemVer dopuszcza tu
+zmianę łamiącą w minor. Od pierwszego `1.0.0` taka sekcja będzie
+wymuszać major, nawet jeśli żadne narzędzie MCP nie zmieni nazwy ani
+sygnatury. Precedensem jest GH-144, gdzie `subject_types`/`subject_type`
+ujednolicono bez okresu przejściowego z tego samego powodu: trwały
+dualizm nazw byłby gorszy niż jedna zmiana łamiąca.
 
 - Wszystkie pięć narzędzi odpowiada tym samym czterem polom na
   szczycie: `nip`, `environment`, `message` i `warnings`. Dotąd pole
