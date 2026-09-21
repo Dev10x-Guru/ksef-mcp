@@ -124,7 +124,7 @@ jako rutynowa synchronizacja stałych:
 | `src/ksef_mcp/rendering/vendor/LICENCJA-MF.md` | przepisać datę pobrania, rozmiar, skrót SHA-256, `Last-Modified` |
 | `src/ksef_mcp/rendering/pdf.py` (`BUNDLE_NAME`) | nowa nazwa pliku |
 | `tests/rendering/test_pdf.py` (`BUNDLE_DIGEST`, stała **testowa**, nie produkcyjna) | nowy skrót SHA-256 |
-| `tests/rendering/test_pdf.py`, `tests/test_server.py` | literały wersji generatora w asercjach (`"1.1.39"`) |
+| `tests/rendering/test_pdf.py`, `tests/server/test_tools_rendering.py` | literały wersji generatora w asercjach (`"1.1.39"`) |
 | `bin/test_release.py`, `bin/test_vendor_bundle.py`, `tests/test_distribution.py` | ścieżki/literały zawierające nazwę pliku z wersją |
 
 `bin/vendor_bundle.py` łapie niespójność między plikiem a notą, ale

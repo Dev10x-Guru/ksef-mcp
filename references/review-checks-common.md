@@ -136,7 +136,7 @@ Gdy dokumentacja odwołuje się do poleceń CLI, plików lub katalogów
 - **Polecenia**: zweryfikuj, że występują w sekcji Development w
   CLAUDE.md lub są znanymi wbudowanymi poleceniami `uv`/CLI
 - **Pliki i katalogi**: użyj Glob, aby zweryfikować, że istnieją w
-  bieżącym commicie (np. `src/ksef_mcp/server.py`)
+  bieżącym commicie (np. `src/ksef_mcp/server/app.py`)
 - **Planowane funkcje**: jeśli dokumentujesz przyszłe funkcje jeszcze
   niezaimplementowane, wyraźnie oznacz jako `[PLANNED]` lub
   `[NOT YET IMPLEMENTED]`

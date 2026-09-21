@@ -139,6 +139,37 @@ niż jedna zmiana łamiąca.
 
 ### Zmienione
 
+- Adaptery wejścia — serwer MCP i wiersz poleceń — są odtąd pakietami
+  `ksef_mcp.server` i `ksef_mcp.cli` zamiast dwóch plików po kilkaset
+  linii. **To nie jest zmiana łamiąca i tym różni się od przeprowadzek
+  opisanych wyżej w sekcji „Zmiany łamiące”.** Tamte (storage,
+  invoices, rendering, setup) zmieniły ścieżki importu; te dwie nie
+  zmieniają żadnej. `from ksef_mcp.server import server` działa dalej,
+  bo `server/__init__.py` re-eksportuje `server`, `main` i
+  `ServerInfo`, a skrypt konsolowy `ksef-mcp = "ksef_mcp.cli:main"`
+  celuje w atrybut, który `cli/__init__.py` re-eksportuje tak samo jak
+  wcześniej robił to moduł. `uvx ksef-mcp` nie jest w ogóle dotknięte.
+  Dla integratora to zmiana wyłącznie wewnętrzna (GH-133, GH-134).
+
+- Tłumaczenie raportów na wpisy dziennika audytu mieszka odtąd w
+  modułach, które te raporty produkują — synchronizacja, lista,
+  zestawienie, przegląd i render — zamiast w jednym pliku serwera.
+  Dla podatnika nic się nie zmienia; zmienia się to, że druga
+  powierzchnia dostarczania nie musi powtarzać przepływu audytowego
+  ręcznie, tak jak musiało to robić `purge` (GH-135).
+
+- Zapis do dziennika audytu przestał być czymś, o czym można
+  zapomnieć. Ramka, która i tak opakowuje każde narzędzie MCP, wydaje
+  teraz uchwyt do zapisu i odmawia wydania wyniku, jeśli narzędzie
+  odpowiedziało bez wpisu. Wartość dziennika opiera się na jego
+  kompletności (D-011), a dotąd nic jej nie pilnowało (GH-136).
+
+- Wiersz poleceń rozdziela podkomendy jedną konwencją: każdy podparser
+  niesie funkcję, która go obsługuje. Literówka w nazwie komendy
+  kończy się odtąd błędem, a nie cichym uruchomieniem serwera MCP —
+  co dla integratora debugującego skrypt wyglądało jak zawieszenie
+  (GH-137).
+
 - Obietnica, że przerwany zapis nigdy nie zostawia połowy pliku, jest
   odtąd własnością jednego miejsca w kodzie, a nie siedmiu kopii, które
   musiały się zgadzać. Dla podatnika nic się nie zmienia dziś — zmienia
