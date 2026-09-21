@@ -5,18 +5,6 @@ Lokalny serwer MCP do KSeF (Krajowy System e-Faktur), zbudowany przez Dev10x.Gur
 Uruchamiany na własnej maszynie przez `uvx ksef-mcp` — dane faktur nie
 przechodzą przez żadną usługę pośredniczącą.
 
-> **To nie jest `ksef-mcp.pl`.** Istnieje niepowiązany z nami projekt o tej
-> samej nazwie, wystawiony jako zdalny serwer MCP pod `https://ksef-mcp.pl/mcp`
-> (HTTP + OAuth). Różnica jest zasadnicza, nie kosmetyczna: tam faktury i
-> uwierzytelnienie przechodzą przez cudzą usługę, tutaj nie opuszczają Twojej
-> maszyny. Jeśli Twój klient MCP wystawił Ci adres autoryzacyjny w
-> przeglądarce — to nie był ten serwer. Nasz uruchamia się lokalnie przez
-> `uvx ksef-mcp` i o nic nie pyta w przeglądarce.
->
-> Obie dystrybucje instalują skrypt konsolowy o nazwie `ksef-mcp`, więc przy
-> obu zainstalowanych wygrywa ta wcześniejsza w `PATH`. Sprawdzisz, co masz,
-> przez `ksef-mcp doctor` [#75].
-
 ## Stan projektu
 
 Serwer MCP wystawia dziś sześć narzędzi: `server_info`,
@@ -245,3 +233,16 @@ Zwendorowany generator PDF Ministerstwa Finansów jest osobnym artefaktem na
 licencji **MIT**. Jego nota licencyjna leży obok niego —
 [`src/ksef_mcp/rendering/vendor/LICENCJA-MF.md`](src/ksef_mcp/rendering/vendor/LICENCJA-MF.md)
 — i dotyczy wyłącznie tego pliku, nie reszty projektu.
+
+## To nie jest `ksef-mcp.pl`
+
+Istnieje niepowiązany z nami projekt o tej samej nazwie, wystawiony jako
+zdalny serwer MCP pod `https://ksef-mcp.pl/mcp` (HTTP + OAuth). Różnica jest
+zasadnicza, nie kosmetyczna: tam faktury i uwierzytelnienie przechodzą przez
+cudzą usługę, tutaj nie opuszczają Twojej maszyny. Jeśli Twój klient MCP
+wystawił Ci adres autoryzacyjny w przeglądarce — to nie był ten serwer. Nasz
+uruchamia się lokalnie przez `uvx ksef-mcp` i o nic nie pyta w przeglądarce.
+
+Obie dystrybucje instalują skrypt konsolowy o nazwie `ksef-mcp`, więc przy
+obu zainstalowanych wygrywa ta wcześniejsza w `PATH`. Sprawdzisz, co masz,
+przez `ksef-mcp doctor` [#75].
