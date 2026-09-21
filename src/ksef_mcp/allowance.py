@@ -27,7 +27,7 @@ from ksef_mcp.clock import now_utc
 from ksef_mcp.diagnostics import technical_log
 from ksef_mcp.durability import JsonDocumentStore, SchemaMismatch
 from ksef_mcp.ksef_port.budget import HOUR, QueryBudget
-from ksef_mcp.ksef_port.errors import KsefRequestRejected
+from ksef_mcp.ksef_port.errors import RefusalBreakerEngaged
 from ksef_mcp.ksef_port.guard import GuardedSession
 from ksef_mcp.ksef_port.protocol import KsefSession
 from ksef_mcp.ksef_port.types import (
@@ -386,7 +386,7 @@ class RefusalLedger:
         blocked_until = self.load().blocked_until
         if blocked_until is None or blocked_until <= self.clock():
             return
-        raise KsefRequestRejected(
+        raise RefusalBreakerEngaged(
             f"Refusing locally: KSeF has said no {self.limit} times in a row, "
             f"and asking again is the pattern that lengthens a block. Nothing "
             f"will be sent before {blocked_until.isoformat()}."

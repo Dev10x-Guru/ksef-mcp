@@ -16,6 +16,7 @@ from ksef_mcp.ksef_port.errors import (
     KsefRequestRejected,
     KsefUnreachable,
     PackageLinkExpired,
+    RefusalBreakerEngaged,
 )
 from ksef_mcp.ksef_port.guard import GuardedSession, RefusalBreaker
 from ksef_mcp.ksef_port.protocol import KsefPort, KsefSession
@@ -87,6 +88,7 @@ __all__ = [
     "QueryBudget",
     "RateLimits",
     "RefusalBreaker",
+    "RefusalBreakerEngaged",
     "RetryPolicy",
     "SessionCeilings",
     "SubjectRole",

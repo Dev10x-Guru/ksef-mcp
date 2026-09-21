@@ -110,7 +110,12 @@ def run_verify(console: Console, *, configuration_file: Path | None) -> int:
         console.write(messages.describe_failure(configuration, refusal))
         console.write(messages.describe_retry_after(refusal.retry_after))
         return EXIT_KSEF_REFUSED
-    except ksef_port.KsefPortError as failure:
+    except (ksef_port.RefusalBreakerEngaged, ksef_port.KsefPortError) as failure:
+        # The fuse named on its own beside the port root, not folded into it
+        # (GH-234). `check_connection` runs behind the same `GuardedSession` as
+        # every other caller, so a blown fuse reaches here — and it used to
+        # arrive as a `KsefPortError`. Dropping it would answer `verify` with a
+        # traceback in place of the sentence that says when asking resumes.
         console.write(messages.describe_failure(configuration, failure))
         return EXIT_KSEF_REFUSED
     return report_connection(console, checked)

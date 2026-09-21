@@ -43,6 +43,7 @@ from ksef_mcp.ksef_port import (
     OperationLimit,
     Period,
     RateLimits,
+    RefusalBreakerEngaged,
     SessionCeilings,
     SubjectRole,
 )
@@ -487,6 +488,44 @@ def test_a_rate_limit_on_one_subject_role_keeps_the_answers_already_paid_for(
         ListingOutcome.LISTED,
         ListingOutcome.LISTED,
     ]
+
+
+def test_a_blown_local_fuse_on_one_subject_role_keeps_the_answers_already_paid_for(
+    cache: PeriodCache,
+    protection: Allowance,
+) -> None:
+    # GH-234. Ta odmowa wyszła spod `KsefPortError`, więc przestała być
+    # rodzeństwem `KsefRequestRejected` w tym `except`. Gdyby jej tam nie
+    # dopisać, zapalony bezpiecznik zabrałby ze sobą odpowiedzi, za które
+    # przydział już zapłacił — dokładnie to, czym było GH-95.
+    lister = a_lister_meeting(
+        RefusalBreakerEngaged("Odmawiam lokalnie; nic nie wyślę przed 2026-09-01T13:00:00+00:00."),
+        cache=cache,
+        protection=protection,
+    )
+
+    assert [one.outcome for one in lister.run(nip=NIP, token=CREDENTIAL).subject_roles] == [
+        ListingOutcome.LISTED,
+        ListingOutcome.BUDGET_SPENT,
+        ListingOutcome.LISTED,
+        ListingOutcome.LISTED,
+    ]
+
+
+def test_a_blown_local_fuse_says_when_asking_resumes(
+    cache: PeriodCache,
+    protection: Allowance,
+) -> None:
+    lister = a_lister_meeting(
+        RefusalBreakerEngaged("Odmawiam lokalnie; nic nie wyślę przed 2026-09-01T13:00:00+00:00."),
+        cache=cache,
+        protection=protection,
+    )
+
+    assert (
+        "2026-09-01T13:00:00+00:00"
+        in lister.run(nip=NIP, token=CREDENTIAL).subject_roles[1].message
+    )
 
 
 def test_a_rate_limit_passes_on_the_wait_ksef_itself_asked_for(

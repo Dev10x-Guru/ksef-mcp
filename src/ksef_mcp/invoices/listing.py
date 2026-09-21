@@ -30,7 +30,12 @@ from typing import Final
 
 from ksef_mcp.allowance import Allowance
 from ksef_mcp.clock import now_utc
-from ksef_mcp.ksef_port.errors import BudgetExhausted, KsefRateLimited, KsefRequestRejected
+from ksef_mcp.ksef_port.errors import (
+    BudgetExhausted,
+    KsefRateLimited,
+    KsefRequestRejected,
+    RefusalBreakerEngaged,
+)
 from ksef_mcp.ksef_port.protocol import KsefPort
 from ksef_mcp.ksef_port.types import (
     SYNCHRONISED_SUBJECT_ROLES,
@@ -75,19 +80,24 @@ DATE_TYPE_LABELS: Final[dict[DateType, str]] = {
 }
 
 
-# Three refusals, one consequence for the caller: this subject type went
+# Four refusals, one consequence for the caller: this subject type went
 # unasked, and the answers the allowance already bought stay. None of them is a
-# parent of another — the local counter declining (GH-211), the port declining
-# to send, and KSeF itself answering 429 — so all three have to be named.
+# parent of another — the local counter declining (GH-211), the local refusal
+# fuse declining (GH-234), the port declining to send, and KSeF itself answering
+# 429 — so all four have to be named.
 #
-# Exactly these three. Widening to `KsefPortError` would swallow
+# Exactly these four. Widening to `KsefPortError` would swallow
 # `KsefUnreachable` and `KsefAuthenticationFailed`, reporting a dead network or
 # a rejected credential as "that subject type declined" and returning a cheerful
-# partial answer where the caller needs to know nothing was asked at all.
-AllowanceRefusal = BudgetExhausted | KsefRequestRejected | KsefRateLimited
+# partial answer where the caller needs to know nothing was asked at all. Two of
+# the four now sit outside that root entirely, which is why the list is the only
+# honest spelling: no single root covers a local refusal and a port refusal
+# without also covering an outage.
+AllowanceRefusal = BudgetExhausted | RefusalBreakerEngaged | KsefRequestRejected | KsefRateLimited
 
 ALLOWANCE_REFUSALS: Final[tuple[type[Exception], ...]] = (
     BudgetExhausted,
+    RefusalBreakerEngaged,
     KsefRequestRejected,
     KsefRateLimited,
 )

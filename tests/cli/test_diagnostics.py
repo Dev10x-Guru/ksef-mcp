@@ -562,6 +562,31 @@ def test_verify_never_retries_on_its_own(
     assert "nie ponawiam samoczynnie" in recorder.transcript
 
 
+def test_verify_reports_a_blown_local_fuse_instead_of_a_traceback(
+    configured: Path,
+    stored_token: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # GH-234. `check_connection` pyta przez ten sam `GuardedSession`, co reszta,
+    # więc zapalony bezpiecznik tu dociera. Spod `KsefPortError` wychodził
+    # złapany; nazwany osobno w tym `except` wychodzi złapany nadal, a bez tego
+    # `verify` odpowiadałoby stosem wywołań zamiast momentem wznowienia.
+    monkeypatch.setattr(
+        ksef_port,
+        "check_connection",
+        raiser(
+            ksef_port.RefusalBreakerEngaged(
+                "Odmawiam lokalnie; nic nie wyślę przed 2026-09-01T13:00:00+00:00."
+            )
+        ),
+    )
+    recorder = Recorder()
+
+    code = cli.main(["verify"], console=recorder.console, configuration_file=configured)
+
+    assert (code, "Odmawiam lokalnie" in recorder.transcript) == (cli.EXIT_KSEF_REFUSED, True)
+
+
 def test_verify_reports_a_rejected_token(
     configured: Path,
     stored_token: None,

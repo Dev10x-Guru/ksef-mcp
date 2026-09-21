@@ -48,6 +48,7 @@ from ksef_mcp.ksef_port import (
     PackageLinkExpired,
     Period,
     RateLimits,
+    RefusalBreakerEngaged,
     SessionCeilings,
     SubjectRole,
 )
@@ -1073,6 +1074,7 @@ def test_an_export_ksef_has_forgotten_is_taken_off_the_record(
         KsefUnreachable("Brak odpowiedzi od KSeF."),
         KsefRateLimited("Przekroczony limit zapytań.", retry_after=60),
         KsefAuthenticationFailed("Sesja wygasła."),
+        RefusalBreakerEngaged("Odmawiam lokalnie; nic nie wyślę przed 2026-09-01T13:00:00+00:00."),
     ],
 )
 def test_a_status_query_that_never_reached_ksef_keeps_the_export_on_the_record(
@@ -1095,6 +1097,7 @@ def test_a_status_query_that_never_reached_ksef_keeps_the_export_on_the_record(
         KsefUnreachable("Brak odpowiedzi od KSeF."),
         KsefRateLimited("Przekroczony limit zapytań.", retry_after=60),
         KsefAuthenticationFailed("Sesja wygasła."),
+        RefusalBreakerEngaged("Odmawiam lokalnie; nic nie wyślę przed 2026-09-01T13:00:00+00:00."),
     ],
 )
 def test_a_status_query_that_never_reached_ksef_leaves_the_point_alone(
