@@ -138,7 +138,7 @@ def test_working_directory_is_created_and_reported(working_directory: Path) -> N
 
     chosen = onboarding.choose_working_directory(recorder.console, nip=NIP)
 
-    assert (chosen, chosen.is_dir()) == (working_directory, True)
+    assert (chosen.path, chosen.path.is_dir()) == (working_directory, True)
 
 
 def test_an_existing_working_directory_is_left_as_it_was(tmp_path: Path) -> None:
@@ -152,11 +152,37 @@ def test_an_existing_working_directory_is_left_as_it_was(tmp_path: Path) -> None
 
 
 def test_working_directory_in_a_synced_folder_is_flagged(tmp_path: Path) -> None:
-    recorder = Recorder(answers=[str(tmp_path / "Dropbox" / "faktury")])
+    recorder = Recorder(answers=[str(tmp_path / "Dropbox" / "faktury"), ""])
 
     onboarding.choose_working_directory(recorder.console, nip=NIP)
 
     assert "dropbox" in recorder.transcript
+
+
+def test_a_synced_folder_kept_on_purpose_is_acknowledged_by_default(tmp_path: Path) -> None:
+    # GH-252: asked once, here, where the decision is made — and the default
+    # is yes, because the path was typed on purpose.
+    recorder = Recorder(answers=[str(tmp_path / "Dropbox" / "faktury"), ""])
+
+    chosen = onboarding.choose_working_directory(recorder.console, nip=NIP)
+
+    assert chosen.acknowledged is True
+
+
+def test_a_synced_folder_may_be_kept_without_acknowledging_it(tmp_path: Path) -> None:
+    recorder = Recorder(answers=[str(tmp_path / "Dropbox" / "faktury"), "n"])
+
+    chosen = onboarding.choose_working_directory(recorder.console, nip=NIP)
+
+    assert chosen.acknowledged is False
+
+
+def test_a_private_folder_is_not_asked_about(working_directory: Path) -> None:
+    recorder = Recorder(answers=[str(working_directory)])
+
+    chosen = onboarding.choose_working_directory(recorder.console, nip=NIP)
+
+    assert (chosen.acknowledged, len(recorder.prompts)) == (False, 1)
 
 
 def test_the_prompt_asks_about_statements_and_pdfs_not_about_invoices(
@@ -524,6 +550,31 @@ def test_onboarding_saves_the_configuration(
         keyring_backend="keyring.backends.SecretService",
         working_directory=working_directory,
     )
+
+
+def test_onboarding_remembers_an_acknowledged_synced_directory(
+    healthy_node: None,
+    usable_keyring: keyring_preflight.KeyringReport,
+    accepting_token_store: list[tuple[str, str]],
+    configuration_file: Path,
+    tmp_path: Path,
+) -> None:
+    synced = tmp_path / "Dropbox" / "ksef"
+    recorder = Recorder(
+        answers=[NIP, "", "", str(synced), "", "n", "n", ""],
+        secrets=[TOKEN],
+    )
+
+    cli.main(
+        ["onboarding"],
+        console=recorder.console,
+        working_directory=configuration_file.parent,
+        configuration_file=configuration_file,
+        home=configuration_file.parent,
+    )
+
+    stored = config.load_configuration(path=configuration_file)
+    assert stored.acknowledged_cloud_directories == (synced,)
 
 
 def test_onboarding_says_why_it_does_not_call_ksef(

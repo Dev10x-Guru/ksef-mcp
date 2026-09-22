@@ -449,6 +449,22 @@ def test_a_cloud_synced_path_is_named_in_as_many_words(tmp_path: Path) -> None:
     assert "onedrive" in prepared.warnings[0]
 
 
+def test_the_cloud_caveat_says_how_to_stop_hearing_it(tmp_path: Path) -> None:
+    # GH-252: descriptive, and pointing at the one place the decision is made.
+    prepared = prepare_working_directory(tmp_path / "OneDrive" / "ksef")
+
+    assert "ksef-mcp onboarding" in prepared.warnings[0]
+
+
+def test_the_caller_may_hand_over_its_own_judgement_of_syncing(tmp_path: Path) -> None:
+    prepared = prepare_working_directory(
+        tmp_path / "OneDrive" / "ksef",
+        cloud_marker_for=lambda directory: None,
+    )
+
+    assert prepared.warnings == ()
+
+
 def test_a_directory_with_no_cloud_marker_says_nothing_about_one() -> None:
     directory = WorkingDirectory(path=Path("/robocze"), created=True, mode=0o700, cloud_marker=None)
 

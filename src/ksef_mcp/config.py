@@ -1,6 +1,6 @@
 import json
 import stat
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Final
 
@@ -25,6 +25,13 @@ SCHEMA_VERSION: Final[int] = 1
 # `require_schema` compares versions by equality — and send every taxpayer
 # through onboarding again for a name only a code reader ever sees (GH-188).
 WORKING_DIRECTORY_KEY: Final[str] = "invoice_directory"
+
+# Both optional in the file, both defaulted when absent, so a configuration
+# written before GH-252 still reads as schema 1: an accountant who never chose
+# a synced directory has nothing to acknowledge and nothing to switch off.
+ACKNOWLEDGED_CLOUD_DIRECTORIES_KEY: Final[str] = "acknowledged_cloud_directories"
+
+CLOUD_WARNINGS_KEY: Final[str] = "cloud_warnings"
 
 WORKING_DIRECTORY_MODE: Final[int] = 0o700
 
@@ -61,6 +68,44 @@ class Configuration:
     # nobody chooses that (D-032). This is the declared working directory —
     # where a statement and a rendered PDF are written (GH-188).
     working_directory: Path
+    # Synced directories the taxpayer has already been told about and chose
+    # anyway. A warning repeated at every document teaches the reader to skip
+    # it, which is the one thing a warning must not do (GH-252).
+    acknowledged_cloud_directories: tuple[Path, ...] = ()
+    # The off switch, for whoever keeps every product in the cloud on purpose
+    # and wants no directory-by-directory bookkeeping. Hand-edited: nothing in
+    # the CLI flips it, because the default is the safe direction.
+    cloud_warnings: bool = True
+
+    def cloud_marker_for(self, directory: Path) -> str | None:
+        """The sync marker to warn about, or `None` once the taxpayer has decided.
+
+        `None` for three reasons that read the same to a caller — the path is
+        not synced, the taxpayer acknowledged this exact path, or every cloud
+        warning is switched off — because the caller's only question is
+        whether to say anything at all.
+        """
+        if not self.cloud_warnings or self.acknowledges(directory):
+            return None
+        return cloud_sync_marker(directory)
+
+    def acknowledges(self, directory: Path) -> bool:
+        # Compared canonical, as `internal_root_conflict` compares roots: the
+        # directory reached through `~`, `..` or a symlink is still the one the
+        # taxpayer said yes to. Only the comparison is canonical — the file
+        # keeps the spelling that was typed.
+        target = directory.expanduser().resolve()
+        return any(
+            one.expanduser().resolve() == target for one in self.acknowledged_cloud_directories
+        )
+
+    def acknowledging(self, directory: Path) -> "Configuration":
+        if self.acknowledges(directory):
+            return self
+        return replace(
+            self,
+            acknowledged_cloud_directories=(*self.acknowledged_cloud_directories, directory),
+        )
 
 
 def configuration_path() -> Path:
@@ -107,6 +152,10 @@ def load_configuration(*, path: Path | None = None) -> Configuration | None:
             environment=KsefEnvironment(stored["environment"]),
             keyring_backend=stored["keyring_backend"],
             working_directory=Path(stored[WORKING_DIRECTORY_KEY]),
+            acknowledged_cloud_directories=tuple(
+                Path(one) for one in stored.get(ACKNOWLEDGED_CLOUD_DIRECTORIES_KEY, ())
+            ),
+            cloud_warnings=bool(stored.get(CLOUD_WARNINGS_KEY, True)),
         )
     except (KeyError, TypeError, ValueError) as incomplete:
         raise ConfigurationUnreadable(
@@ -136,6 +185,10 @@ def save_configuration(
         "environment": str(configuration.environment),
         "keyring_backend": configuration.keyring_backend,
         WORKING_DIRECTORY_KEY: str(configuration.working_directory),
+        ACKNOWLEDGED_CLOUD_DIRECTORIES_KEY: [
+            str(one) for one in configuration.acknowledged_cloud_directories
+        ],
+        CLOUD_WARNINGS_KEY: configuration.cloud_warnings,
     }
     return json_written_atomically(
         resolved,

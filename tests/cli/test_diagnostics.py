@@ -157,6 +157,75 @@ def test_doctor_says_nothing_about_twins_when_there_are_none(
     assert "zapisane starym sposobem" not in recorder.transcript
 
 
+def doctored_with(
+    configuration: Configuration,
+    *,
+    configuration_file: Path,
+    working_directory: Path,
+) -> Recorder:
+    config.save_configuration(configuration, path=configuration_file)
+    recorder = Recorder()
+    cli.main(
+        ["doctor"],
+        console=recorder.console,
+        working_directory=working_directory,
+        configuration_file=configuration_file,
+    )
+    return recorder
+
+
+@pytest.fixture
+def synced_configuration(tmp_path: Path) -> Configuration:
+    return Configuration(
+        nip=NIP,
+        environment=KsefEnvironment.TEST,
+        keyring_backend="keyring.backends.SecretService",
+        working_directory=tmp_path / "Dropbox" / "ksef",
+    )
+
+
+def test_doctor_says_a_synced_working_directory_will_be_mentioned_at_every_document(
+    healthy_node: None,
+    usable_keyring: keyring_preflight.KeyringReport,
+    tmp_path: Path,
+    configuration_file: Path,
+    synced_configuration: Configuration,
+) -> None:
+    # GH-252: the only place a taxpayer who never saw the onboarding question
+    # learns why every statement carries the same sentence.
+    recorder = doctored_with(
+        synced_configuration,
+        configuration_file=configuration_file,
+        working_directory=tmp_path,
+    )
+
+    assert "każde zestawienie i PDF o tym przypomina" in recorder.transcript
+
+
+def test_doctor_says_when_the_synced_directory_was_settled(
+    healthy_node: None,
+    usable_keyring: keyring_preflight.KeyringReport,
+    tmp_path: Path,
+    configuration_file: Path,
+    synced_configuration: Configuration,
+) -> None:
+    recorder = doctored_with(
+        synced_configuration.acknowledging(synced_configuration.working_directory),
+        configuration_file=configuration_file,
+        working_directory=tmp_path,
+    )
+
+    assert "decyzja zapamiętana" in recorder.transcript
+
+
+def test_doctor_says_nothing_about_syncing_for_a_private_directory(
+    doctored: tuple[int, Recorder],
+) -> None:
+    _, recorder = doctored
+
+    assert "synchronizowany" not in recorder.transcript
+
+
 @pytest.fixture
 def stale_subject_directory(subject_data_root: Path) -> Path:
     # The shape a taxpayer who onboarded before GH-111 is left with: an archive

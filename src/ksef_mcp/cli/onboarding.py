@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
@@ -103,7 +104,15 @@ def choose_environment(console: Console) -> KsefEnvironment:
         console.write(f"Podaj numer od 1 do {len(ENVIRONMENT_ORDER)} albo nazwę.")
 
 
-def choose_working_directory(console: Console, *, nip: str) -> Path:
+@dataclass(frozen=True)
+class ChosenDirectory:
+    path: Path
+    # True only after the taxpayer heard the synced-directory caution here and
+    # said to keep the path anyway; the tools then stop repeating it (GH-252).
+    acknowledged: bool
+
+
+def choose_working_directory(console: Console, *, nip: str) -> ChosenDirectory:
     """Name the directory by what it receives: statements and rendered PDFs.
 
     It never receives the invoice XML — that goes to the archive, whose place is
@@ -117,12 +126,21 @@ def choose_working_directory(console: Console, *, nip: str) -> Path:
     )
     directory = Path(answer).expanduser()
     prepared = config.prepare_directory(directory)
-    for line in messages.describe_working_directory_choice(
-        prepared,
-        cloud_marker=config.cloud_sync_marker(directory),
-    ):
+    cloud_marker = config.cloud_sync_marker(directory)
+    for line in messages.describe_working_directory_choice(prepared, cloud_marker=cloud_marker):
         console.write(line)
-    return prepared.path
+    if cloud_marker is None:
+        return ChosenDirectory(path=prepared.path, acknowledged=False)
+    # Asked once, here, where the decision is being made — not at every
+    # document afterwards. Default yes: the path was typed on purpose.
+    acknowledged = affirmative(
+        ask_with_default(
+            console,
+            prompt="  Zapamiętać tę decyzję i nie przypominać przy każdym dokumencie? (T/n)",
+            default="t",
+        )
+    )
+    return ChosenDirectory(path=prepared.path, acknowledged=acknowledged)
 
 
 def report_archive_location(
@@ -239,14 +257,16 @@ def run_onboarding(
         f"  Token zapisany i odczytany z powrotem: {stored.length} znaków, "
         f"końcówka …{stored.suffix}"
     )
-    directory = choose_working_directory(console, nip=nip)
+    chosen = choose_working_directory(console, nip=nip)
     report_archive_location(console, nip=nip, environment=environment)
     configuration = Configuration(
         nip=nip,
         environment=environment,
         keyring_backend=backend,
-        working_directory=directory,
+        working_directory=chosen.path,
     )
+    if chosen.acknowledged:
+        configuration = configuration.acknowledging(chosen.path)
     saved_to = config.save_configuration(configuration, path=configuration_file)
     summarize_configuration(console, configuration, saved_to=saved_to)
     offer_client_registration(console)

@@ -348,10 +348,15 @@ class WorkingDirectory:
     def warnings(self) -> tuple[str, ...]:
         told: list[str] = []
         if self.cloud_marker is not None:
+            # Descriptive rather than alarmed: the reader may well have chosen
+            # this on purpose, and the sentence says how to stop hearing it
+            # (GH-252).
             told.append(
-                f"Katalog roboczy wygląda na synchronizowany do chmury "
-                f"({self.cloud_marker}). Dokument nazywa kontrahentów — "
-                f"kopia trafi na cudzy serwer."
+                f"Katalog roboczy jest synchronizowany do chmury "
+                f"({self.cloud_marker}). Dokument nazywa kontrahentów, więc "
+                f"jego kopia trafia na serwer dostawcy. Jeśli to świadoma "
+                f"decyzja, `ksef-mcp onboarding` zapamięta ją i przestanie "
+                f"o tym przypominać."
             )
         if self.mode != WORKING_DIRECTORY_MODE:
             told.append(
@@ -367,8 +372,14 @@ def prepare_working_directory(
     *,
     data_root: Path | None = None,
     cache_root_path: Path | None = None,
+    cloud_marker_for: Callable[[Path], str | None] = cloud_sync_marker,
 ) -> WorkingDirectory:
-    """Refuse internal storage, then create the directory `0700` if it is new."""
+    """Refuse internal storage, then create the directory `0700` if it is new.
+
+    `cloud_marker_for` is the configuration's own judgement when the caller
+    has one — a path the taxpayer already acknowledged answers `None` there —
+    and the bare heuristic otherwise (GH-252).
+    """
     resolved_data = user_data_path(appname=SERVER_NAME) if data_root is None else data_root
     resolved_cache = cache_root() if cache_root_path is None else cache_root_path
     conflict = internal_root_conflict(
@@ -388,7 +399,7 @@ def prepare_working_directory(
         path=prepared.path,
         created=prepared.created,
         mode=prepared.mode,
-        cloud_marker=cloud_sync_marker(prepared.path),
+        cloud_marker=cloud_marker_for(prepared.path),
     )
 
 
@@ -666,8 +677,9 @@ class StatementComposer:
         token: Credential,
         period: AccountingPeriod,
         directory: Path,
+        cloud_marker_for: Callable[[Path], str | None] = cloud_sync_marker,
     ) -> Statement:
-        working = prepare_working_directory(directory)
+        working = prepare_working_directory(directory, cloud_marker_for=cloud_marker_for)
         window = period.queried
         with self.port.session(nip=nip, token=token) as opened:
             session = self.allowance.guarded(session=opened)

@@ -21,6 +21,17 @@ udokumentowane.
 
 ### Dodane
 
+- O katalogu roboczym synchronizowanym do chmury narzędzia mówią raz,
+  nie przy każdym dokumencie. `ksef-mcp onboarding` pyta przy wyborze
+  takiego katalogu, czy zapamiętać decyzję (domyślnie tak), i zapisuje ją
+  w `configuration.json` pod `acknowledged_cloud_directories`; zestawienie
+  i PDF w zapamiętanym katalogu nie noszą już ostrzeżenia, a inny katalog
+  w chmurze nadal je dostaje. `ksef-mcp doctor` mówi, czy decyzja została
+  zapamiętana. Ton uwagi jest opisowy, nie alarmowy, i wskazuje, gdzie ją
+  wyłączyć. Kto trzyma w chmurze wszystko świadomie, wpisuje do
+  `configuration.json` `"cloud_warnings": false` — wyłącznik na wszystkie
+  katalogi naraz. Plik zapisany przed tą zmianą czyta się bez obu kluczy,
+  jako brak zapamiętanych decyzji i włączone ostrzeżenia (GH-252).
 - Zestawienie okresu nie mówi już samo „w okresie jest korekta", lecz
   rozróżnia dwa położenia, z których tylko jedno wymaga pracy. Korekta,
   której faktura pierwotna jest w tym samym miesiącu, dostaje
