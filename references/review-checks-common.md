@@ -77,6 +77,19 @@ Przed zgłoszeniem którejkolwiek z nich **zweryfikuj rzeczywisty kod**:
     REQUIRED. Wymagany jest głos trzecioosobowy, z konkretną rolą i
     beneficjentem. Patrz `references/git-jtbd.md` § Wymóg głosu oraz
     § Wybór roli.
+14. **Commity `fixup!` w otwartych PR-ach** — każdy commit nazwany
+    `fixup! NUMER-ZGŁOSZENIA ...` lub `fixup! ...` wskazuje na błąd
+    historii: autor zapomnial uruchomić autosquash przed push'em.
+    Taki commit musi zostać zeskładany zanim PR będzie merge'owany.
+    Zgłoś jako REQUIRED i zaproponuj:
+    ```bash
+    git rebase -i --autosquash
+    git push --force-with-lease
+    ```
+    Jeśli jest to pierwszy fixup w danym PR, oferta może być dla
+    autora — autor zwykle wie, że zapomnial autosquash. Jeśli
+    powtarza się w tej samej osoby w ciągu 3+ PR, zgłoś jako
+    REQUIRED ze stanowczym zdaniem.
 
 ## Lista kontrolna architektury
 
