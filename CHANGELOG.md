@@ -26,6 +26,17 @@ udokumentowane.
   wersja schematu cache rośnie z 4 na 5, bo miesiąc bez skrótów nie
   umiałby odpowiedzieć na pytanie o parę.
 
+- Render PDF ma test na prawdziwej fakturze, nie tylko na zmyślonej.
+  Polityka aktualizacji generatora z D-027 od początku zakładała
+  porównanie z portalem MF, a takiego testu nie było — opiekun
+  podmieniający bundel musiał oglądać wynik gołym okiem. Test pod
+  markerem `ksef_live` pobiera jedną fakturę ze środowiska testowego,
+  renderuje ją i sprawdza, że na stronie jest to, co KSeF podał w
+  metadanych; PDF portalu do porównania stron, rozmiaru i tekstu
+  wskazuje się ręcznie zmienną `KSEF_PORTAL_PDF`, bo portal nie ma
+  kontraktu, po którym dałoby się go pobrać. Domyślne `uv run pytest`
+  nadal nie sięga do sieci (GH-82).
+
 ### Zmienione
 
 - Druga odmowa lokalna — zapalony bezpiecznik po serii odmów KSeF-u —
