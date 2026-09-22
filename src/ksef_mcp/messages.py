@@ -130,6 +130,30 @@ def describe_subject(configuration: Configuration | None) -> tuple[str, ...]:
     return (
         f"  Podmiot: {configuration.nip}",
         f"  Środowisko: {configuration.environment}",
+        *describe_working_directory_sync(configuration),
+    )
+
+
+def describe_working_directory_sync(configuration: Configuration) -> tuple[str, ...]:
+    """Whether the declared working directory is synced, and whether that was settled.
+
+    The onboarding prompt is the only place the question gets asked, so
+    `doctor` is where a taxpayer who answered it months ago can check what the
+    answer was — and where one who never saw it learns why every statement
+    carries the same sentence (GH-252).
+    """
+    marker = config.cloud_sync_marker(configuration.working_directory)
+    if marker is None:
+        return ()
+    if configuration.cloud_marker_for(configuration.working_directory) is None:
+        return (
+            f"  Katalog roboczy synchronizowany do chmury ({marker}) — decyzja "
+            f"zapamiętana, narzędzia o tym nie przypominają.",
+        )
+    return (
+        f"  Katalog roboczy synchronizowany do chmury ({marker}) — każde "
+        f"zestawienie i PDF o tym przypomina. `ksef-mcp onboarding` zapyta, czy "
+        f"zapamiętać tę decyzję.",
     )
 
 
@@ -225,8 +249,8 @@ def describe_working_directory_choice(
         return told
     return (
         *told,
-        f"  Uwaga: ścieżka wygląda na synchronizowaną ({cloud_marker}).",
-        "  Zestawienia i PDF-y nazywają kontrahentów — kopia trafi na cudzy serwer.",
+        f"  Ścieżka jest synchronizowana do chmury ({cloud_marker}).",
+        "  Zestawienia i PDF-y nazywają kontrahentów, więc ich kopia trafia na serwer dostawcy.",
     )
 
 

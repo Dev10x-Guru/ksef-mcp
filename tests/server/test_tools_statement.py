@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from decimal import Decimal
 from pathlib import Path
 from typing import ClassVar
@@ -26,6 +27,7 @@ class StubComposer:
     """Stands in for composing the month: this module's job is the tool surface."""
 
     directories: ClassVar[list[Path]] = []
+    markers: ClassVar[list[Callable[[Path], str | None]]] = []
 
     def __init__(
         self,
@@ -47,8 +49,10 @@ class StubComposer:
         token: str,
         period: AccountingPeriod,
         directory: Path,
+        cloud_marker_for: Callable[[Path], str | None],
     ) -> Statement:
         type(self).directories.append(directory)
+        type(self).markers.append(cloud_marker_for)
         return Statement(
             nip=nip,
             environment=KsefEnvironment.TEST,
@@ -75,6 +79,7 @@ def exported_statement(*, working_directory: str | None = None) -> StatementResu
 @pytest.fixture
 def composing(monkeypatch: pytest.MonkeyPatch, with_a_token: None) -> None:
     StubComposer.directories = []
+    StubComposer.markers = []
     monkeypatch.setattr(tools_statement, "StatementComposer", StubComposer)
     monkeypatch.setattr(context, "PeriodCache", lambda **kwargs: kwargs)
     monkeypatch.setattr(context, "InvoiceArchive", lambda **kwargs: kwargs)
@@ -121,6 +126,22 @@ def test_the_answer_carries_the_sum_per_currency(exported: StatementResult) -> N
 
 def test_the_answer_repeats_the_directory_warning(exported: StatementResult) -> None:
     assert "onedrive" in exported.warnings[0]
+
+
+def test_the_composer_judges_syncing_by_the_configuration(
+    composing: None,
+    configured: Configuration,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    # GH-252: the tool hands the composer the configuration's own judgement,
+    # so a directory acknowledged during onboarding is not warned about again.
+    acknowledged = configured.acknowledging(tmp_path / "OneDrive" / "ksef")
+    monkeypatch.setattr(config, "load_configuration", lambda: acknowledged)
+
+    exported_statement()
+
+    assert StubComposer.markers[0](tmp_path / "OneDrive" / "ksef") is None
 
 
 def test_the_answer_says_when_it_was_asked(exported: StatementResult) -> None:

@@ -138,6 +138,22 @@ def test_a_cloud_synced_directory_is_named_before_the_pdf_leaves(
     assert "onedrive" in result.warnings[0]
 
 
+def test_an_acknowledged_synced_directory_is_not_named_again(
+    rendering: None,
+    configured: Configuration,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    # GH-252: the reader chose OneDrive on purpose and said so once, during
+    # onboarding; the fortieth PDF is not the place to say it a fortieth time.
+    synced = tmp_path / "OneDrive" / "faktury"
+    monkeypatch.setattr(config, "load_configuration", lambda: configured.acknowledging(synced))
+
+    result = rendered_invoice(working_directory=str(synced))
+
+    assert result.warnings == []
+
+
 def test_a_private_directory_leaves_the_render_answer_without_caveats(
     rendered: RenderedInvoiceResult,
 ) -> None:

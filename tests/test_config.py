@@ -1,5 +1,6 @@
 import json
 import stat
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -63,6 +64,68 @@ def test_the_working_directory_keeps_the_key_written_so_far(
     stored = json.loads(saved_configuration.read_text(encoding="utf-8"))
 
     assert stored["invoice_directory"] == str(configuration.working_directory)
+
+
+@pytest.fixture
+def acknowledged(configuration: Configuration) -> Configuration:
+    return configuration.acknowledging(Path("/home/ksiegowa/Dropbox/ksef"))
+
+
+def test_an_acknowledged_directory_round_trips(
+    acknowledged: Configuration, configuration_file: Path
+) -> None:
+    saved = config.save_configuration(acknowledged, path=configuration_file)
+
+    assert config.load_configuration(path=saved) == acknowledged
+
+
+def test_a_configuration_written_before_acknowledgements_reads_with_none(
+    saved_configuration: Path,
+) -> None:
+    # GH-252 added two optional keys; a file from before carries neither and
+    # must still read as schema 1 rather than send anybody through onboarding.
+    stored = json.loads(saved_configuration.read_text(encoding="utf-8"))
+    del stored[config.ACKNOWLEDGED_CLOUD_DIRECTORIES_KEY]
+    del stored[config.CLOUD_WARNINGS_KEY]
+    saved_configuration.write_text(json.dumps(stored), encoding="utf-8")
+
+    loaded = config.load_configuration(path=saved_configuration)
+
+    assert (loaded.acknowledged_cloud_directories, loaded.cloud_warnings) == ((), True)
+
+
+def test_an_acknowledged_directory_is_not_warned_about_again(
+    acknowledged: Configuration,
+) -> None:
+    assert acknowledged.cloud_marker_for(Path("/home/ksiegowa/Dropbox/ksef")) is None
+
+
+def test_the_same_directory_reached_another_way_counts_as_acknowledged(
+    acknowledged: Configuration,
+) -> None:
+    # Compared resolved, as the internal-root check is: a `..` on the way in
+    # is still the directory the taxpayer said yes to.
+    roundabout = Path("/home/ksiegowa/Dropbox/inne/../ksef")
+
+    assert acknowledged.cloud_marker_for(roundabout) is None
+
+
+def test_another_synced_directory_is_still_warned_about(acknowledged: Configuration) -> None:
+    assert acknowledged.cloud_marker_for(Path("/home/ksiegowa/OneDrive/ksef")) == "onedrive"
+
+
+def test_the_switch_silences_every_synced_directory(configuration: Configuration) -> None:
+    silenced = replace(configuration, cloud_warnings=False)
+
+    assert silenced.cloud_marker_for(Path("/home/ksiegowa/OneDrive/ksef")) is None
+
+
+def test_acknowledging_the_same_directory_twice_records_it_once(
+    acknowledged: Configuration,
+) -> None:
+    again = acknowledged.acknowledging(Path("/home/ksiegowa/Dropbox/ksef"))
+
+    assert again.acknowledged_cloud_directories == (Path("/home/ksiegowa/Dropbox/ksef"),)
 
 
 def test_saved_configuration_is_not_world_readable(saved_configuration: Path) -> None:

@@ -51,7 +51,10 @@ def render_invoice(
         if working_directory is None
         else Path(working_directory).expanduser()
     )
-    working = prepare_working_directory(directory)
+    working = prepare_working_directory(
+        directory,
+        cloud_marker_for=subject.configuration.cloud_marker_for,
+    )
     renderer = InvoiceRenderer(
         environment=subject.environment,
         archive_directory=subject.archive.invoice_directory,
@@ -99,7 +102,9 @@ def render_invoice_pdf(
     this one call, under the same rules as the statement: created `0700` if new,
     refused inside the cache or data root, and reported in `warnings` when its
     path looks like a cloud sync folder or its permissions are wider than `0700`.
-    The PDF names the counterparty exactly as the statement does.
+    A synced directory the taxpayer acknowledged during onboarding is not
+    reported again. The PDF names the counterparty exactly as the statement
+    does.
 
     On production the document carries the QR code and verification link, and
     `verification_url` repeats it here. Test and demo invoices have no

@@ -49,6 +49,15 @@ def test_the_working_directory_warning_is_about_statements_and_pdfs(tmp_path: Pa
     assert "Zestawienia i PDF-y" in transcript(told)
 
 
+def test_the_working_directory_caution_describes_rather_than_alarms(tmp_path: Path) -> None:
+    # GH-252: the reader may well have chosen this on purpose.
+    prepared = config.prepare_directory(tmp_path / "Dropbox" / "zestawienia")
+
+    told = messages.describe_working_directory_choice(prepared, cloud_marker="dropbox")
+
+    assert "Uwaga" not in transcript(told)
+
+
 def test_the_working_directory_without_a_sync_marker_is_only_described(tmp_path: Path) -> None:
     prepared = config.prepare_directory(tmp_path / "zestawienia")
 

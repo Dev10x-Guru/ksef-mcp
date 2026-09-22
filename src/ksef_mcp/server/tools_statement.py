@@ -56,6 +56,7 @@ def export_statement(
         token=stored,
         period=AccountingPeriod.parsed(period),
         directory=directory,
+        cloud_marker_for=subject.configuration.cloud_marker_for,
     )
     trail = subject.trail
     journal.record(
@@ -85,7 +86,8 @@ def export_period_statement(
     this one call. Whichever is used is created `0700` if it is new, is refused
     outright if it lies inside the cache or data root — those are internal
     storage and deleting statements must never reach the archive — and is
-    reported in `warnings` when its path looks like a cloud sync folder.
+    reported in `warnings` when its path looks like a cloud sync folder, unless
+    the taxpayer acknowledged that directory during onboarding.
 
     The file holds ten columns, in this order: KSeF number, the seller's own
     invoice number, issue date, seller NIP, seller name, gross, net, VAT,
