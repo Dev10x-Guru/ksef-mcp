@@ -53,10 +53,11 @@ zapomniane — to jest świadomie niezbudowane.
 
 ## Dla kogo
 
-Odbiorcą jest **użytkownik techniczny**. Instalacja wymaga terminala, menedżera
-wersji i ręcznej edycji pliku konfiguracyjnego klienta MCP. Nie udajemy, że jest
-to instalacja dla osoby nietechnicznej — dystrybucja dla takiego odbiorcy
-(instalator albo rozszerzenie do klienta) to osobny, przyszły etap.
+Odbiorcą jest **użytkownik techniczny**. Instalacja wymaga terminala i
+menedżera wersji; w kliencie innym niż Claude Code także ręcznej edycji jego
+pliku konfiguracyjnego. Nie udajemy, że jest to instalacja dla osoby
+nietechnicznej — dystrybucja dla takiego odbiorcy (instalator albo
+rozszerzenie do klienta) to osobny, przyszły etap.
 
 ## Wymagania wstępne
 
@@ -84,9 +85,37 @@ PDF. To degradacja, nie awaria.
 
 ## Instalacja i uruchomienie
 
-Serwer komunikuje się przez stdio i jest uruchamiany przez klienta MCP, nie ręcznie.
+Jedyny krok do świadomego wykonania to jedna komenda:
 
-Konfiguracja w kliencie MCP (`.mcp.json`, `claude_desktop_config.json`):
+```bash
+uvx ksef-mcp onboarding
+```
+
+Przeprowadzi po kolei przez wszystko, co trzeba ustalić przed pierwszym
+uruchomieniem, i można ją uruchamiać wielokrotnie — poprawia to, co już
+zapisano, zamiast dokładać drugi wpis:
+
+1. sprawdza warunki wstępne: Python, Node (tylko do PDF-ów) i magazyn
+   keyringu, w którym zamieszka token;
+2. pyta o NIP podmiotu, magazyn tokenu i środowisko KSeF — domyślnie
+   testowe, nigdy produkcyjne bez wyraźnego wyboru;
+3. prosi o wklejenie tokena KSeF (bez echa) i zapisuje go w keyringu;
+4. pyta o katalog roboczy na zestawienia i PDF-y i mówi, gdzie naprawdę
+   ląduje archiwum XML — ten katalog obejmuje się kopią zapasową;
+5. rejestruje serwer w Claude Code (`claude mcp add`) i proponuje
+   instalację skilla, który uczy agenta korzystać z narzędzi;
+6. na koniec proponuje `verify` — domyślnie **nie**, bo to jedyny krok,
+   który sięga do KSeF i wydaje godzinowy budżet.
+
+Serwer komunikuje się przez stdio i jest uruchamiany przez klienta MCP, nie
+ręcznie. Pliku konfiguracyjnego klienta nie trzeba edytować — onboarding
+robi to za Ciebie, gdy na maszynie jest komenda `claude`.
+
+### Ścieżka awaryjna: klient bez komendy `claude`
+
+Gdy klient MCP to nie Claude Code (albo `claude` nie ma na `PATH`),
+onboarding pomija rejestrację i pokazuje, co wpisać ręcznie. Wpis w pliku
+klienta (`.mcp.json`, `claude_desktop_config.json`) wygląda tak:
 
 ```json
 {
@@ -99,7 +128,13 @@ Konfiguracja w kliencie MCP (`.mcp.json`, `claude_desktop_config.json`):
 }
 ```
 
-Aby uruchomić wersję z lokalnego katalogu roboczego zamiast z PyPI:
+Reszta konfiguracji — NIP, token, środowisko, katalog roboczy — i tak
+pochodzi z onboardingu; sam wpis w kliencie tylko uruchamia serwer.
+
+### Dla współtwórcy: wersja z katalogu roboczego
+
+Instalując z PyPI, tego wariantu nie potrzebujesz. Służy do uruchamiania
+kodu z lokalnego klonu zamiast opublikowanej wersji:
 
 ```json
 {
@@ -112,8 +147,7 @@ Aby uruchomić wersję z lokalnego katalogu roboczego zamiast z PyPI:
 }
 ```
 
-Po instalacji pierwszym krokiem jest `ksef-mcp onboarding` — sprawdzi
-zależności, przeprowadzi przez konfigurację poświadczeń i wybór środowiska.
+### Komendy
 
 | Komenda | Co robi | Sięga do KSeF |
 |---|---|---|
