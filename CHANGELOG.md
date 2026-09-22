@@ -59,6 +59,13 @@ udokumentowane.
 
 ### Zmienione
 
+- Sekcja „Instalacja i uruchomienie" w README prowadzi przez
+  `ksef-mcp onboarding` jako jedyny krok do świadomego wykonania i mówi,
+  o co komenda zapyta. Ręczny wpis w pliku klienta MCP jest opisany jako
+  ścieżka awaryjna dla klienta bez komendy `claude`, a wariant `--from`
+  jako scenariusz współtwórcy, nie podatnika instalującego z PyPI. Dotąd
+  sekcja zaczynała od ręcznego JSON-a, a o onboardingu wspominała po nim
+  — w odwrotnej kolejności niż ta, w której trzeba to zrobić (GH-254).
 - Druga odmowa lokalna — zapalony bezpiecznik po serii odmów KSeF-u —
   ma własny wyjątek `RefusalBreakerEngaged` spod korzenia
   `KsefMcpError`, tak jak licznik godzinowy z GH-211. Dotąd podnosiła
