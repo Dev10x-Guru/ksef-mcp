@@ -851,8 +851,17 @@ nie ma mechanizmu, który powiedziałby „czegoś brakuje".
 - **Jak weryfikujemy po podmianie:** **test porównujący z portalem** —
   wygenerować PDF ze znanej faktury i porównać rozmiar oraz treść z tym,
   co daje portal MF. Dokładnie ta procedura potwierdziła pierwszą wersję.
-  Wymaga faktury testowej w repozytorium albo przebiegu pod markerem
-  `ksef_live`.
+  Od GH-82 istnieje jako `tests/rendering/test_pdf_live.py` pod markerem
+  `ksef_live`: pobiera jedną prawdziwą fakturę ze środowiska testowego,
+  renderuje ją i sprawdza na stronie numer KSeF, numer faktury, NIP
+  sprzedawcy i wersję generatora ze stopki. Porównanie z portalem —
+  liczba stron, rozmiar i tekst każdej strony — bierze PDF portalu ze
+  zmiennej `KSEF_PORTAL_PDF`, zapisany **ręcznie** z aplikacji MF dla
+  tej samej faktury. Test nie pobiera go sam: portal jest kanałem bez
+  kontraktu ([ADR-112](../adr/112-zwendorowany-generator-pdf-ministerstwa.md)),
+  a test, który by go skrobał, padałby razem z portalem, nie z renderem.
+  Faktura nie leży w repozytorium, nawet testowa — prawdziwy dokument
+  to nie fixture [D-011].
 - **Znane ograniczenie tego testu:** sprawdza **zgodność**, nie
   **jakość**. Gdy MF zmieni layout, test przejdzie — bo porównuje z
   portalem, który też się zmieni. Wariant renderowany przez `ksef2`

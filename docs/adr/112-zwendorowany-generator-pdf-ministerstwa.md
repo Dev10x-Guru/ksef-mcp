@@ -132,11 +132,11 @@ jako rutynowa synchronizacja stałych:
 którego ten skrypt świadomie nie pokrywa, bo porównuje wyłącznie
 artefakt z jego notą, nie notę z resztą kodu.
 
-Po podmianie: **test porównujący z portalem** (wygenerować PDF ze
-znanej faktury i porównać rozmiar/treść z tym, co daje portal MF) —
-procedura opisana w
-[D-027](../domain/decisions.md#d-027--pdf-generuje-oficjalny-generator-mf-pod-node-z-zwendorowanego-bundla),
-wymaga faktury testowej albo przebiegu pod markerem `ksef_live`.
+Po podmianie: **test porównujący z portalem** —
+`tests/rendering/test_pdf_live.py` pod markerem `ksef_live`, z PDF-em
+portalu wskazanym w `KSEF_PORTAL_PDF` (GH-82). Procedura i jej
+ograniczenie — zgodność, nie jakość — opisane w
+[D-027](../domain/decisions.md#d-027--pdf-generuje-oficjalny-generator-mf-pod-node-z-zwendorowanego-bundla).
 
 ### Dlaczego wendorowanie zamiast alternatyw?
 
