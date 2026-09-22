@@ -171,8 +171,8 @@ def page_texts(path: Path) -> tuple[str, ...]:
 # prints both sides of a failed `in` or `==` — the counterparty's name, NIP and
 # amounts would land in the terminal. So each test reduces the comparison to
 # a boolean or to page numbers first and asserts on that: a failure then reads
-# `assert False` or `[1]`, never the invoice (CLAUDE.md: treść faktury nie
-# trafia do logów ani komunikatów błędów).
+# `assert False` or `[1]`, never the invoice (CLAUDE.md: invoice content must
+# never reach logs or error messages).
 def differing_pages(ours: tuple[str, ...], theirs: tuple[str, ...]) -> list[int]:
     return [
         number

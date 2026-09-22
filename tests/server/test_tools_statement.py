@@ -200,6 +200,7 @@ def test_a_statement_records_the_month_it_closed(
 def test_a_statement_records_the_numbers_its_rows_name(
     exported: StatementResult, trail: AuditTrail
 ) -> None:
-    # `StatementResult` ich nie niesie — pięćdziesiąt numerów w oknie czatu to
-    # hałas — ale zapis dostępu bez numerów nie odtwarza jego zakresu.
+    # `StatementResult` does not carry them — fifty numbers in the chat window
+    # is noise — but an access record without numbers does not reproduce its
+    # scope.
     assert recorded_reads(trail)[0].document_count == 1

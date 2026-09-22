@@ -1,11 +1,12 @@
-"""Czy jeden podatnik ma jedno archiwum i czy `--nip` nie wyprowadzi poza nie.
+"""Whether one taxpayer has one archive, and whether `--nip` cannot lead
+outside it.
 
-Dwa niezmienniki, oba wynikające z tego, że NIP jest jednocześnie kluczem w
-keyringu i członem ścieżki. Zapis z myślnikami, ze spacjami i z prefiksem `PL`
-to ten sam podatnik, więc musi trafić do tego samego katalogu i tego samego wpisu
-poświadczeń (GH-111). A ponieważ ten człon ścieżki pochodzi od użytkownika i
-prowadzi do `purge`, który kasuje pliki, alfabet musi być zamknięty na dziesięć
-cyfr — żadne `..` ani `/` nie ma prawa przez niego przejść (GH-112).
+Two invariants, both following from the NIP being at once a keyring key and
+a path segment. A spelling with dashes, with spaces, or with the `PL`
+prefix is the same taxpayer, so it must land in the same directory and the
+same credential entry (GH-111). And because this path segment comes from
+the user and leads to `purge`, which deletes files, the alphabet must be
+closed to ten digits — no `..` and no `/` may ever pass through it (GH-112).
 """
 
 from pathlib import Path
@@ -30,8 +31,8 @@ def test_kazdy_zapis_jednego_numeru_daje_ten_sam_nip(spelling: str) -> None:
 
 
 def test_ten_sam_podatnik_zapisany_dwojako_ma_jedno_archiwum() -> None:
-    # Sedno GH-111: dwa zapisy dawały po cichu dwa katalogi i dwa wpisy w
-    # keyringu, bez błędu i bez ostrzeżenia.
+    # The heart of GH-111: two spellings silently gave two directories and
+    # two keyring entries, with no error and no warning.
     grouped = SubjectScope.parsed(nip="123-456-32-18", environment=KsefEnvironment.TEST)
     plain = SubjectScope.parsed(nip=NIP, environment=KsefEnvironment.TEST)
 
@@ -58,8 +59,9 @@ def test_zapis_ktory_nie_jest_nipem_jest_odrzucany(rejected: str) -> None:
 
 
 def test_odrzucenie_nie_powtarza_odrzuconej_wartosci() -> None:
-    # NIP to dane osobowe, a wyjątek wędruje do śladów stosu i ładunków błędów
-    # MCP (D-011). Komunikat mówi, czego oczekiwano, nie co dostał.
+    # A NIP is personal data, and the exception travels into stack traces
+    # and MCP error payloads (D-011). The message says what was expected,
+    # not what was received.
     with pytest.raises(NipRejected) as refusal:
         Nip.parsed("987-654-32-10-XX")
 
@@ -71,8 +73,8 @@ def test_nip_wraca_do_zapisu_pod_ktorym_jest_trzymany() -> None:
 
 
 def test_kazde_srodowisko_ma_wlasny_katalog(tmp_path: Path) -> None:
-    # Punkt kontynuacji z testowego, użyty na produkcji, uznałby za pobrany
-    # okres, którego nikt nie pobrał.
+    # A continuation point from TEST, used against PRODUCTION, would treat
+    # a period nobody has fetched as already fetched.
     test = SubjectScope.parsed(nip=NIP, environment=KsefEnvironment.TEST)
     production = SubjectScope.parsed(nip=NIP, environment=KsefEnvironment.PRODUCTION)
 
@@ -80,8 +82,8 @@ def test_kazde_srodowisko_ma_wlasny_katalog(tmp_path: Path) -> None:
 
 
 def test_kazdy_podmiot_ma_wlasny_katalog(tmp_path: Path) -> None:
-    # Wspólny katalog to główny sposób, w jaki biuro rachunkowe miesza klientów
-    # (D-034).
+    # A shared directory is the main way an accounting office mixes up its
+    # clients (D-034).
     client = SubjectScope.parsed(nip=NIP, environment=KsefEnvironment.TEST)
     neighbour = SubjectScope.parsed(nip="9876543210", environment=KsefEnvironment.TEST)
 
@@ -109,7 +111,7 @@ def scope() -> SubjectScope:
 
 @pytest.fixture
 def office(tmp_path: Path) -> Path:
-    """Biuro rachunkowe z trzema klientami: jeden zapisany dobrze, dwóch starym zapisem."""
+    """An accounting office with three clients: one saved correctly, two with the old spelling."""
     holder = tmp_path / "subjects"
     for name in ("1234563218", "123-456-32-18", "PL9876543210"):
         (holder / name / "test").mkdir(parents=True)
@@ -137,16 +139,18 @@ def test_zgloszenie_nazywa_katalog_docelowy(office: Path, tmp_path: Path) -> Non
 def test_istniejacy_katalog_docelowy_jest_widoczny_w_zgloszeniu(
     office: Path, tmp_path: Path
 ) -> None:
-    # Dwa katalogi jednego podatnika obok siebie to inna sytuacja niż jeden
-    # katalog do przemianowania: przeniesienie zawartości może nadpisać pliki.
+    # Two directories for one taxpayer sitting side by side is a different
+    # situation from a single directory needing a rename: moving the
+    # contents over could overwrite files.
     found = paths.unnormalised_subjects(override=tmp_path)
 
     assert tuple(subject.normalised_exists for subject in found) == (True, False)
 
 
 def test_katalog_spod_starego_zapisu_nie_jest_ruszany(office: Path, tmp_path: Path) -> None:
-    # Decyzja o wstecznej zgodności: wykrycie, nie migracja. W tych katalogach
-    # leżą faktury z danymi kontrahentów i nie przenosimy ich bez pytania.
+    # A backward-compatibility decision: detection, not migration. These
+    # directories hold invoices carrying counterparty data, and we do not
+    # move them without asking.
     paths.unnormalised_subjects(override=tmp_path)
 
     assert (office / "123-456-32-18" / "test").is_dir()
@@ -171,9 +175,9 @@ def test_brak_katalogu_podmiotow_to_brak_znalezisk(tmp_path: Path) -> None:
 
 
 def test_bez_podmiany_korzenie_sa_tymi_z_platformdirs(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Autouse'owy fixture podmienia oba korzenie każdemu innemu testowi, żeby
-    # suite nie pisała do katalogu danych osoby, która ją uruchomiła. Ten jeden
-    # test jest o samym powiązaniu, więc wstawia prawdziwe funkcje z powrotem.
+    # An autouse fixture swaps both roots for every other test, so the suite
+    # never writes into the data directory of whoever ran it. This one test
+    # is about that very wiring, so it puts the real functions back.
     monkeypatch.setattr(paths, "user_data_path", user_data_path)
     monkeypatch.setattr(paths, "user_cache_path", user_cache_path)
     scope = SubjectScope.parsed(nip=NIP, environment=KsefEnvironment.TEST)

@@ -1,13 +1,14 @@
-"""Czy odpowiedź w oknie rozmowy da się ocenić bez otwierania katalogu.
+"""Whether the answer in the chat window can be judged without opening a folder.
 
-Trzy rzeczy są tu sprawdzane i wszystkie trzy są niezmiennikami, nie
-upiększeniami. Skrócenie listy jest powiedziane wprost (D-023). Pusty wynik jest
-osobnym komunikatem i powtarza pytanie, więc „nic nie przyszło" da się odróżnić
-od „zapytałeś o zły miesiąc". Metadane owszem, treść faktury nigdy (D-011).
+Three things are checked here, and all three are invariants, not polish.
+A truncated list says so outright (D-023). An empty result is a separate
+message that repeats the question back, so "nothing arrived" can be told apart
+from "you asked about the wrong month." Metadata, yes; invoice content, never
+(D-011).
 
-Okno listy jest zamknięte i zaokrąglone do pełnej godziny — bez tego cache
-okresów nie ma czego dopasować i każde pytanie kosztowałoby jedno z dwudziestu
-zapytań na godzinę razy cztery typy podmiotu.
+The listing window is closed and rounded to the full hour — without that,
+period caching has nothing to match against, and every question would cost one
+of the twenty queries per hour, times four subject types.
 """
 
 from collections.abc import Iterator
@@ -97,7 +98,7 @@ def page_of(count: int, *, has_more: bool = False, truncated: bool = False) -> M
 
 @dataclass
 class RecordingSession:
-    """Liczy, ile z dwudziestu zapytań na godzinę naprawdę poszło do KSeF-u."""
+    """Counts how many of the twenty queries per hour actually reached KSeF."""
 
     page: MetadataPage
     allowance: OperationLimit = GENEROUS
@@ -200,8 +201,8 @@ def test_the_window_is_dated_by_the_issue_date_the_taxpayer_asks_in() -> None:
 
 
 def test_the_window_has_both_ends_so_the_period_cache_can_keep_it() -> None:
-    # Okno datowane jak synchronizacja jest z definicji niecacheowalne, więc
-    # każde powtórzone pytanie kosztowałoby jedno zapytanie na typ podmiotu.
+    # A window dated like synchronisation is by definition uncacheable, so
+    # every repeated question would cost one more query per subject type.
     assert listing_period(moment=ASKED_AT).date_type is not DateType.PERMANENT_STORAGE
 
 
@@ -256,7 +257,8 @@ def test_a_list_exactly_at_the_threshold_is_still_listed(question: Question) -> 
 
 
 def test_a_list_over_the_threshold_carries_no_rows_at_all(question: Question) -> None:
-    # D-023: powyżej progu narzędzie zwraca liczbę i sumę brutto, nigdy listę.
+    # D-023: above the threshold the tool returns a count and a gross total,
+    # never a list.
     listed = summarise(question=question, page=page_of(LISTING_THRESHOLD + 1), queried_at=ASKED_AT)
 
     assert (listed.outcome, listed.invoices) == (ListingOutcome.SUMMARISED, ())
@@ -269,7 +271,8 @@ def test_a_list_over_the_threshold_still_reports_how_many_there_were(question: Q
 
 
 def test_a_shortened_answer_says_the_count_out_loud(question: Question) -> None:
-    # Cicha obcinka zabija zaufanie natychmiast — liczba musi paść w zdaniu.
+    # A silent truncation kills trust instantly — the count must appear in the
+    # sentence.
     listed = summarise(question=question, page=page_of(51), queried_at=ASKED_AT)
 
     assert "51 faktur" in listed.message
@@ -304,8 +307,9 @@ def test_an_empty_answer_restates_exactly_what_was_asked(question: Question, exp
 
 
 def test_a_restated_question_names_both_ends() -> None:
-    # Od GH-84 okno bez końca nie istnieje jako typ, więc nie ma już czego
-    # opisywać jako „bez końca" — pytanie zawsze podaje oba końce.
+    # Since GH-84 an open-ended window no longer exists as a type, so there is
+    # nothing left to describe as "open-ended" — the question always states
+    # both ends.
     asked = Question(
         nip=NIP,
         environment=KsefEnvironment.TEST,
@@ -345,15 +349,16 @@ def test_a_full_page_is_reported_as_complete(question: Question) -> None:
 
 
 def test_the_answer_never_carries_an_invoice_body(question: Question) -> None:
-    # FA(2)/FA(3) to niezaufane wejście z danymi osobowymi kontrahenta (D-011).
+    # FA(2)/FA(3) is untrusted input carrying the counterparty's personal
+    # data (D-011).
     listed = summarise(question=question, page=page_of(3), queried_at=ASKED_AT)
 
     assert "<Faktura" not in listed.message
 
 
 def test_the_listing_covers_every_subject_role(lister: InvoiceLister) -> None:
-    # Ta sama pętla co synchronizacja: firma bywa sprzedawcą na jednej fakturze
-    # i nabywcą na następnej (D-031 §5).
+    # The same loop as synchronisation: a company can be the seller on one
+    # invoice and the buyer on the next (D-031 §5).
     listed = lister.run(nip=NIP, token=CREDENTIAL)
 
     assert [one.question.subject_role for one in listed.subject_roles] == [
@@ -494,10 +499,10 @@ def test_a_blown_local_fuse_on_one_subject_role_keeps_the_answers_already_paid_f
     cache: PeriodCache,
     protection: Allowance,
 ) -> None:
-    # GH-234. Ta odmowa wyszła spod `KsefPortError`, więc przestała być
-    # rodzeństwem `KsefRequestRejected` w tym `except`. Gdyby jej tam nie
-    # dopisać, zapalony bezpiecznik zabrałby ze sobą odpowiedzi, za które
-    # przydział już zapłacił — dokładnie to, czym było GH-95.
+    # GH-234. This refusal moved out from under `KsefPortError`, so it stopped
+    # being a sibling of `KsefRequestRejected` in this `except`. Without
+    # adding it there, a tripped fuse would take down the answers that the
+    # allowance had already paid for — exactly what GH-95 was.
     lister = a_lister_meeting(
         RefusalBreakerEngaged("Odmawiam lokalnie; nic nie wyślę przed 2026-09-01T13:00:00+00:00."),
         cache=cache,

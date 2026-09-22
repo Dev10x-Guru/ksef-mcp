@@ -503,9 +503,9 @@ def test_the_export_window_is_pinned_to_permanent_storage(
 def test_the_export_window_ends_at_the_moment_the_pass_began(
     first_pass: SynchronisationReport, session: ScriptedSession
 ) -> None:
-    # Niegdyś okno nie miało górnego końca, a ten test tego pilnował — i właśnie
-    # dlatego pułap go nie widział. Brak końca nigdy nie oznaczał okna bez
-    # ograniczenia: adapter wysyłał w jego miejsce „teraz" (GH-84).
+    # The window used to have no upper end, and this test guarded exactly
+    # that — which is why the ceiling never saw it. No end never meant an
+    # unbounded window: the adapter sent "now" in its place (GH-84).
     assert {period.date_to for _, period in session.started} == {NOON}
 
 
@@ -1080,10 +1080,10 @@ def test_an_export_ksef_has_forgotten_is_taken_off_the_record(
 def test_a_status_query_that_never_reached_ksef_keeps_the_export_on_the_record(
     store: SyncStore, naps: list[float], failure: Exception
 ) -> None:
-    # Cofnięcie punktu należy się wyłącznie eksportowi, którego KSeF sam już
-    # nie podaje. Brak odpowiedzi, limit zapytań i wygasła sesja nie mówią nic
-    # o istnieniu eksportu — potraktowanie ich jak potwierdzenia utraty
-    # kasowałoby żywą paczkę wraz z kluczem.
+    # Rolling back the high-water mark is reserved for an export that KSeF
+    # itself no longer reports. No response, a rate limit, or an expired
+    # session say nothing about whether the export exists — treating them as
+    # confirmation of loss would erase a live package along with its key.
     _, report = a_pass_over_a_dead_package(
         store, naps, statuses=[ready(), ready()], status_failure=failure
     )
@@ -1111,9 +1111,9 @@ def test_a_status_query_that_never_reached_ksef_leaves_the_point_alone(
 def test_a_rate_limited_renewal_spends_no_export_on_a_retry(
     store: SyncStore, naps: list[float]
 ) -> None:
-    # Po odpowiedzi „zwolnij" nowe żądanie eksportu w tym samym przebiegu jest
-    # dokładnie tym wzorcem, który Ministerstwo Finansów rejestruje jako próbę
-    # obchodzenia limitów — a czas blokady rośnie przy powtórzeniach.
+    # After a "back off" response, a new export request within the same run
+    # is exactly the pattern the Ministry of Finance flags as an attempt to
+    # circumvent limits — and the block duration grows with repetition.
     session, _ = a_pass_over_a_dead_package(
         store,
         naps,

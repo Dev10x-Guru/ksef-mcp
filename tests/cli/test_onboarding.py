@@ -188,8 +188,9 @@ def test_a_private_folder_is_not_asked_about(working_directory: Path) -> None:
 def test_the_prompt_asks_about_statements_and_pdfs_not_about_invoices(
     working_directory: Path,
 ) -> None:
-    # GH-188: „Katalog na pobrane faktury" obiecywał XML-e, które trafiają
-    # gdzie indziej — i to po tej obietnicy podatnik oceniał kopię zapasową.
+    # GH-188: „Katalog na pobrane faktury" promised XML files that land
+    # elsewhere — and it was against that promise that a taxpayer judged the
+    # backup copy.
     recorder = Recorder(answers=[str(working_directory)])
 
     onboarding.choose_working_directory(recorder.console, nip=NIP)

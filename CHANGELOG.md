@@ -66,6 +66,11 @@ udokumentowane.
   jako scenariusz współtwórcy, nie podatnika instalującego z PyPI. Dotąd
   sekcja zaczynała od ręcznego JSON-a, a o onboardingu wspominała po nim
   — w odwrotnej kolejności niż ta, w której trzeba to zrobić (GH-254).
+- Komentarze i docstringi w pozostałych plikach `tests/` są po angielsku,
+  jak kod obok nich — GH-226 doprowadziło do tego dwa pliki, ta zmiana
+  domyka resztę. Zmieniona jest wyłącznie proza: asercje, nazwy testów i
+  teksty produktu w danych testowych zostają po polsku, bo to język,
+  w którym program mówi do księgowej (GH-240).
 - Druga odmowa lokalna — zapalony bezpiecznik po serii odmów KSeF-u —
   ma własny wyjątek `RefusalBreakerEngaged` spod korzenia
   `KsefMcpError`, tak jak licznik godzinowy z GH-211. Dotąd podnosiła

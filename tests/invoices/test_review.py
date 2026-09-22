@@ -1,15 +1,16 @@
-"""Czy narzędzie powie „to jest nowe od ostatniego razu", i czy powie prawdę.
+"""Whether the tool says "this is new since last time" — and tells the truth.
 
-Tu leży jedyna dowiedziona przewaga nad darmową Aplikacją Podatnika [D-025]:
-aplikacja pokazuje, co jest, ale nigdy — co doszło od ostatniego spojrzenia. Ta
-różnica wykryła fakturę z 7 lipca w archiwum, które lipiec miało już zamknięty.
+This is where the only proven advantage over the free Taxpayer Application
+[D-025] lives: that application shows what exists, but never what arrived
+since the last look. That difference is what caught the July 7th invoice
+sitting in an archive that July had already closed.
 
-Sprawdzane są cztery niezmienniki. Znacznik „pokazane człowiekowi" jest trwały i
-odrębny od indeksu deduplikacji [D-022], bo faktura zgłoszona jako nowa zwykle
-nie ma jeszcze pliku w archiwum. Data otrzymania czytana jest z numeru KSeF, nie
-z momentu pobrania. Powyżej progu [D-023] nic nie jest oznaczane jako pokazane,
-bo nikt tego nie zobaczył. I nic tu nie rozstrzyga o ujęciu podatkowym — ST-4
-zostawia tę decyzję człowiekowi.
+Four invariants are checked here. The "shown to human" marker is durable and
+separate from the deduplication index [D-022], because an invoice reported as
+new usually has no archive file yet. The received date is read from the KSeF
+number, not from the moment of download. Above the threshold [D-023] nothing
+is marked as shown, because nobody saw it. And nothing here settles the tax
+treatment — ST-4 leaves that decision to the human.
 """
 
 from collections.abc import Iterator
@@ -70,11 +71,13 @@ GENEROUS: Final[OperationLimit] = OperationLimit(per_second=None, per_minute=Non
 
 EXHAUSTED: Final[OperationLimit] = OperationLimit(per_second=None, per_minute=None, per_hour=0)
 
-# Ta faktura jest sednem zgłoszenia: numer nadany 7 lipca, wykryta we wrześniu.
+# This invoice is the heart of the issue: number assigned July 7th, detected
+# in September.
 IN_JULY = "1234567890-20260707-0100AB12CD77-56"
 
-# Wyprowadzone z REVIEW_WINDOW, nie przepisane liczbą: przepisana data rozjeżdża
-# się z oknem przy pierwszej zmianie pułapu i milczy o tym (GH-84).
+# Derived from REVIEW_WINDOW, not hardcoded as a literal date: a hardcoded date
+# drifts from the window at the first threshold change and stays silent about
+# it (GH-84).
 WINDOW = Period(
     date_from=ON_THE_HOUR - REVIEW_WINDOW,
     date_to=ON_THE_HOUR,
@@ -210,21 +213,22 @@ def reviewer(
 
 
 def test_the_window_reaches_a_full_quarter_back() -> None:
-    # Przeoczona faktura miała trzy miesiące; okno trzydziestodniowe z listy
-    # by jej nie objęło.
+    # The overlooked invoice was three months old; the thirty-day window from
+    # the listing would not have reached it.
     assert review_period(moment=ASKED_AT).date_from == ON_THE_HOUR - REVIEW_WINDOW
 
 
 def test_the_window_is_defined_from_the_ceiling_not_independently() -> None:
-    # Strzeże definicji, nie zachowania. Dowody i limit wypadają w tym samym
-    # miejscu, więc okno jest związane z pułapem, a nie przepisane liczbą —
-    # inaczej rozjeżdżają się w ciszy (GH-84).
+    # Guards the definition, not the behaviour. The evidence and the ceiling
+    # live in the same place, so the window is tied to the ceiling instead of
+    # being a hardcoded number — otherwise they drift apart silently (GH-84).
     assert REVIEW_WINDOW == MAX_QUERY_WINDOW
 
 
 def test_the_window_still_reaches_the_invoice_the_study_found() -> None:
-    # Sedno D-025: numer nadany 7 lipca, wykryty we wrześniu. Skrócenie okna do
-    # pułapu nie może wypchnąć tej faktury poza zakres.
+    # The heart of D-025: number assigned July 7th, detected in September.
+    # Shrinking the window to the ceiling must not push this invoice out of
+    # range.
     assert review_period(moment=ASKED_AT).date_from < datetime(2026, 7, 7, tzinfo=UTC)
 
 
@@ -233,8 +237,8 @@ def test_the_window_ends_on_the_hour_so_a_repeat_costs_nothing() -> None:
 
 
 def test_the_window_is_dated_by_acceptance_in_ksef_not_by_the_sellers_date() -> None:
-    # Faktura wystawiona w marcu, a przyjęta wczoraj, jest nowa dla czytającego;
-    # okno po dacie wystawienia w ogóle by jej nie zawierało.
+    # An invoice issued in March but accepted yesterday is new to the reader;
+    # a window keyed on the issuance date would not have contained it at all.
     assert review_period(moment=ASKED_AT).date_type is DateType.INVOICING
 
 
@@ -265,8 +269,9 @@ def test_the_ledger_reads_back_what_was_written(store: ReviewStore) -> None:
 
 
 def test_the_ledger_lands_in_the_data_root_not_the_cache_one(store: ReviewStore) -> None:
-    # Utrata tego pliku nie kosztuje jednego zapytania, tylko zapis tego, co
-    # człowiek już widział — a faktura z 7 lipca stałaby się cicho nowa (D-032).
+    # Losing this file does not cost one query — it costs the record of what
+    # the human already saw, and the July 7th invoice would quietly become new
+    # again (D-032).
     assert store.save(ReviewLedger()).name == "review.json"
 
 
@@ -312,8 +317,8 @@ def test_an_update_extends_what_another_writer_recorded_meanwhile(
 
 
 def test_the_ledger_does_not_record_the_same_number_twice() -> None:
-    # Faktura własna dociera do tego samego podmiotu w dwóch rolach, a pętla
-    # chodzi po czterech typach podmiotu.
+    # A self-issued invoice reaches the same subject in two roles, and the
+    # loop runs over four subject types.
     entry = ReviewedInvoice(ksef_number=IN_JULY, received_on=date(2026, 7, 7), reviewed_at=ASKED_AT)
 
     assert len(ReviewLedger().extended((entry, entry)).entries) == 1
@@ -377,7 +382,7 @@ def test_an_earlier_month_is_named_by_the_day_the_number_was_assigned(
 
 
 def test_an_earlier_month_is_a_question_to_the_reader_not_a_ruling(question: Question) -> None:
-    # ST-4: narzędzie sygnalizuje, o ujęciu decyduje człowiek.
+    # ST-4: the tool flags it, the human decides how to treat it.
     assert "decydujesz Ty" in assessed(question, (arrived(IN_JULY),)).message
 
 
@@ -398,8 +403,9 @@ def test_a_reported_answer_says_it_will_not_repeat_itself(question: Question) ->
 def test_a_reported_invoice_from_an_incomplete_window_is_not_marked_as_shown(
     question: Question,
 ) -> None:
-    # Sedno #180: KSeF oddał tylko to, co się zmieściło. Zapis „pokazane" dla tej
-    # części pozwala oknu przesunąć się ponad resztą i faktura nie wróci nigdy.
+    # The heart of #180: KSeF returned only what fit. Marking that partial
+    # batch as "shown" would let the window move past the rest, and the
+    # invoice would never come back.
     assert assessed(question, (arrived(IN_JULY),), complete=False).marked is False
 
 
@@ -421,8 +427,8 @@ def test_a_delta_over_the_threshold_still_says_how_many_there_were(question: Que
 
 
 def test_a_delta_over_the_threshold_is_not_marked_as_shown(question: Question) -> None:
-    # Wierszy nie wypisano, więc nikt ich nie zobaczył — zapis, że widział,
-    # byłby gorszy niż brak zapisu.
+    # The rows were never listed, so nobody saw them — recording them as seen
+    # would be worse than not recording anything.
     assert assessed(question, many(LISTING_THRESHOLD + 1)).marked is False
 
 
@@ -473,7 +479,8 @@ def test_the_second_pass_reports_nothing_new(reviewer: InvoiceReviewer) -> None:
 def test_what_was_shown_survives_a_new_process(
     reviewer: InvoiceReviewer, store: ReviewStore
 ) -> None:
-    # Znacznik jest trwały: to jest cała różnica między funkcją a higieną [D-022].
+    # The marker is durable: that is the whole difference between a feature
+    # and mere hygiene [D-022].
     reviewer.run(nip=NIP, token=CREDENTIAL)
 
     assert store.load().reviewed == {IN_JULY}
@@ -482,8 +489,8 @@ def test_what_was_shown_survives_a_new_process(
 def test_an_incomplete_window_leaves_the_ledger_untouched(
     reviewer: InvoiceReviewer, session: RecordingSession, store: ReviewStore
 ) -> None:
-    # #180 od strony pliku: nic nie wchodzi do rejestru, dopóki okno nie jest
-    # kompletem — inaczej pominięte faktury nie mają jak wrócić.
+    # #180 from the ledger's side: nothing enters the register until the
+    # window is complete — otherwise skipped invoices have no way back.
     session.page = page_of((arrived(IN_JULY),), has_more=True)
 
     reviewer.run(nip=NIP, token=CREDENTIAL)
@@ -591,9 +598,9 @@ def test_a_rate_limit_on_one_subject_role_keeps_the_rest_of_the_review(
 def test_a_blown_local_fuse_on_one_subject_role_keeps_the_rest_of_the_review(
     cache: PeriodCache, store: ReviewStore, protection: Allowance
 ) -> None:
-    # GH-234, strona przeglądu. Bezpiecznik zapala się w `_guarded`, więc wypada
-    # z każdego wywołania sesji; poza `KsefPortError` trafia do tego `except`
-    # wyłącznie dlatego, że został w nim nazwany.
+    # GH-234, the review side. The fuse trips inside `_guarded`, so it surfaces
+    # from every session call; it lands in this `except` alongside
+    # `KsefPortError` only because it is named there too.
     reviewer = a_reviewer_meeting(
         RefusalBreakerEngaged("Odmawiam lokalnie; nic nie wyślę przed 2026-09-01T13:00:00+00:00."),
         cache=cache,

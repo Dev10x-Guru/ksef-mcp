@@ -1,15 +1,17 @@
-"""Czy serwer przestaje pytać, gdy KSeF odmawia raz za razem.
+"""Whether the server stops asking when KSeF refuses over and over.
 
-Budżet chroni przed sukcesem zbyt częstym; do GH-99 nic nie chroniło przed
-porażką zbyt częstą. A seria odmów to dokładnie wzorzec, który Ministerstwo
-Finansów analizuje jako próbę obchodzenia limitów i odpowiada blokadą tym
-dłuższą, im częściej się powtarza. Szkodę robi wytrwałość klienta, nie
-pojedyncza operacja — więc bezpiecznik musi przeżyć proces.
+The budget protects against success that is too frequent; until GH-99
+nothing protected against failure that is too frequent. And a run of
+refusals is exactly the pattern the Ministry of Finance analyses as an
+attempt to work around the limits, answering with a block that grows
+longer the more often it repeats. It is the client's persistence that does
+the damage, not a single operation — so the breaker must outlive the
+process.
 
-Tu też domyka się GH-100: `RetryPolicy` miała testy i zero wywołujących w
-produkcji. `GuardedSession` jest miejscem, w którym wreszcie działa — z
-domyślną `NO_AUTOMATIC_RETRY`, więc ruch do KSeF-u nie zmienia się ani o jedno
-żądanie.
+This also closes GH-100: `RetryPolicy` had tests and zero callers in
+production. `GuardedSession` is where it finally runs — with the default
+`NO_AUTOMATIC_RETRY`, so traffic to KSeF does not change by a single
+request.
 """
 
 from dataclasses import dataclass, field
@@ -144,8 +146,8 @@ def guarded(inner: ScriptedSession, breaker: RecordingBreaker) -> GuardedSession
 
 
 def test_the_wrapper_is_still_a_session(guarded: GuardedSession) -> None:
-    # Podmiana musi być niewidoczna dla wołającego, inaczej opakowanie w
-    # czterech serwisach byłoby zmianą ich kontraktu.
+    # The substitution must be invisible to the caller, otherwise wrapping it
+    # into four services would change their contract.
     assert isinstance(guarded, KsefSession)
 
 
@@ -184,8 +186,9 @@ def test_every_way_ksef_says_no_is_counted(breaker: RecordingBreaker, refusal: E
 
 
 def test_no_answer_at_all_is_not_a_refusal(breaker: RecordingBreaker) -> None:
-    # Brak odpowiedzi to nie odmowa. Liczenie własnego DNS-u jako wzorca
-    # obchodzenia limitów zamykałoby podmiot za cudzą awarię.
+    # No answer at all is not a refusal. Counting one's own DNS as a pattern
+    # of working around limits would lock the subject out over someone
+    # else's outage.
     guarded = GuardedSession(
         inner=ScriptedSession(failure=KsefUnreachable("Brak odpowiedzi z KSeF-u.")),
         breaker=breaker,
@@ -236,9 +239,9 @@ def test_a_blocked_breaker_stops_the_call_before_it_is_sent(
 def test_a_package_part_is_delegated_without_the_fuse(
     guarded: GuardedSession, breaker: RecordingBreaker, inner: ScriptedSession
 ) -> None:
-    # Część paczki idzie z zewnętrznego magazynu po podpisanym URL-u, bez
-    # poświadczeń KSeF-u i poza jakimkolwiek limitem. Wygasły odnośnik nic nie
-    # mówi o tym, jak często ten podmiot pyta KSeF.
+    # A package part goes to an external store over a signed URL, without
+    # KSeF credentials and outside any limit. An expired link says nothing
+    # about how often this subject queries KSeF.
     guarded.fetch_part(handle=HANDLE, part=PART)
 
     assert (inner.calls, breaker.successes) == (["fetch_part"], 0)
@@ -274,8 +277,8 @@ def test_every_call_ksef_answers_passes_the_fuse(
 
 
 def test_the_limits_read_passes_the_fuse_too(breaker: RecordingBreaker) -> None:
-    # Dwa żądania na każde otwarcie sesji. Gdyby szły obok bezpiecznika,
-    # zablokowany podmiot i tak pukałby do KSeF-u przy każdym uruchomieniu.
+    # Two requests on every session open. If they bypassed the breaker, a
+    # blocked subject would still knock on KSeF's door on every launch.
     breaker.blocked = True
     inner = ScriptedSession()
     guarded = GuardedSession(inner=inner, breaker=breaker)
@@ -289,8 +292,8 @@ def test_the_limits_read_passes_the_fuse_too(breaker: RecordingBreaker) -> None:
 def test_the_default_policy_sends_one_attempt_and_no_more(
     guarded: GuardedSession,
 ) -> None:
-    # GH-100 bez zmiany zachowania: `RetryPolicy` jest wreszcie podłączona, a
-    # domyślna to wciąż jedna próba. Żadnego wycofania wykładniczego (D-017).
+    # GH-100 with no behaviour change: `RetryPolicy` is finally wired in, and
+    # the default is still a single attempt. No exponential backoff (D-017).
     assert guarded.retry.attempts == 1
 
 
@@ -313,9 +316,9 @@ def test_a_policy_that_waits_uses_only_the_wait_ksef_named(
 def test_a_policy_that_waits_still_counts_the_refusal_once(
     breaker: RecordingBreaker,
 ) -> None:
-    # Bezpiecznik widzi odmowę, która dotarła do wołającego — nie każdą próbę
-    # w środku. Inaczej jedna polityka z trzema próbami przepalałaby bezpiecznik
-    # szybciej niż trzy osobne wywołania.
+    # The breaker sees the refusal that reached the caller — not every
+    # attempt made along the way. Otherwise one policy with three attempts
+    # would blow the breaker faster than three separate calls.
     guarded = GuardedSession(
         inner=ScriptedSession(failure=KsefRateLimited("429.", retry_after=30)),
         breaker=breaker,

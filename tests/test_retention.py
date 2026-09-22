@@ -1,17 +1,19 @@
-"""Kasowanie treści bez kasowania pamięci o tym, że była.
+"""Deleting content without deleting the memory that it existed.
 
-Cała wartość tego modułu mieści się w jednym niezmienniku: po wyczyszczeniu
-archiwum ponowna synchronizacja **nie ściąga skasowanych faktur**. Test
-`test_a_purged_invoice_is_never_fetched_again` sprawdza go wprost — kasuje,
-uruchamia ścieżkę archiwizacji jeszcze raz i patrzy, czy na dysku nie ląduje
-nic, co przed chwilą zniknęło.
+The whole value of this module fits in one invariant: after the archive is
+purged, a repeated synchronisation **does not pull the deleted invoices back
+in**. The test `test_a_purged_invoice_is_never_fetched_again` checks this
+directly — it deletes, runs the archiving path again, and looks whether
+anything that just disappeared lands back on disk.
 
-Reszta rodzin asercji: oba wymiary cięcia (podmiot i okres), nietykalność
-sąsiednich plików (indeks, punkty kontynuacji, dziennik przeglądu) i to, że
-nieodwracalna operacja nie zgaduje — plik o nazwie, która nie jest numerem
-KSeF, zostaje tam, gdzie leży.
+The rest of the assertion families: both cutting dimensions (subject and
+period), the untouchability of neighbouring files (the index, continuation
+points, the review log), and the fact that an irreversible operation never
+guesses — a file whose name is not a KSeF number stays exactly where it
+lies.
 
-Numery i treści są syntetyczne. Żaden bajt cudzej faktury nie dotyka zestawu.
+Numbers and content are synthetic. Not a single byte of anyone else's
+invoice touches this suite.
 """
 
 from datetime import UTC, date, datetime
@@ -238,7 +240,7 @@ def test_a_purged_invoice_is_never_fetched_again(
     purge: ArchivePurge,
     package: ExportPackage,
 ) -> None:
-    """Niezmiennik z D-034: indeks przeżywa treść, więc nic nie wraca na dysk."""
+    """The invariant from D-034: the index outlives the content, so nothing returns to disk."""
     purge.remove(plan=purge.plan(window=PurgeWindow()))
 
     report = purge.archive.store(package=package)

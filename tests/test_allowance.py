@@ -1,13 +1,15 @@
-"""Czy licznik budżetu i zapamiętane limity przeżywają proces, który je zapisał.
+"""Whether the budget counter and the remembered limits survive the process
+that wrote them.
 
-Serwer MCP pod `uvx` ginie razem z sesją agenta, więc okno godzinowe liczone w
-pamięci miało cykl życia jednego wywołania narzędzia. Trzy narzędzia w ciągu
-minuty wydawały trzy pełne przydziały, a licznik ani razu nie odmówił — czyli
-dokładnie przekroczenie, przed którym miał chronić (GH-97).
+The MCP server under `uvx` dies together with the agent session, so an
+hourly window counted in memory had the lifetime of a single tool call.
+Three tool calls within a minute each spent a full allowance, and the
+counter never once refused — exactly the overrun it was meant to guard
+against (GH-97).
 
-Rozdział korzeni jest tu sprawdzany osobno, bo to on decyduje, co przetrwa
-czyszczarkę dysku: licznik w katalogu danych, zapamiętane limity w cache
-(D-032).
+The split between the two roots is checked here on its own, because it is
+what decides what survives a disk cleaner: the counter lives in the data
+directory, the remembered limits in the cache (D-032).
 """
 
 import re
@@ -447,8 +449,8 @@ def test_a_fresh_fuse_lets_the_call_through(protection: Allowance) -> None:
 
 
 def test_a_few_refusals_are_not_yet_a_pattern(protection: Allowance) -> None:
-    # Jeden pechowy telefon albo wygasły token, zauważony i poprawiony, nie może
-    # zamykać podmiotu na godzinę.
+    # One unlucky call, or an expired token that gets noticed and fixed, must
+    # not lock the subject out for an hour.
     for _ in range(REFUSAL_LIMIT - 1):
         protection.breaker.note_refusal(retry_after=None)
 
@@ -464,9 +466,9 @@ def test_a_run_of_refusals_stops_the_next_call_locally(protection: Allowance) ->
 
 
 def test_the_blown_fuse_is_not_a_port_failure(protection: Allowance) -> None:
-    # Sedno GH-234. Pod `KsefPortError` ta odmowa czytała się jak awaria
-    # rejestru, choć nic nie zostało wysłane — dokładnie tak, jak licznik
-    # budżetu przed GH-211.
+    # The heart of GH-234. Under `KsefPortError` this refusal read like a
+    # registry failure, even though nothing was ever sent — exactly like the
+    # budget counter before GH-211.
     for _ in range(REFUSAL_LIMIT):
         protection.breaker.note_refusal(retry_after=None)
 
@@ -479,7 +481,7 @@ def test_the_blown_fuse_is_not_a_port_failure(protection: Allowance) -> None:
 def test_the_local_refusal_says_from_when_asking_is_allowed_again(
     protection: Allowance,
 ) -> None:
-    # „Spróbuj później" bez momentu zamienia bezpiecznik w zagadkę.
+    # "Try again later" without a moment turns the breaker into a guessing game.
     for _ in range(REFUSAL_LIMIT):
         protection.breaker.note_refusal(retry_after=None)
 
@@ -501,8 +503,8 @@ def test_one_answer_ends_the_run(protection: Allowance) -> None:
 
 
 def test_a_healthy_pass_writes_no_fuse_at_all(protection: Allowance) -> None:
-    # Każde udane wywołanie zapisujące plik byłoby zapisem na dysk na każde
-    # zapytanie do KSeF-u, żeby skasować zero.
+    # A file write on every successful call would mean a disk write on every
+    # query to KSeF, just to erase a zero.
     protection.breaker.note_success()
 
     assert protection.breaker.path.exists() is False
@@ -520,7 +522,7 @@ def test_the_block_lifts_when_the_moment_it_named_has_passed(
 
 
 def test_a_longer_wait_named_by_ksef_is_obeyed(protection: Allowance) -> None:
-    # Honorowanie `Retry-After` to wymaganie, nie detal (D-017).
+    # Honoring `Retry-After` is a requirement, not a detail (D-017).
     for _ in range(REFUSAL_LIMIT):
         protection.breaker.note_refusal(retry_after=int(REFUSAL_COOLDOWN.total_seconds()) * 3)
 
@@ -530,8 +532,8 @@ def test_a_longer_wait_named_by_ksef_is_obeyed(protection: Allowance) -> None:
 def test_a_shorter_wait_named_by_ksef_does_not_cut_the_fuse_short(
     protection: Allowance,
 ) -> None:
-    # Bezpiecznik jest zatrzymaniem, nie ponowieniem. Wrócić po trzydziestu
-    # sekundach, które bywają w 429, to wznowić dokładnie ten wzorzec.
+    # The breaker is a stop, not a retry. Coming back after the thirty
+    # seconds sometimes seen in a 429 would resume exactly that pattern.
     for _ in range(REFUSAL_LIMIT):
         protection.breaker.note_refusal(retry_after=30)
 
@@ -545,8 +547,9 @@ def test_the_fuse_lives_in_the_data_root(protection: Allowance, tmp_path: Path) 
 def test_the_fuse_outlives_the_process_that_blew_it(
     protection: Allowance, tmp_path: Path, clock: MovableClock
 ) -> None:
-    # Sedno GH-99. Licznik zerowany przez `uvx` pozwalałby wznawiać serię przy
-    # każdym uruchomieniu, a szkodę robi właśnie wytrwałość klienta.
+    # The heart of GH-99. A counter reset by `uvx` would let the run resume
+    # on every launch, and it is precisely the client's persistence that
+    # does the damage.
     for _ in range(REFUSAL_LIMIT):
         protection.breaker.note_refusal(retry_after=None)
 
@@ -606,7 +609,7 @@ def test_the_guarded_session_carries_this_subject_s_fuse(
 def test_the_guarded_session_keeps_the_single_attempt_default(
     protection: Allowance, session: CountingSession
 ) -> None:
-    # GH-100: podłączona, ale nie zmieniająca ruchu do KSeF-u.
+    # GH-100: wired in, but not changing the traffic reaching KSeF.
     assert protection.guarded(session=session).retry is NO_AUTOMATIC_RETRY
 
 

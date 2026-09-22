@@ -272,8 +272,9 @@ def test_two_recorders_never_interleave_their_lines(
 
 
 def test_the_recorded_window_states_both_ends() -> None:
-    # Ślad audytowy ma pozwolić odtworzyć zakres pytania, a od GH-84 zakres
-    # zawsze ma oba końce — nie ma już wpisu kończącego się na „open".
+    # The audit trail must let the query's range be reconstructed, and since
+    # GH-84 the range always carries both ends — there is no longer an entry
+    # ending in "open".
     asked = Period(
         date_from=datetime(2026, 9, 1, tzinfo=UTC),
         date_to=datetime(2026, 9, 14, tzinfo=UTC),

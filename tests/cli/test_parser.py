@@ -5,9 +5,10 @@ from ksef_mcp.cli import parser as parser_module
 from ksef_mcp.cli.parser import build_parser
 from tests.cli.conftest import NIP, Recorder
 
-# Jedna konwencja zamiast dwóch (#137). Podparser niosący swój handler nie ma
-# drugiej pisowni nazwy komendy, którą można rozjechać z pierwszą — a właśnie
-# to kończyło się cichym uruchomieniem serwera MCP zamiast błędem.
+# One convention instead of two (#137). A subparser carrying its own handler
+# has no second spelling of the command name that could drift apart from the
+# first — and that drift used to end in the MCP server starting silently
+# instead of an error.
 
 SUBCOMMANDS: tuple[list[str], ...] = (
     ["onboarding"],
@@ -37,8 +38,9 @@ def test_every_subcommand_carries_a_handler_of_its_own(command: list[str]) -> No
 
 
 def test_an_unknown_command_is_refused_rather_than_serving() -> None:
-    # Literówka w nazwie komendy nie może po cichu wylądować na domyślnym
-    # handlerze — integrator debugujący skrypt ma dostać błąd, nie serwer.
+    # A typo in the command name must not silently land on the default
+    # handler — an integrator debugging a script should get an error, not
+    # a server.
     recorder = Recorder()
 
     with pytest.raises(SystemExit):

@@ -1,18 +1,18 @@
-"""Co naprawdę jedzie w dystrybucji — sprawdzane na zbudowanym archiwum.
+"""What actually ships in the distribution — checked against a built archive.
 
-Reszta pakietu ma testy, które uruchamiają kod z drzewa źródłowego. Tu
-chodzi o coś, czego z drzewa źródłowego nie widać: renderowanie PDF (D-027)
-potrzebuje dwóch plików, które nie są Pythonem — shimu Node i zwendorowanego
-generatora Ministerstwa. Do 106 ich obecność w kole zależała wyłącznie od
-tego, czego nie wymienia `.gitignore`, a wypadnięcie ich z dystrybucji nie
-psuło ani instalacji, ani importu, ani jednego testu. Awaria wychodziła
-dopiero u użytkownika.
+The rest of the package has tests that run code from the source tree. This
+one is about something the source tree cannot show: PDF rendering (D-027)
+needs two files that are not Python — a Node shim and the Ministry's
+vendored generator. Until 106 their presence in the wheel depended
+purely on what `.gitignore` did not list, and their absence from the
+distribution broke neither the install, nor the import, nor a single test.
+The failure only surfaced for the end user.
 
-Dlatego ten plik nie sprawdza manifestu — sprawdza archiwum. Budowany jest
-ten sam ciąg, który wykonuje `pypi-publish.yml`: `uv build` wytwarza sdist,
-a koło powstaje z niego, więc zasób nieobecny w sdiscie jest nieobecny
-i w kole. Build biegnie raz na moduł, bo kosztuje kilkanaście sekund,
-a wszystkie asercje czytają to samo archiwum.
+That is why this file does not check the manifest — it checks the archive.
+It builds the same sequence `pypi-publish.yml` runs: `uv build` produces the
+sdist, and the wheel is built from it, so a resource missing from the sdist
+is missing from the wheel too. The build runs once per module, since it
+costs a dozen-odd seconds, and every assertion reads the same archive.
 """
 
 from __future__ import annotations
@@ -29,8 +29,8 @@ REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
 
 BUILD_TIMEOUT_SECONDS = 600.0
 
-# Ścieżki wewnątrz pakietu importu, bez przedrostka dystrybucji — koło niesie
-# je pod `ksef_mcp/`, sdist pod `src/ksef_mcp/`.
+# Paths inside the import package, without the distribution prefix — the
+# wheel carries them under `ksef_mcp/`, the sdist under `src/ksef_mcp/`.
 REQUIRED_RESOURCES = (
     "rendering/node/render.mjs",
     "rendering/vendor/ksef-fe-invoice-converter.1.1.39.js",
@@ -38,9 +38,10 @@ REQUIRED_RESOURCES = (
     "rendering/vendor/LICENCJA-MF.md",
 )
 
-# Czy bundel w drzewie zgadza się z notą licencyjną, pilnuje `bin/vendor_bundle.py`
-# (108). Tu pytanie jest węższe i dotyczy wyłącznie pakowania: czy to, co
-# spakowano, to ten sam plik co w drzewie, czy jego skrócona wersja.
+# Whether the bundle in the tree matches the licence note is guarded by
+# `bin/vendor_bundle.py` (108). The question here is narrower and only
+# about packaging: whether what got packed is the same file as in the tree,
+# or a truncated version of it.
 BUNDLE_NAME = "rendering/vendor/ksef-fe-invoice-converter.1.1.39.js"
 
 
@@ -72,8 +73,9 @@ def wheel_entries(wheel: zipfile.ZipFile) -> frozenset[str]:
 @pytest.fixture(scope="module")
 def sdist_entries(distributions: Path) -> frozenset[str]:
     with tarfile.open(next(iter(distributions.glob("*.tar.gz")))) as archive:
-        # Pierwszy człon to katalog nazwany wersją dystrybucji; odcięty, żeby
-        # asercje nie musiały znać numeru wydania.
+        # The first segment is a directory named after the distribution
+        # version; stripped off so the assertions do not need to know the
+        # release number.
         return frozenset(name.partition("/")[2] for name in archive.getnames())
 
 
