@@ -16,7 +16,7 @@ def invoice(ordinal: int) -> ksef_port.InvoiceMetadata:
     return synthetic_metadata(ordinal)
 
 
-# Warunki wstępne, o które pyta i `doctor`, i onboarding.
+# Preconditions that both `doctor` and onboarding ask about.
 
 
 def test_missing_node_is_described_with_an_install_command() -> None:
@@ -95,7 +95,7 @@ def test_available_keyring_marks_the_default_backend() -> None:
     assert "1. keyring.backends.SecretService (priorytet 5) — domyślny" in described
 
 
-# `doctor` — wszystko, co da się powiedzieć bez sięgania do KSeF.
+# `doctor` — everything that can be said without reaching KSeF.
 
 
 @pytest.fixture
@@ -276,9 +276,9 @@ def test_doctor_leaves_the_old_archive_exactly_where_it_is(
 
 @pytest.fixture
 def accounting_office(subject_data_root: Path) -> Path:
-    # Trzech klientów biura onboardowanych różnymi zapisami. Konfiguracja
-    # wskazuje w danej chwili najwyżej jednego z nich, a pozostali są dokładnie
-    # tymi, o których nikt się nie dowie bez przejrzenia całego katalogu.
+    # Three office clients onboarded under different spellings. The
+    # configuration points at most one of them at a time, and the rest are
+    # exactly the ones nobody learns about without browsing the whole directory.
     holder = subject_data_root / "subjects"
     for name in ("9876543210", "PL9876543210", "111-222-33-44"):
         (holder / name / "test").mkdir(parents=True)
@@ -321,8 +321,8 @@ def test_doctor_names_the_directory_the_old_one_belongs_under(
 def test_doctor_says_when_the_normalised_directory_already_exists(
     office_transcript: str,
 ) -> None:
-    # Przeniesienie zawartości do istniejącego katalogu może nadpisać faktury,
-    # więc ta różnica musi być widoczna, zanim ktoś ruszy pliki.
+    # Moving content into an existing directory could overwrite invoices,
+    # so this difference must be visible before anyone touches the files.
     assert "ten katalog już istnieje" in office_transcript
 
 
@@ -441,7 +441,7 @@ def test_doctor_says_nothing_about_a_platform_without_a_collection(
     assert "Kolekcja" not in recorder.transcript
 
 
-# `verify` — jedyne polecenie, które wydaje godzinowy budżet.
+# `verify` — the only command that spends the hourly budget.
 
 
 def test_verify_refuses_without_configuration(configuration_file: Path) -> None:
@@ -636,10 +636,11 @@ def test_verify_reports_a_blown_local_fuse_instead_of_a_traceback(
     stored_token: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # GH-234. `check_connection` pyta przez ten sam `GuardedSession`, co reszta,
-    # więc zapalony bezpiecznik tu dociera. Spod `KsefPortError` wychodził
-    # złapany; nazwany osobno w tym `except` wychodzi złapany nadal, a bez tego
-    # `verify` odpowiadałoby stosem wywołań zamiast momentem wznowienia.
+    # GH-234. `check_connection` asks through the same `GuardedSession` as
+    # everything else, so a tripped fuse reaches here too. It used to be
+    # caught under `KsefPortError`; named separately in this `except` it is
+    # still caught, but without this `verify` would answer with a stack trace
+    # instead of the moment when asking resumes.
     monkeypatch.setattr(
         ksef_port,
         "check_connection",

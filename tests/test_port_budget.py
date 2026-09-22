@@ -140,9 +140,9 @@ def spent_export_budget(budget: QueryBudget) -> QueryBudget:
 def test_the_local_refusal_is_not_a_failure_of_the_port(
     spent_export_budget: QueryBudget,
 ) -> None:
-    # Sedno GH-211: nic nie poszło do KSeF-u, więc odmowa nie ma prawa trafić
-    # do gałęzi „awaria portu" i wysłać integratora na poszukiwanie usterki
-    # połączenia, które działa.
+    # The heart of GH-211: nothing was sent to KSeF, so the refusal has no
+    # business landing in the "port failure" branch and sending an
+    # integrator off to hunt for a connection fault that does not exist.
     with pytest.raises(BudgetExhausted) as refused:
         spent_export_budget.spend(Operation.EXPORT)
 
@@ -170,8 +170,8 @@ def test_the_window_frees_up_when_the_oldest_call_leaves_it(
 
 
 def test_a_zero_allowance_frees_up_at_no_moment_at_all(clock: MovableClock) -> None:
-    # Pułap zero nigdy nie zwalnia się sam, a podanie jakiejkolwiek godziny
-    # byłoby wymyśleniem terminu — czyli tym, czego D-017 zakazuje.
+    # A zero ceiling never frees up on its own, and naming any moment at all
+    # would mean inventing a deadline — exactly what D-017 forbids.
     budget = QueryBudget(limits=granted(metadata=20, exports=0, downloads=64), clock=clock)
 
     assert budget.frees_at(Operation.EXPORT) is None

@@ -223,9 +223,9 @@ async def test_a_genuine_crash_keeps_its_text_off_the_wire(
     assert "a path fragment nobody vetted" not in str(crashed_review.content)
 
 
-# Kompletność dziennika audytu (#136). Nic nie wymuszało `trail.record`: nowe
-# narzędzie mogło pobrać dane, odpowiedzieć i nie zostawić śladu — a cała
-# wartość dziennika opiera się na tym, że wpis jest zawsze (D-011).
+# Audit journal completeness (#136). Nothing enforced `trail.record`: a new
+# tool could fetch data, answer, and leave no trail — and the whole value of
+# the journal rests on the entry always being there (D-011).
 
 
 @pytest.fixture
@@ -256,6 +256,6 @@ async def test_a_tool_that_skips_the_audit_write_is_refused(
 async def test_a_skipped_audit_write_says_which_record_is_missing(
     answered_without_the_journal: CallToolResult,
 ) -> None:
-    # Nazwa operacji i zdanie o dzienniku — nigdy numery KSeF, których ta
-    # odpowiedź miała dotyczyć.
+    # The operation name and a sentence about the journal — never the KSeF
+    # numbers this answer was supposed to cover.
     assert "dziennika audytu" in str(answered_without_the_journal.content)

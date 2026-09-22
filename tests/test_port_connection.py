@@ -4,10 +4,10 @@ The hourly allowance is twenty metadata queries and the Ministry logs breaches,
 so „one authentication plus one query" is a property of the code, not a promise
 in the issue. A port that counts what it was asked to do makes it checkable.
 
-Od GH-98 „tanio" znaczy też „policzone". `ksef-mcp verify` bywa wołane kilka
-razy pod rząd właśnie wtedy, gdy coś już szwankuje, a szło obok licznika i obok
-cache'u — dokładany ruch trafiał do tego samego budżetu, który chroni przed
-blokadą.
+Since GH-98, "cheap" also means "counted". `ksef-mcp verify` tends to be
+called several times in a row exactly when something is already going
+wrong, and it used to bypass the counter and the cache — the extra traffic
+landed against the same budget meant to protect against a block.
 """
 
 from collections.abc import Iterator

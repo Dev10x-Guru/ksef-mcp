@@ -58,8 +58,8 @@ AUGUST = Period(
     date_type=DateType.ISSUE,
 )
 
-# Okno synchronizacji — od GH-84 z oboma końcami. Niecacheowalne nie dlatego, że
-# nie ma końca, tylko dlatego, że MF zatrzymuje paczkę tam, gdzie zechce.
+# The synchronisation window — with both ends since GH-84. Uncacheable not
+# because it has no end, but because MF stops the package wherever it likes.
 SYNCHRONISATION = Period.for_synchronisation(
     since=datetime(2026, 9, 1, tzinfo=UTC),
     now=datetime(2026, 9, 14, 6, 0, tzinfo=UTC),
@@ -179,8 +179,9 @@ def test_a_remembered_period_comes_back_with_its_invoices(
 def test_a_remembered_correction_is_still_a_correction_when_it_comes_back(
     cache: PeriodCache,
 ) -> None:
-    # Bez tego zapamiętany miesiąc odpowiadałby na pytanie o korekty milczeniem,
-    # a milczenie czyta się dokładnie jak „korekt tu nie ma" (GH-120).
+    # Without this, a remembered month would answer a question about
+    # corrections with silence, and silence reads exactly like "there are no
+    # corrections here" (GH-120).
     corrected = MetadataPage(
         invoices=(synthetic_metadata(1, document_type=DocumentType.KOR),),
         has_more=False,
@@ -198,9 +199,10 @@ def test_a_remembered_correction_is_still_a_correction_when_it_comes_back(
 def test_a_remembered_correction_still_names_the_invoice_it_corrects(
     cache: PeriodCache,
 ) -> None:
-    # Bez skrótów w zapamiętanym miesiącu ostrzeżenie nie umiałoby odróżnić
-    # korekty z fakturą pierwotną w oknie od korekty bez niej — a to cała
-    # treść ADR-111. Stąd wersja schematu 5.
+    # Without the hashes in the remembered month, the warning could not
+    # tell apart a correction whose original invoice is in the window from
+    # one without it — which is the whole content of ADR-111. Hence schema
+    # version 5.
     corrected = MetadataPage(
         invoices=(
             synthetic_metadata(

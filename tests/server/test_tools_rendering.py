@@ -23,8 +23,8 @@ from ksef_mcp.storage.audit import (
 from tests.server.conftest import RENDER_NUMBER, recorded_reads
 from tests.support.synthetic import synthetic_fa3_invoice
 
-# Renderowanie PDF (#42). Narzędzie nie sięga do KSeF — otwiera to, co archiwum
-# już trzyma — więc jego testy nie potrzebują tokenu ani atrapy portu.
+# PDF rendering (#42). The tool does not reach KSeF — it opens what the
+# archive already holds — so its tests need neither a token nor a port stub.
 
 
 def rendered_invoice(

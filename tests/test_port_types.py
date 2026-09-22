@@ -61,8 +61,9 @@ def test_a_ksef_number_carries_the_subject_it_was_issued_for() -> None:
 
 
 def test_a_ksef_number_carries_the_day_it_was_assigned() -> None:
-    # Data otrzymania faktury, niezależna od momentu pobrania: nic w
-    # InvoiceMetadata jej nie niesie, więc numer jest jedynym jej źródłem.
+    # The date the invoice was received, independent of when it was
+    # fetched: nothing in InvoiceMetadata carries it, so the number is its
+    # only source.
     assert KsefNumber(VALID_NUMBER).assigned_on == date(2026, 9, 1)
 
 
@@ -120,7 +121,9 @@ def test_a_point_older_than_the_ceiling_catches_up_rather_than_reaching_back() -
 
 
 def test_the_first_lookback_is_defined_from_the_ceiling_not_independently() -> None:
-    """Strzeże definicji, nie zachowania: rozjazd tych dwóch stałych to błąd GH-84."""
+    """Guards the definition, not the behaviour: a drift between these two
+    constants is bug GH-84.
+    """
     assert INITIAL_LOOKBACK == MAX_QUERY_WINDOW
 
 

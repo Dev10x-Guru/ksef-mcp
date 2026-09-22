@@ -153,7 +153,8 @@ def test_an_empty_subject_role_restates_the_question(listing: InvoiceListingResu
 
 
 def test_a_described_window_names_the_end_it_asked_about() -> None:
-    # Od GH-84 nie ma okna bez końca, więc opis zawsze ma co podać.
+    # Since GH-84 no window is without an end, so the description always has
+    # something to give.
     described = describe_listing(
         InvoiceListing(
             nip=NIP,
@@ -194,8 +195,8 @@ async def test_the_listing_tool_answers_with_metadata_but_no_invoice(
 
 @pytest.mark.anyio
 async def test_the_listing_tool_asks_for_no_confirmation(listing_stubbed: None) -> None:
-    # Bramka zgody przy odczycie uczy klikać „tak" bez patrzenia i psuje moment,
-    # w którym pytanie naprawdę coś znaczy (D-011).
+    # A consent gate on a read teaches clicking "yes" without looking, and
+    # spoils the moment where the question actually means something (D-011).
     async with Client(server, raise_exceptions=True) as client:
         called = await client.call_tool("list_recent_invoices")
 
@@ -205,8 +206,8 @@ async def test_the_listing_tool_asks_for_no_confirmation(listing_stubbed: None) 
 def test_a_listing_records_that_the_model_was_shown_the_rows(
     listing: InvoiceListingResult, trail: AuditTrail
 ) -> None:
-    # Osobne zdarzenie niż zapis na dysk (D-011): „czat zobaczył" to nie to samo
-    # co „plik powstał".
+    # A separate event from a write to disk (D-011): "the chat saw it" is not
+    # the same as "a file was created".
     shown = recorded_reads(trail)[0]
 
     assert (shown.operation, shown.disclosure, shown.output_path) == (
@@ -233,7 +234,7 @@ def test_a_listing_records_the_numbers_that_reached_the_answer(
 def test_a_listing_records_a_subject_role_that_returned_nothing(
     listing: InvoiceListingResult, trail: AuditTrail
 ) -> None:
-    # Pytanie padło, więc zakres, o który zapytano, jest częścią śladu.
+    # The question was asked, so the scope it asked about is part of the trail.
     empty = recorded_reads(trail)[1]
 
     assert (empty.subject_role, empty.document_count, empty.ksef_numbers) == ("seller", 0, ())

@@ -59,8 +59,8 @@ def test_the_working_directory_keeps_the_key_written_so_far(
     saved_configuration: Path,
     configuration: Configuration,
 ) -> None:
-    # GH-188 przemianowało pole, nie klucz: plik zapisany wcześniej ma zostać
-    # czytelny bez schematu 2 i bez ponownego onboardingu.
+    # GH-188 renamed the field, not the key: a file saved earlier must still
+    # read without schema 2 and without going through onboarding again.
     stored = json.loads(saved_configuration.read_text(encoding="utf-8"))
 
     assert stored["invoice_directory"] == str(configuration.working_directory)

@@ -428,12 +428,13 @@ def test_amounts_arrive_as_decimals_so_a_comparison_cannot_invent_a_grosz(
 @pytest.mark.parametrize(
     ("answered", "expected"),
     [
-        # Wartość jest SDK-owa: `ksef2` tłumaczy `Kor` na `kor`, zanim rekord tu
-        # dotrze (`infra.mappers.invoices.responses._map_invoice_type`).
+        # The value is the SDK's own: `ksef2` translates `Kor` to `kor` before
+        # the record gets here (`infra.mappers.invoices.responses._map_invoice_type`).
         ("kor", DocumentType.KOR),
         ("vat", DocumentType.VAT),
-        # Tabela rodzajów rosła i urośnie. Miesiąc, który przewraca się na
-        # trzynastym rodzaju, zamienia brak ostrzeżenia na brak zestawienia.
+        # The table of types has grown before and will grow again. A month
+        # that trips over the thirteenth type turns a missing warning into a
+        # missing statement.
         ("kor_czegos_nowego", DocumentType.UNKNOWN),
     ],
 )
@@ -455,9 +456,9 @@ def test_the_content_hashes_arrive_so_a_correction_can_name_its_original(
     monkeypatch: pytest.MonkeyPatch,
     port: Ksef2Port,
 ) -> None:
-    # Nazwy są nasze, drutowe zostają po drugiej stronie portu (D-017):
-    # `invoice_hash` i `hash_of_corrected_invoice` w SDK, `content_hash` i
-    # `corrected_content_hash` u nas (ADR-111).
+    # The names are ours; the wire ones stay on the other side of the port
+    # (D-017): `invoice_hash` and `hash_of_corrected_invoice` in the SDK,
+    # `content_hash` and `corrected_content_hash` on ours (ADR-111).
     Plan(
         page=[sdk_metadata(2, invoice_type="kor", hash_of_corrected_invoice="cGllcndvdG5h")]
     ).install(monkeypatch)

@@ -70,11 +70,12 @@ def synthetic_fa3_invoice() -> bytes:
 
 
 def synthetic_credential(value: str = "tajny-token") -> StoredToken:
-    """Token, który nie należy do nikogo, w opakowaniu, jakiego żąda port.
+    """A token that belongs to nobody, wrapped the way the port requires.
 
-    Goły napis już nie przejdzie i o to chodzi (GH-115): sygnatura `Credential`
-    jest tym, co utrzymuje ochronę przed `repr` aż do granicy, więc test
-    podający napis omijałby dokładnie ten niezmiennik, który ma sprawdzać.
+    A bare string no longer passes, and that is the point (GH-115): the
+    `Credential` signature is what keeps `repr` protection in place up to
+    the boundary, so a test passing a bare string would bypass exactly the
+    invariant it is meant to check.
     """
     return StoredToken(value=value, source=TokenSource.KEYRING)
 

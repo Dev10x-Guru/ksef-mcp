@@ -21,7 +21,7 @@ from tests.support.synthetic import synthetic_metadata
 
 REVIEW_ENDS = datetime(2026, 9, 14, 7, tzinfo=UTC)
 
-# Początek wyprowadzony z REVIEW_WINDOW, nie przepisany liczbą (GH-84).
+# Start derived from REVIEW_WINDOW, not rewritten as a literal number (GH-84).
 REVIEW_PERIOD = Period(
     date_from=REVIEW_ENDS - REVIEW_WINDOW,
     date_to=REVIEW_ENDS,
@@ -30,7 +30,7 @@ REVIEW_PERIOD = Period(
 
 LEDGER_PATH = "/dane/subjects/1234567890/test/review.json"
 
-# Numer nadany w lipcu, wykryty we wrześniu — przypadek z badania [D-025].
+# A number issued in July, detected in September — the case from [D-025].
 LATE_NUMBER = "1234567890-20260707-0100AB12CD77-56"
 
 

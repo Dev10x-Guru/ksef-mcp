@@ -249,8 +249,8 @@ def test_one_subject_role_explains_itself_under_the_same_name_as_the_whole_pass(
     assert synchronised.subject_roles[0].message == "Paczka EXP-1 trafiła do archiwum."
 
 
-# Ślad audytowy (#45). W sporze o wyciek to jedyny dowód, więc każde narzędzie
-# odczytu zostawia wpis — niezależnie od tego, że odczyt nie ma bramki zgody.
+# Audit trail (#45). In a leak dispute it is the only evidence, so every
+# read tool leaves an entry — regardless of a read having no consent gate.
 
 
 def test_a_synchronisation_records_what_it_stored(
@@ -268,8 +268,8 @@ def test_a_synchronisation_records_what_it_stored(
 def test_a_synchronisation_records_a_deduplication_skip_as_a_skip(
     synchronised: SynchronisationResult, trail: AuditTrail
 ) -> None:
-    # Ślad złożony wyłącznie z zapisów czytałby się tak, jakby tej faktury nigdy
-    # nie dotknięto — a była widziana i rozpoznana jako już posiadana.
+    # A trail made only of writes would read as if this invoice was never
+    # touched — yet it was seen and recognised as already held.
     skipped = recorded_reads(trail)[1]
 
     assert (skipped.disclosure, skipped.ksef_numbers) == (
