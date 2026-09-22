@@ -587,6 +587,34 @@ def test_verify_reports_a_blown_local_fuse_instead_of_a_traceback(
     assert (code, "Odmawiam lokalnie" in recorder.transcript) == (cli.EXIT_KSEF_REFUSED, True)
 
 
+def test_verify_reports_a_spent_local_counter_instead_of_a_traceback(
+    configured: Path,
+    stored_token: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # GH-243. The first local refusal, spent hourly counter, left the port root
+    # in GH-211 and `verify` was not told — so the one command whose whole job
+    # is to say when asking resumes answered with a stack trace instead.
+    monkeypatch.setattr(
+        ksef_port,
+        "check_connection",
+        raiser(
+            ksef_port.BudgetExhausted(
+                "Refusing locally: this server's own counter is spent. "
+                "Frees at 2026-09-01T13:00:00+00:00."
+            )
+        ),
+    )
+    recorder = Recorder()
+
+    code = cli.main(["verify"], console=recorder.console, configuration_file=configured)
+
+    assert (code, "Frees at 2026-09-01T13:00:00+00:00" in recorder.transcript) == (
+        cli.EXIT_KSEF_REFUSED,
+        True,
+    )
+
+
 def test_verify_reports_a_rejected_token(
     configured: Path,
     stored_token: None,

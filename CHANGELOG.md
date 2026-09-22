@@ -10,6 +10,15 @@ udokumentowane.
 
 ## Bez wydania
 
+### Naprawione
+
+- `ksef-mcp verify` przy wyczerpanym godzinowym liczniku odpowiada
+  zdaniem z momentem zwolnienia okna i kodem wyjścia „KSeF odmówił",
+  zamiast stosem wywołań. `BudgetExhausted` wyszedł spod korzenia portu w
+  GH-211, a `verify` nie został o tym powiadomiony — jedyna komenda,
+  której całym zadaniem jest powiedzieć, kiedy pytać ponownie, milczała
+  akurat wtedy (GH-243).
+
 ### Dodane
 
 - Zestawienie okresu nie mówi już samo „w okresie jest korekta", lecz
