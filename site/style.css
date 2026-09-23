@@ -1,0 +1,162 @@
+:root {
+  --bg: #ffffff;
+  --surface: #f4f6f8;
+  --text: #1b1f24;
+  --muted: #57606a;
+  --accent: #b3122e;
+  --accent-text: #ffffff;
+  --border: #d0d7de;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1115;
+    --surface: #181b21;
+    --text: #e6e8eb;
+    --muted: #9aa4af;
+    --accent: #ff5a6e;
+    --accent-text: #0f1115;
+    --border: #2d333b;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 17px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+.wrap {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+code {
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 0.9em;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+}
+
+a {
+  color: var(--accent);
+}
+
+.hero {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 72px 0 56px;
+}
+
+.eyebrow {
+  color: var(--muted);
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin: 0 0 12px;
+}
+
+h1 {
+  font-size: clamp(2rem, 5vw, 3rem);
+  line-height: 1.15;
+  margin: 0 0 20px;
+}
+
+.lead {
+  font-size: 1.15rem;
+  max-width: 44em;
+  margin: 0 0 28px;
+}
+
+.cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.command {
+  font-size: 1rem;
+  padding: 10px 14px;
+}
+
+.button {
+  display: inline-block;
+  padding: 10px 18px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: var(--accent-text);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.button.secondary {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+section {
+  padding: 40px 0 8px;
+}
+
+h2 {
+  font-size: 1.5rem;
+  margin: 0 0 16px;
+}
+
+.points {
+  padding-left: 1.2em;
+}
+
+.points li {
+  margin-bottom: 8px;
+}
+
+.steps {
+  padding-left: 1.4em;
+}
+
+.steps li {
+  margin-bottom: 14px;
+}
+
+.steps span {
+  display: block;
+  color: var(--muted);
+}
+
+.note,
+.small {
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+footer {
+  margin-top: 48px;
+  padding: 24px 0 40px;
+  border-top: 1px solid var(--border);
+}

@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ksef-mcp — faktury z KSeF prosto do Twojego agenta AI</title>
+  <meta name="description" content="Lokalny serwer MCP do Krajowego Systemu e-Faktur. Pobiera, archiwizuje i przegląda faktury zakupowe na Twojej maszynie — bez usługi pośredniczącej.">
+  <link rel="canonical" href="https://ksef.dev10x.guru/">
+
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="pl_PL">
+  <meta property="og:site_name" content="ksef-mcp">
+  <meta property="og:url" content="https://ksef.dev10x.guru/">
+  <meta property="og:title" content="ksef-mcp — faktury z KSeF prosto do Twojego agenta AI">
+  <meta property="og:description" content="Lokalny serwer MCP do KSeF. Faktury nie opuszczają Twojej maszyny.">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="ksef-mcp — faktury z KSeF prosto do Twojego agenta AI">
+  <meta name="twitter:description" content="Lokalny serwer MCP do KSeF. Faktury nie opuszczają Twojej maszyny.">
+
+  <meta name="color-scheme" content="light dark">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="hero">
+    <div class="wrap">
+      <p class="eyebrow">Krajowy System e-Faktur · Model Context Protocol</p>
+      <h1>Faktury z KSeF prosto do Twojego agenta AI</h1>
+      <p class="lead">
+        <strong>ksef-mcp</strong> to lokalny serwer MCP, który pobiera,
+        archiwizuje i przegląda faktury zakupowe z KSeF. Działa na Twojej
+        maszynie — dane faktur nie przechodzą przez żadną usługę pośredniczącą.
+      </p>
+      <div class="cta">
+        <code class="command">uvx ksef-mcp onboarding</code>
+        <a class="button" href="https://github.com/Dev10x-Guru/ksef-mcp">Repozytorium na GitHubie</a>
+        <a class="button secondary" href="https://pypi.org/project/ksef-mcp/">PyPI</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section>
+      <h2>Problem</h2>
+      <p>
+        Faktury zakupowe leżą w KSeF, a praca na nich — znaleźć fakturę za
+        miesiąc, przekazać zestawienie księgowej, sprawdzić, co przyszło od
+        ostatniego razu — dzieje się gdzie indziej. Darmowa aplikacja
+        Ministerstwa nie powie, które faktury są nowe, a zdalne serwery MCP
+        przepuszczają dokumenty i uwierzytelnienie przez cudzą usługę.
+      </p>
+    </section>
+
+    <section>
+      <h2>Jak to rozwiązujemy</h2>
+      <ul class="points">
+        <li><strong>Lokalnie.</strong> Serwer uruchamia klient MCP przez <code>uvx</code>; archiwum XML zostaje na Twoim dysku.</li>
+        <li><strong>Token w keyringu.</strong> Poświadczenia trafiają do systemowego magazynu kluczy, nie do pliku konfiguracyjnego.</li>
+        <li><strong>Domyślnie środowisko testowe.</strong> Produkcja wymaga świadomego wyboru.</li>
+        <li><strong>Oszczędnie z limitami.</strong> Z narzędzi MCP do KSeF sięga tylko synchronizacja; po odmowie z powodu limitu nic nie ponawia samo.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Instalacja w trzech krokach</h2>
+      <ol class="steps">
+        <li>
+          <code>uvx ksef-mcp onboarding</code>
+          <span>NIP, token KSeF, środowisko, katalog roboczy i rejestracja w Claude Code.</span>
+        </li>
+        <li>
+          <code>uvx ksef-mcp verify</code>
+          <span>Potwierdza połączenie i pokazuje ostatnie faktury.</span>
+        </li>
+        <li>
+          <code>„Zsynchronizuj faktury z KSeF”</code>
+          <span>Poproś agenta — resztę robią narzędzia MCP.</span>
+        </li>
+      </ol>
+      <p class="note">
+        Wymaga Pythona 3.13 (pobiera go <code>uv</code>). Node jest potrzebny
+        wyłącznie do PDF-ów — bez niego działa wszystko poza nimi.
+      </p>
+    </section>
+
+    <section>
+      <h2>Narzędzia MCP</h2>
+      <table>
+        <thead>
+          <tr><th>Narzędzie</th><th>Co robi</th><th>Sięga do KSeF</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>synchronise_invoices</code></td><td>pobiera, odszyfrowuje i archiwizuje nowe paczki faktur</td><td><strong>tak</strong></td></tr>
+          <tr><td><code>review_new_invoices</code></td><td>pokazuje faktury, które przyszły od ostatniego przeglądu</td><td>nie</td></tr>
+          <tr><td><code>list_recent_invoices</code></td><td>listuje metadane faktur z ostatnich trzydziestu dni</td><td>nie</td></tr>
+          <tr><td><code>export_period_statement</code></td><td>zapisuje faktury zakupowe za miesiąc jako CSV dla księgowej</td><td>nie</td></tr>
+          <tr><td><code>render_invoice_pdf</code></td><td>zapisuje zarchiwizowaną fakturę jako PDF generatorem Ministerstwa</td><td>nie</td></tr>
+          <tr><td><code>server_info</code></td><td>zwraca nazwę i wersję serwera</td><td>nie</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Dla kogo</h2>
+      <p>
+        Dla użytkownika technicznego: instalacja wymaga terminala. Dziś
+        obsługujemy jeden podmiot i faktury zakupowe w trybie odczytu;
+        faktury sprzedażowe i biura rachunkowe z wieloma podmiotami są
+        w planie prac. Wysyłka faktur jest świadomie poza zakresem.
+      </p>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <p>
+        <a href="https://github.com/Dev10x-Guru/ksef-mcp">GitHub</a> ·
+        <a href="https://pypi.org/project/ksef-mcp/">PyPI</a> ·
+        <a href="https://dev10x.guru">Dev10x.Guru</a> ·
+        licencja AGPL-3.0-only
+      </p>
+      <p class="small">
+        To nie jest <code>ksef-mcp.pl</code> — tamten niepowiązany projekt działa
+        zdalnie; ten uruchamia się lokalnie i o nic nie pyta w przeglądarce.
+      </p>
+    </div>
+  </footer>
+</body>
+</html>
