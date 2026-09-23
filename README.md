@@ -5,6 +5,8 @@ Lokalny serwer MCP do KSeF (Krajowy System e-Faktur), zbudowany przez Dev10x.Gur
 Uruchamiany na własnej maszynie przez `uvx ksef-mcp` — dane faktur nie
 przechodzą przez żadną usługę pośredniczącą.
 
+Strona projektu: [ksef.dev10x.guru](https://ksef.dev10x.guru)
+
 ## Stan projektu
 
 Serwer MCP wystawia dziś sześć narzędzi: `server_info`,

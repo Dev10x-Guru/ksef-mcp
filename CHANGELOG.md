@@ -25,7 +25,8 @@ udokumentowane.
   co robi ksef-mcp i dla kogo, pokazuje instalację w trzech krokach
   i narzędzia MCP, a udostępniona w social media niesie własny tytuł
   i opis zamiast domyślnej karty GitHuba. Źródło leży w `site/`,
-  a wdraża je workflow `pages.yml` przy każdej zmianie na `main` (GH-247).
+  a wdraża je workflow `pages.yml` przy każdej zmianie na `main`; README
+  odsyła do strony zaraz pod opisem projektu (GH-247).
 - O katalogu roboczym synchronizowanym do chmury narzędzia mówią raz,
   nie przy każdym dokumencie. `ksef-mcp onboarding` pyta przy wyborze
   takiego katalogu, czy zapamiętać decyzję (domyślnie tak), i zapisuje ją
