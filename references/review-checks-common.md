@@ -173,6 +173,12 @@ naruszenia jako REQUIRED/CRITICAL, nie jako preferencje stylistyczne:
    mogą trafić do kodu na sztywno, do logów, do fixture'ów w
    repozytorium ani do komunikatów błędów. Zgłoś każdy f-string lub
    wywołanie logu, które interpoluje te wartości bezpośrednio.
+   W workflow CI, które uruchamiają testy `ksef_live`, każdy sekret
+   (KSEF_TOKEN, KSEF_TEST_NIP) musi być jawnie walidowany przed użyciem
+   — bieg bez walidacji bezużytecznie traci czas i budżet podmiotu
+   testowego (każde uruchomienie ksef_live wydaje godzinę limitu).
+   Wymagana walidacja: `test -n "$ZMIENNA" || { exit 1; }` z
+   zrozumiałym komunikatem błędu na stderr.
 3. **Nigdy nie loguj ani nie zapisuj XML-a faktury** — treść faktury
    (XML FA(2)/FA(3)) zawiera dane osobowe i biznesowe podatnika.
    Zgłoś każdą ścieżkę kodu zapisującą surowy XML faktury do logów,
