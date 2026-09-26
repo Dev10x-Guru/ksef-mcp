@@ -12,6 +12,10 @@ udokumentowane.
 
 ### Dodane
 
+- Strona projektu otwiera się komiksem w sześciu kadrach: Włodek,
+  przegoniony przez księgową, słyszy, że Grażyna od straganu z gaciami
+  zrobiła sobie MCP do KSeF — w kilka sekund widać, po co jest projekt
+  i że można do niego dołączyć (GH-269).
 - README i strona projektu wskazują oficjalną instrukcję instalacji `uv`
   (https://docs.astral.sh/uv/getting-started/installation/), zanim każą
   uruchomić `uvx ksef-mcp onboarding` — pierwszy krok nie zakłada już

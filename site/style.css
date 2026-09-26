@@ -108,6 +108,21 @@ section {
   padding: 40px 0 8px;
 }
 
+.comic {
+  margin: 0;
+}
+
+.comic img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: calc(100svh - 32px);
+  margin: 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
 h2 {
   font-size: 1.5rem;
   margin: 0 0 16px;
