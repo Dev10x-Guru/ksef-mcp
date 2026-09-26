@@ -39,6 +39,10 @@ przepuszczają dokumenty i uwierzytelnienie przez cudzą usługę.
 
 ## Instalacja w trzech krokach
 
+Potrzebujesz tylko [`uv`](https://docs.astral.sh/uv/getting-started/installation/)
+— jedno polecenie instalacyjne dla Windows, macOS i Linuksa; to z niego
+pochodzi `uvx`.
+
 1. `uvx ksef-mcp onboarding` — NIP, token KSeF, środowisko, katalog
    roboczy i rejestracja w Claude Code.
 2. `uvx ksef-mcp verify` — potwierdza połączenie i pokazuje ostatnie
@@ -105,6 +109,10 @@ nietechnicznej — dystrybucja dla takiego odbiorcy (instalator albo
 rozszerzenie do klienta) to osobny, przyszły etap.
 
 ## Wymagania wstępne
+
+**[uv](https://docs.astral.sh/uv/getting-started/installation/)** — jedyne,
+co trzeba zainstalować samemu. Z niego pochodzą `uvx`, którym uruchamia się
+serwer, i interpreter Pythona niżej.
 
 **Python 3.13.14** — przypięty dokładnie, nie zakresem (`.python-version` oraz
 `requires-python` w `pyproject.toml`). `uv` pobierze ten interpreter sam, więc nie

@@ -12,6 +12,10 @@ udokumentowane.
 
 ### Dodane
 
+- README i strona projektu wskazują oficjalną instrukcję instalacji `uv`
+  (https://docs.astral.sh/uv/getting-started/installation/), zanim każą
+  uruchomić `uvx ksef-mcp onboarding` — pierwszy krok nie zakłada już
+  narzędzia, którego odwiedzający może nie mieć (GH-270).
 - Kontrakt z KSeF sprawdzany wobec prawdziwego rejestru testowego, nie
   tylko wobec własnej atrapy. `tests/live/` pod markerem `ksef_live`
   pyta o limity (i odmawia, gdy SDK ich nie odczytał i obowiązuje
