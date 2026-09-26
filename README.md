@@ -1,11 +1,54 @@
+[![PyPI](https://img.shields.io/pypi/v/ksef-mcp)](https://pypi.org/project/ksef-mcp/)
+[![Python](https://img.shields.io/pypi/pyversions/ksef-mcp)](https://pypi.org/project/ksef-mcp/)
+[![Testy](https://github.com/Dev10x-Guru/ksef-mcp/actions/workflows/pytest.yml/badge.svg?branch=main)](https://github.com/Dev10x-Guru/ksef-mcp/actions/workflows/pytest.yml)
+[![Pokrycie 100%](https://img.shields.io/badge/pokrycie-100%25-brightgreen)](https://github.com/Dev10x-Guru/ksef-mcp/blob/main/pyproject.toml)
+[![Licencja AGPL-3.0](https://img.shields.io/badge/licencja-AGPL--3.0-blue)](https://github.com/Dev10x-Guru/ksef-mcp/blob/main/LICENSE)
+
+[![ksef-mcp — faktury z KSeF prosto do Twojego agenta AI](https://raw.githubusercontent.com/Dev10x-Guru/ksef-mcp/main/site/og-image.png)](https://ksef.dev10x.guru)
+
+**[Strona projektu](https://ksef.dev10x.guru)** ·
+[PyPI](https://pypi.org/project/ksef-mcp/) ·
+[Instalacja](#instalacja-i-uruchomienie) ·
+[Narzędzia MCP](#narzędzia-mcp) ·
+[Dziennik zmian](https://github.com/Dev10x-Guru/ksef-mcp/blob/main/CHANGELOG.md)
+
 # ksef-mcp
 
-Lokalny serwer MCP do KSeF (Krajowy System e-Faktur), zbudowany przez Dev10x.Guru.
+**Faktury z KSeF prosto do Twojego agenta AI.** Lokalny serwer MCP do
+Krajowego Systemu e-Faktur, zbudowany przez Dev10x.Guru: pobiera,
+archiwizuje i przegląda faktury zakupowe na Twojej maszynie — dane faktur
+nie przechodzą przez żadną usługę pośredniczącą.
 
-Uruchamiany na własnej maszynie przez `uvx ksef-mcp` — dane faktur nie
-przechodzą przez żadną usługę pośredniczącą.
+## Problem
 
-Strona projektu: [ksef.dev10x.guru](https://ksef.dev10x.guru)
+Faktury zakupowe leżą w KSeF, a praca na nich — znaleźć fakturę za
+miesiąc, przekazać zestawienie księgowej, sprawdzić, co przyszło od
+ostatniego razu — dzieje się gdzie indziej. Darmowa aplikacja
+Ministerstwa nie powie, które faktury są nowe, a zdalne serwery MCP
+przepuszczają dokumenty i uwierzytelnienie przez cudzą usługę.
+
+## Jak to rozwiązujemy
+
+- **Lokalnie.** Klient MCP uruchamia serwer przez `uvx`; archiwum XML
+  zostaje na Twoim dysku.
+- **Token w keyringu.** Poświadczenia trafiają do systemowego magazynu
+  kluczy, nie do pliku konfiguracyjnego.
+- **Domyślnie środowisko testowe.** Produkcja wymaga świadomego wyboru.
+- **Oszczędnie z limitami.** Z narzędzi MCP do KSeF sięga tylko
+  synchronizacja; po odmowie z powodu limitu nic nie ponawia samo.
+
+## Instalacja w trzech krokach
+
+1. `uvx ksef-mcp onboarding` — NIP, token KSeF, środowisko, katalog
+   roboczy i rejestracja w Claude Code.
+2. `uvx ksef-mcp verify` — potwierdza połączenie i pokazuje ostatnie
+   faktury.
+3. „Zsynchronizuj faktury z KSeF" — poproś agenta; resztę robią narzędzia
+   MCP.
+
+Wymaga Pythona 3.13 (pobiera go `uv`). Node jest potrzebny wyłącznie do
+PDF-ów — bez niego działa wszystko poza nimi. Szczegóły każdego kroku
+w sekcji [Instalacja i uruchomienie](#instalacja-i-uruchomienie).
 
 ## Stan projektu
 
