@@ -1,0 +1,74 @@
+name: KSeF na żywo
+
+# Testy `ksef_live` rozmawiają z prawdziwym rejestrem KSeF (GH-178), więc nie
+# uruchamia ich żaden push ani PR — wyłącznie ręczne wyzwolenie. Każdy przebieg
+# wydaje godzinowy budżet podmiotu testowego, a Ministerstwo rejestruje wzorce
+# wyglądające na obchodzenie limitów: bieg automatyczny przy każdej zmianie
+# byłby dokładnie takim wzorcem.
+on:
+  workflow_dispatch:
+
+# Jeden przebieg naraz i bez anulowania trwającego: dwa równoległe eksporty
+# tego samego podmiotu to podwójny wydatek z tego samego budżetu, a przerwany
+# eksport zostawia w rejestrze paczkę, po którą nikt nie wróci.
+concurrency:
+  group: ksef-live
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    # Sekrety podmiotu testowego żyją w środowisku `ksef-test`, nie na
+    # poziomie repozytorium: widzi je tylko to zadanie.
+    environment: ksef-test
+    timeout-minutes: 20
+    env:
+      # Katalog danych wskazany jawnie, żeby plik konfiguracji i liczniki
+      # budżetu powstały w katalogu tymczasowym biegu, a nie w domu runnera.
+      XDG_DATA_HOME: ${{ runner.temp }}/dane
+      XDG_CACHE_HOME: ${{ runner.temp }}/pamiec
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          enable-cache: true
+
+      # Test renderu na prawdziwej fakturze (GH-82) też nosi `ksef_live` i bez
+      # Node pominąłby się po cichu.
+      - name: Install Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .node-version
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      # To, co `onboarding` zapisałby interaktywnie. Środowisko jest wpisane
+      # tu na sztywno jako `test`: nie ma zmiennej, która mogłaby je zmienić,
+      # więc żaden sekret ani wejście ręcznego wyzwolenia nie skieruje biegu
+      # na produkcję (CLAUDE.md). Token idzie ścieżką awaryjną `KSEF_TOKEN`
+      # (D-004) — runner nie ma magazynu kluczy.
+      - name: Write the test subject configuration
+        env:
+          KSEF_TEST_NIP: ${{ secrets.KSEF_TEST_NIP }}
+        run: |
+          test -n "$KSEF_TEST_NIP" || { echo "::error::Brak sekretu KSEF_TEST_NIP w środowisku ksef-test"; exit 1; }
+          mkdir -p "$XDG_DATA_HOME/ksef-mcp" "$RUNNER_TEMP/robocze"
+          jq -n \
+            --arg nip "$KSEF_TEST_NIP" \
+            --arg working "$RUNNER_TEMP/robocze" \
+            '{schema_version: 1, nip: $nip, environment: "test", keyring_backend: "KSEF_TOKEN", invoice_directory: $working}' \
+            > "$XDG_DATA_HOME/ksef-mcp/configuration.json"
+          chmod 600 "$XDG_DATA_HOME/ksef-mcp/configuration.json"
+
+      # `--no-cov`: bramka pokrycia w pyproject mierzy cały pakiet, a ten bieg
+      # z założenia wykonuje jego wycinek.
+      - name: Run live tests
+        env:
+          KSEF_TOKEN: ${{ secrets.KSEF_TOKEN }}
+        run: uv run pytest -m ksef_live --no-cov -rs
