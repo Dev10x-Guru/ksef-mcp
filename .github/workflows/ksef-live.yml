@@ -25,12 +25,17 @@ jobs:
     # poziomie repozytorium: widzi je tylko to zadanie.
     environment: ksef-test
     timeout-minutes: 20
-    env:
+    steps:
       # Katalog danych wskazany jawnie, żeby plik konfiguracji i liczniki
       # budżetu powstały w katalogu tymczasowym biegu, a nie w domu runnera.
-      XDG_DATA_HOME: ${{ runner.temp }}/dane
-      XDG_CACHE_HOME: ${{ runner.temp }}/pamiec
-    steps:
+      # Przez `$GITHUB_ENV` w kroku, nie przez `env` zadania: tam kontekst
+      # `runner` jest niedostępny i GitHub odrzuca cały plik przy walidacji
+      # (GH-263).
+      - name: Point data and cache at the run's temp directory
+        run: |
+          echo "XDG_DATA_HOME=$RUNNER_TEMP/dane" >> "$GITHUB_ENV"
+          echo "XDG_CACHE_HOME=$RUNNER_TEMP/pamiec" >> "$GITHUB_ENV"
+
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Install uv
@@ -71,4 +76,6 @@ jobs:
       - name: Run live tests
         env:
           KSEF_TOKEN: ${{ secrets.KSEF_TOKEN }}
-        run: uv run pytest -m ksef_live --no-cov -rs
+        run: |
+          test -n "$KSEF_TOKEN" || { echo "::error::Brak sekretu KSEF_TOKEN w środowisku ksef-test"; exit 1; }
+          uv run pytest -m ksef_live --no-cov -rs
