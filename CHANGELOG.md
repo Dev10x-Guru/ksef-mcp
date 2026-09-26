@@ -10,6 +10,9 @@ udokumentowane.
 
 ## Bez wydania
 
+## 0.4.1 — 2026-09-26
+
+
 ### Naprawione
 
 - `ksef-mcp verify` przy wyczerpanym godzinowym liczniku odpowiada
@@ -97,7 +100,6 @@ udokumentowane.
   miał jak sprawdzić, czy to rozjazd schematu, czy wada odpowiedzi.
   Limity nie niosą danych osobowych, więc powód trafia do dziennika w
   całości (GH-253).
-
 ## 0.4.0 — 2026-09-21
 
 
