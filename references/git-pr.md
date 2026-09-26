@@ -65,6 +65,7 @@ git rebase -i $(git merge-base main HEAD)
 ### Tytuł PR-a
 
 Użyj linii tytułu głównego commita (gitmoji + numer zgłoszenia + opis).
+Tytuł powinien mieć do **72 znaków** (standard `git log --oneline`).
 
 **Ważne**: gitmoji pojawia się w **treści commita**, nie w polu tytułu
 PR-a na GitHubie. Interfejs GitHuba pokazuje je osobno — gitmoji
