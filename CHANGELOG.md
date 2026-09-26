@@ -24,6 +24,13 @@ udokumentowane.
   świadome `uv run pytest -m ksef_live --no-cov` na maszynie po
   onboardingu. Podmiot skonfigurowany na produkcję jest pomijany
   (GH-178).
+- README jest stroną docelową: pod rzędem odznak (PyPI, Python, testy,
+  pokrycie, licencja) stoi okładka podlinkowana do strony, jednozdaniowe
+  hasło i sekcje „Problem", „Jak to rozwiązujemy" oraz „Instalacja
+  w trzech krokach" — odwiedzający z social media wie, co robi
+  ksef-mcp, zanim przewinie. Ta sama okładka 1280×640 (`site/og-image.png`,
+  źródło w `site/og-image.svg`) jest obrazem podglądu strony w tagach OG
+  i Twitter Card (GH-247).
 
 ## 0.4.1 — 2026-09-26
 

@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640">
+  <!-- Źródło okładki do social media (GH-247). og-image.png obok jest z niego
+       wyrenderowany 1:1; po zmianie tego pliku wyrenderuj PNG ponownie:
+       inkscape site/og-image.svg -o site/og-image.png -w 1280 -h 640
+       magick site/og-image.png -strip -colors 128 -define png:compression-level=9 site/og-image.png
+       Bez danych osobowych i bez prawdziwych numerów KSeF. -->
+  <defs>
+    <linearGradient id="tlo" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f1115"/>
+      <stop offset="1" stop-color="#1c1f27"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="640" fill="url(#tlo)"/>
+  <rect x="0" y="0" width="16" height="640" fill="#ff5a6e"/>
+
+  <g font-family="DejaVu Sans, Inter, Helvetica, Arial, sans-serif" fill="#e6e8eb">
+    <text x="96" y="132" font-size="26" letter-spacing="3" fill="#9aa4af">KRAJOWY SYSTEM E-FAKTUR · MODEL CONTEXT PROTOCOL</text>
+    <text x="96" y="262" font-size="112" font-weight="700">ksef-mcp</text>
+    <text x="96" y="344" font-size="50" font-weight="600">Faktury z KSeF prosto</text>
+    <text x="96" y="408" font-size="50" font-weight="600">do Twojego agenta AI</text>
+    <text x="96" y="470" font-size="30" fill="#9aa4af">Lokalny serwer MCP — faktury nie opuszczają Twojej maszyny.</text>
+  </g>
+
+  <g font-family="DejaVu Sans Mono, SFMono-Regular, Consolas, monospace">
+    <rect x="96" y="512" width="520" height="68" rx="12" fill="#181b21" stroke="#2d333b" stroke-width="2"/>
+    <text x="124" y="557" font-size="30" fill="#ff5a6e">$</text>
+    <text x="156" y="557" font-size="30" fill="#e6e8eb">uvx ksef-mcp onboarding</text>
+  </g>
+
+  <text x="1184" y="557" text-anchor="end" font-family="DejaVu Sans, Inter, Helvetica, Arial, sans-serif" font-size="28" fill="#9aa4af">ksef.dev10x.guru</text>
+</svg>
