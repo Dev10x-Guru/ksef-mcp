@@ -10,6 +10,21 @@ udokumentowane.
 
 ## Bez wydania
 
+### Dodane
+
+- Kontrakt z KSeF sprawdzany wobec prawdziwego rejestru testowego, nie
+  tylko wobec własnej atrapy. `tests/live/` pod markerem `ksef_live`
+  pyta o limity (i odmawia, gdy SDK ich nie odczytał i obowiązuje
+  założony sufit), o metadane dla własnych typów podmiotu, zamawia jeden
+  eksport, pobiera, odszyfrowuje i rozpakowuje paczkę, a prawdziwy
+  `_metadata.json` przepuszcza przez to samo parowanie po skrócie, które
+  poprzedza archiwizację. Uruchamia je wyłącznie ręcznie wyzwalany
+  workflow `ksef-live.yml` — środowisko `test` jest wpisane w nim na
+  sztywno, token pochodzi z sekretu środowiska `ksef-test` — albo
+  świadome `uv run pytest -m ksef_live --no-cov` na maszynie po
+  onboardingu. Podmiot skonfigurowany na produkcję jest pomijany
+  (GH-178).
+
 ## 0.4.1 — 2026-09-26
 
 

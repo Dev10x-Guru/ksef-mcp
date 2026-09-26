@@ -17,81 +17,29 @@ the portal runs — never that the layout is any good (D-027).
 import os
 import shutil
 from collections.abc import Iterator
-from datetime import timedelta
 from pathlib import Path
 
 import pytest
 from pypdf import PdfReader
 
-from ksef_mcp import config, ksef_port
-from ksef_mcp.allowance import Allowance
+from ksef_mcp import ksef_port
 from ksef_mcp.clock import now_utc
 from ksef_mcp.ksef_port.connection import check_period
 from ksef_mcp.ksef_port.lazy import load_adapter
-from ksef_mcp.ksef_port.types import (
-    InvoiceMetadata,
-    KsefEnvironment,
-    SubjectRole,
-)
+from ksef_mcp.ksef_port.types import InvoiceMetadata
 from ksef_mcp.rendering import pdf
-from ksef_mcp.storage import token_store
-from ksef_mcp.storage.period_cache import MeteredPeriods, PeriodCache
+from ksef_mcp.storage.period_cache import MeteredPeriods
+from tests.support.live import (
+    LOOKBACK,
+    OWN_ROLES,
+    live_configuration,
+    live_token,
+    readers_for,
+)
 
 pytestmark = pytest.mark.ksef_live
 
 PORTAL_PDF_VARIABLE = "KSEF_PORTAL_PDF"
-
-# The window `verify` asks about: wide enough to hold a purchase on the test
-# registry, well under the port's ceiling, and one query from the hourly
-# twenty (D-031).
-LOOKBACK = timedelta(days=30)
-
-# The roles a subject holds on its own invoices. Third parties and authorised
-# subjects are rarer on a test account, and each role asked is one more query.
-OWN_ROLES = (SubjectRole.BUYER, SubjectRole.SELLER)
-
-
-def live_configuration() -> config.Configuration:
-    """The subject this machine was onboarded for, or a skip saying why not.
-
-    Read from the real configuration path, not the one the suite's autouse
-    fixture redirects: this test wants the subject a person set up, and a
-    missing one is a reason to skip rather than a failure of the render.
-    """
-    configuration = config.load_configuration()
-    if configuration is None:
-        pytest.skip("brak konfiguracji — uruchom `ksef-mcp onboarding`")
-    if configuration.environment is KsefEnvironment.PRODUCTION:
-        # Never from a test (CLAUDE.md): production limits are a tenth of test
-        # and the Ministry logs every breach against the subject.
-        pytest.skip("podmiot skonfigurowany na produkcję — test na żywo idzie tylko na test/demo")
-    return configuration
-
-
-def live_token(*, nip: str) -> token_store.StoredToken:
-    stored = token_store.read_token(nip=nip)
-    if stored is None:
-        pytest.skip(f"brak tokenu dla {nip} — `ksef-mcp token set` albo KSEF_TOKEN")
-    return stored
-
-
-def readers_for(configuration: config.Configuration, *, root: Path) -> MeteredPeriods:
-    """The same metered pairing `verify` uses, rooted under the test's directory.
-
-    Rooted explicitly rather than through the autouse redirect, because the
-    fixture below is module-scoped and the redirect is not. The counter still
-    counts — one query per role at most — it just counts into a directory that
-    disappears with the run.
-    """
-    return MeteredPeriods(
-        cache=PeriodCache(nip=configuration.nip, environment=configuration.environment, root=root),
-        allowance=Allowance(
-            nip=configuration.nip,
-            environment=configuration.environment,
-            data_root=root,
-            cache_root=root,
-        ),
-    )
 
 
 def first_invoice(
