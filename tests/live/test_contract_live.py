@@ -11,7 +11,10 @@ on TEST or DEMO and a token in the keyring or in `KSEF_TOKEN`:
 
     uv run pytest -m ksef_live tests/live --no-cov
 
-or through the manually dispatched `ksef-live` workflow. Production is never a
+On a machine onboarded for production, `make test-live` runs them on TEST
+with credentials from the untracked `ksef.secrets.env`, leaving that
+configuration alone (`bin/ksef_live.py`, GH-265). The manually dispatched
+`ksef-live` workflow runs the same script. Production is never a
 target: a subject onboarded for it is skipped (CLAUDE.md).
 
 One run spends, at most: one limits read, one metadata query per own role, one

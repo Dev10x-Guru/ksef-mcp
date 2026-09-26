@@ -223,6 +223,15 @@ __marimo__/
 # Scratch directory the ADR workflows write their intermediate JSON to.
 .claude-output/
 
+# Local secrets, bl-zebra convention: the filled-in file stays on the machine,
+# the placeholder template is committed (GH-265).
+*.secrets.env
+!*.secrets.env.example
+
+# Local run output: the coverage report, and the test-only configuration
+# bin/ksef_live.py writes — it names the test subject's NIP (GH-265).
+/.tmp/
+
 # Derived from uv.lock by the dependency audit; the lock file is the source
 # of truth, so a committed copy could only ever go stale and disagree.
 requirements-audit.txt

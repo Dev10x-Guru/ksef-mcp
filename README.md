@@ -292,6 +292,7 @@ nie zostaną zweryfikowane wobec dokumentacji MF.
 make install              # uv sync --group dev
 make hooks                # instalacja hooków pre-commit i commit-msg
 make test                 # uv run pytest z pokryciem
+make test-live            # testy ksef_live na środowisku testowym KSeF
 make lint                 # pre-commit na całym drzewie
 make coverage-report      # testy + otwarcie raportu HTML
 make upgrade-requirements # uv lock --upgrade
@@ -303,6 +304,14 @@ która blokuje commit, więc lokalny przebieg nie rozjeżdża się z hookiem.
 
 Pokrycie testami jest egzekwowane na poziomie 100% (`fail_under` w `pyproject.toml`),
 więc lokalny przebieg i CI stosują identyczny próg.
+
+`make test-live` sprawdza kontrakt z prawdziwym rejestrem testowym KSeF, a nie
+z atrapą. Poświadczenia testowe trafiają do nieśledzonego `ksef.secrets.env`
+(`cp ksef.secrets.env.example ksef.secrets.env`); własna konfiguracja
+i token produkcyjny zostają nietknięte, a środowisko jest wpisane na sztywno
+jako `test`. Ten sam skrypt, `bin/ksef_live.py`, uruchamia ręczny workflow
+`ksef-live.yml` z sekretami środowiska GitHub `ksef-test`. Każdy przebieg
+wydaje godzinowy budżet podmiotu testowego.
 
 ## Licencje
 

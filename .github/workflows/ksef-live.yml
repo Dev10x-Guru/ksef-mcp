@@ -26,16 +26,6 @@ jobs:
     environment: ksef-test
     timeout-minutes: 20
     steps:
-      # Katalog danych wskazany jawnie, żeby plik konfiguracji i liczniki
-      # budżetu powstały w katalogu tymczasowym biegu, a nie w domu runnera.
-      # Przez `$GITHUB_ENV` w kroku, nie przez `env` zadania: tam kontekst
-      # `runner` jest niedostępny i GitHub odrzuca cały plik przy walidacji
-      # (GH-263).
-      - name: Point data and cache at the run's temp directory
-        run: |
-          echo "XDG_DATA_HOME=$RUNNER_TEMP/dane" >> "$GITHUB_ENV"
-          echo "XDG_CACHE_HOME=$RUNNER_TEMP/pamiec" >> "$GITHUB_ENV"
-
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Install uv
@@ -53,29 +43,14 @@ jobs:
       - name: Install dependencies
         run: uv sync --group dev
 
-      # To, co `onboarding` zapisałby interaktywnie. Środowisko jest wpisane
-      # tu na sztywno jako `test`: nie ma zmiennej, która mogłaby je zmienić,
-      # więc żaden sekret ani wejście ręcznego wyzwolenia nie skieruje biegu
-      # na produkcję (CLAUDE.md). Token idzie ścieżką awaryjną `KSEF_TOKEN`
-      # (D-004) — runner nie ma magazynu kluczy.
-      - name: Write the test subject configuration
-        env:
-          KSEF_TEST_NIP: ${{ secrets.KSEF_TEST_NIP }}
-        run: |
-          test -n "$KSEF_TEST_NIP" || { echo "::error::Brak sekretu KSEF_TEST_NIP w środowisku ksef-test"; exit 1; }
-          mkdir -p "$XDG_DATA_HOME/ksef-mcp" "$RUNNER_TEMP/robocze"
-          jq -n \
-            --arg nip "$KSEF_TEST_NIP" \
-            --arg working "$RUNNER_TEMP/robocze" \
-            '{schema_version: 1, nip: $nip, environment: "test", keyring_backend: "KSEF_TOKEN", invoice_directory: $working}' \
-            > "$XDG_DATA_HOME/ksef-mcp/configuration.json"
-          chmod 600 "$XDG_DATA_HOME/ksef-mcp/configuration.json"
-
-      # `--no-cov`: bramka pokrycia w pyproject mierzy cały pakiet, a ten bieg
-      # z założenia wykonuje jego wycinek.
+      # Ten sam skrypt co `make test-live` na maszynie opiekuna (GH-265): pisze
+      # konfigurację z `environment: "test"` wpisanym w kodzie — nie ma
+      # zmiennej, która mogłaby skierować bieg na produkcję (CLAUDE.md) —
+      # i podaje token ścieżką awaryjną `KSEF_TOKEN` (D-004), bo runner nie
+      # ma magazynu kluczy. Brak któregoś sekretu zatrzymuje bieg przed
+      # pierwszym zapytaniem, z nazwą brakującego klucza.
       - name: Run live tests
         env:
-          KSEF_TOKEN: ${{ secrets.KSEF_TOKEN }}
-        run: |
-          test -n "$KSEF_TOKEN" || { echo "::error::Brak sekretu KSEF_TOKEN w środowisku ksef-test"; exit 1; }
-          uv run pytest -m ksef_live --no-cov -rs
+          KSEF_LIVE_TEST_NIP: ${{ secrets.KSEF_TEST_NIP }}
+          KSEF_LIVE_TEST_TOKEN: ${{ secrets.KSEF_TOKEN }}
+        run: bin/ksef_live.py
