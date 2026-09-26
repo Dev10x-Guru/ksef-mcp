@@ -25,6 +25,9 @@ lint: ## Uruchamia wszystkie hooki pre-commit na całym drzewie
 test: ## Uruchamia testy wraz z pokryciem
 	uv run pytest
 
+test-live: ## Uruchamia testy ksef_live na środowisku testowym KSeF (sekrety z ksef.secrets.env)
+	bin/ksef_live.py
+
 coverage-report: ## Uruchamia testy i otwiera raport pokrycia w HTML
 	-uv run pytest --cov-report html
 	open .tmp/coverage/index.html
@@ -50,6 +53,6 @@ release-features: ## Wydaje wersję z nowymi funkcjami (0.1.0 -> 0.2.0)
 release-major: ## Wydaje wersję główną (0.1.0 -> 1.0.0)
 	bin/release.py major
 
-.PHONY: help install upgrade-requirements build-requirements hooks lint test \
+.PHONY: help install upgrade-requirements build-requirements hooks lint test test-live \
 	coverage-report serve build clean release-dry release-fixes \
 	release-features release-major

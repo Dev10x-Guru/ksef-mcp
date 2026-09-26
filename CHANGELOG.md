@@ -24,6 +24,15 @@ udokumentowane.
   świadome `uv run pytest -m ksef_live --no-cov` na maszynie po
   onboardingu. Podmiot skonfigurowany na produkcję jest pomijany
   (GH-178).
+- `make test-live` uruchamia te same testy na środowisku testowym także
+  na maszynie, na której podmiot jest skonfigurowany na produkcję.
+  `bin/ksef_live.py` bierze NIP i token testowy z nieśledzonego
+  `ksef.secrets.env` (szablon: `ksef.secrets.env.example`, konwencja
+  z bl-zebra) albo ze zmiennych `KSEF_LIVE_TEST_*`, zapisuje osobną
+  konfigurację z `environment: "test"` w `.tmp/ksef-live/` i podaje token
+  ścieżką `KSEF_TOKEN` — własna konfiguracja i token produkcyjny w keyringu
+  zostają nietknięte. Workflow `ksef-live.yml` uruchamia ten sam skrypt
+  (GH-265).
 - README jest stroną docelową: pod rzędem odznak (PyPI, Python, testy,
   pokrycie, licencja) stoi okładka podlinkowana do strony, jednozdaniowe
   hasło i sekcje „Problem", „Jak to rozwiązujemy" oraz „Instalacja
