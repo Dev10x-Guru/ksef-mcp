@@ -114,8 +114,11 @@ section {
 
 .comic img {
   display: block;
-  width: 100%;
+  width: auto;
   height: auto;
+  max-width: 100%;
+  max-height: calc(100svh - 32px);
+  margin: 0 auto;
   border: 1px solid var(--border);
   border-radius: 6px;
 }
