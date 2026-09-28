@@ -2,7 +2,7 @@
 #    uv export --frozen --no-hashes --no-annotate --only-group dev -o requirements/development.txt
 anyio==4.15.1
 colorama==0.4.6 ; sys_platform == 'win32'
-coverage==7.16.0
+coverage==7.16.1
 idna==3.19
 iniconfig==2.3.0
 packaging==26.3
