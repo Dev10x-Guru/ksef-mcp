@@ -71,12 +71,21 @@ Przed zgłoszeniem którejkolwiek z nich **zweryfikuj rzeczywisty kod**:
     nagłówki Markdown (np. `## Summary`, `## Details`), zweryfikuj, że
     Job Story JTBD pojawia się PRZED wszystkimi nagłówkami. Nagłówek
     przed JTBD psuje parsowanie release notes.
-13. **Naruszenia głosu JTBD** — gdy treść PR-a, treść commita lub
-    tytuł zgłoszenia zawiera Job Story w pierwszej osobie („I want
-    to") lub z bezosobową rolą („the user wants to"), zgłoś jako
-    REQUIRED. Wymagany jest głos trzecioosobowy, z konkretną rolą i
-    beneficjentem. Patrz `references/git-jtbd.md` § Wymóg głosu oraz
-    § Wybór roli.
+13. **Naruszenia języka i struktury JTBD** — gdy treść PR-a, treść
+    commita lub tytuł zgłoszenia zawiera Job Story:
+    - **Język**: Wyłącznie POLSKI (`**Gdy**`, `**[rola] chce**`,
+      `**żeby [beneficjent] mógł**`). Brak: `**When**`, `**wants to**`,
+      `**so ... can**` (angielskie psują automatyzację wydania).
+      Naruszenie: **CRITICAL**.
+    - **Głos i rola**: Brak pierwszej osoby („I want to") i
+      bezosobowych ról („the user wants to", „zespół", „ktoś").
+      Wymagane: konkretne role (księgowa, integrator, podatnik, osoba
+      utrzymująca projekt, współtwórcy). Naruszenie: **REQUIRED** (głos),
+      **WARNING** (rola).
+    - **Wyzwalacz biznesowy**: Klauzula „Gdy" musi opisywać realny
+      kontekst, nie techniczny wyzwalacz. Naruszenie: **WARNING**.
+    Patrz `references/git-jtbd.md` § Wymóg głosu, § Wybór roli,
+    § Kluczowe zasady. Patrz też CLAUDE.md § Język projektu.
 
 ## Lista kontrolna architektury
 
