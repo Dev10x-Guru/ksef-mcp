@@ -65,6 +65,8 @@ git rebase -i $(git merge-base main HEAD)
 ### Tytuł PR-a
 
 Użyj linii tytułu głównego commita (gitmoji + numer zgłoszenia + opis).
+**Maksymalnie 72 znaki**, zgodnie z `git-commits.md` § Format treści
+commita.
 
 **Ważne**: gitmoji pojawia się w **treści commita**, nie w polu tytułu
 PR-a na GitHubie. Interfejs GitHuba pokazuje je osobno — gitmoji
@@ -72,6 +74,13 @@ głównego commita i tak pojawi się automatycznie w release notes i
 w git logu, niezależnie od tego, jak wypełnione jest pole tytułu PR-a.
 Kluczowy wymóg to obecność gitmoji w commicie; GitHub renderuje je w
 interfejsie PR-a.
+
+Uwaga o relacji commit↔PR title: pole tytułu PR-a na GitHubie pozwala
+wprowadzić własny tekst, odbiegający od tytułu commita. **Nawet jeśli
+tytuł PR-a w interfejsie wygląda inaczej, to linia tytułu commita
+pojawi się w release notes.** Zatem wymóg 72 znaków obowiązuje zarówno
+commit, jak i tytuł PR-a — obydwa muszą być syntetyczne i zmieścić się
+w limicie.
 
 ### Treść PR-a
 
