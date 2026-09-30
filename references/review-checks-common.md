@@ -75,8 +75,10 @@ Przed zgłoszeniem którejkolwiek z nich **zweryfikuj rzeczywisty kod**:
     tytuł zgłoszenia zawiera Job Story w pierwszej osobie („I want
     to") lub z bezosobową rolą („the user wants to"), zgłoś jako
     REQUIRED. Wymagany jest głos trzecioosobowy, z konkretną rolą i
-    beneficjentem. Patrz `references/git-jtbd.md` § Wymóg głosu oraz
-    § Wybór roli.
+    beneficjentem. Beneficjent musi być **explicite wymieniony** — nawet
+    jeśli jest tą samą rolą co ta, która chce (np. „**żeby integratorka
+    mogła**", nie „**żeby mogła**"). Patrz `references/git-jtbd.md` § Wymóg
+    głosu (linia 34-36) i tabela Wymóg głosu (linia 49).
 
 ## Lista kontrolna architektury
 
