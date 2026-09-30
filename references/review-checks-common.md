@@ -100,6 +100,26 @@ błędów.
 5. **Wykrywanie god function** — pojedyncza funkcja wykonująca
    walidację + logikę biznesową + operacje I/O + formatowanie
    odpowiedzi to naruszenie strukturalne niezależnie od liczby linii.
+6. **Separacja stanu per środowisko** — gdy kod zarządza stanem,
+   cache'em, punktami kontynuacji lub poświadczeniami zmiennym per
+   środowisko (test vs. prod), upewnij się, że ścieżka/klucz zawiera
+   wymiar środowiska. Brak separacji pozwala testom zafałszować lub
+   uszkodzić stan produkcji.
+   
+   ✅ Dobry wzorzec: `<data_dir>/sync/<NIP>/<environment>/state.json`
+   ❌ Zły wzorzec: `<data_dir>/sync/<NIP>/state.json`
+   
+   Zgłoś jako WARNING, jeśli wymiar środowiska nie jest w ścieżce.
+7. **Budżety i quotas muszą przeżyć restart** — gdy kod implementuje
+   rate limiting, quota lub budżet żądań do KSeF:
+   - In-memory liczniki (np. QueryBudget) są zerowane przy restarcie
+   - Jeśli licznik steruje poważną decyzją (czy wysłać żądanie?),
+     musi być zabezpieczony persistent state (timestamp, licznik na
+     dysku)
+   - Jeden mechanizm dla wewnątrz-przebiegu, drugi dla
+     między-przebiegów (np. QueryBudget + attempted_at)
+   
+   Zgłoś jako INFO, jeśli budżet jest in-memory bez disk fallback'u.
 
 **Kiedy stosować:** przy każdym PR-ze, który dodaje lub istotnie
 modyfikuje kod narzędzia/serwera MCP. Pomiń dla PR-ów wyłącznie
