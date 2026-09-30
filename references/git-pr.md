@@ -149,6 +149,24 @@ proces tworzenia release notes parsuje opisy PR-ów po pozycji.
 treści PR-a może sam go nie spełniać — reguła nie obowiązywała jeszcze
 w chwili zgłoszenia tego PR-a.
 
+## Znane ograniczenia automatyzacji: znaczniki JTBD
+
+Polskie znaczniki JTBD (`**Gdy**`, `**chce**`, `**żeby ... mógł**`) są
+wymagane przez standard projektu. Jednak walidator `mcp__plugin_Dev10x_cli__create_pr`
+szuka dosłownie angielskich znaczników (`**When**`, `**wants to**`,
+`**so ... can**`). Dopóki wtyczka Dev10x nie rozpoznaje polskich znaczników,
+postępuj tak:
+
+1. **Przy tworzeniu PR-a** (via `create_pr`): użyj angielskich znaczników.
+   Walidator je zaakceptuje.
+2. **Po otwarciu PR-a**: zmień znaczniki na polskie w treści PR-a
+   (edycja przez interfejs GitHub). Release notes parser później czyta już
+   polskie znaczniki z merge'a do main.
+
+To nie jest błąd — to świadoma kompromis. Gdy wtyczka Dev10x zostanie
+dostosowana do polskich znaczników, krok 1 stanie się zbędny (patrz
+`references/git-jtbd.md` § UWAGA — ryzyko dla automatyzacji).
+
 ### Jeśli przegląd wykryje problemy
 
 Jeśli Claude znajdzie problemy z kodem lub metadanymi podczas
